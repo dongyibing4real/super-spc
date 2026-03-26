@@ -816,6 +816,79 @@ function commitChart(next) {
   });
 }
 
+/**
+ * Surgical layout commit — updates grid, divider, pane visibility, and buttons
+ * without touching innerHTML. No flash, no SVG detach/reattach.
+ */
+function commitLayout(next) {
+  state = next;
+  const arena = root.querySelector(".chart-arena");
+  if (!arena) return;
+
+  const hasChallenger = state.compare.challengerStatus === "ready";
+  const layout = state.chartLayout;
+  const arrangement = hasChallenger ? layout.arrangement : "single";
+  const ratio = layout.splitRatio ?? 0.5;
+  const isHoriz = arrangement === "horizontal" || arrangement === "primary-wide" || arrangement === "challenger-wide";
+  const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
+  const showChallenger = hasChallenger && arrangement !== "single";
+
+  // Update grid template
+  if (showChallenger && isHoriz) {
+    arena.style.gridTemplateColumns = `${ratio}fr auto ${1 - ratio}fr`;
+    arena.style.gridTemplateRows = "1fr";
+  } else if (showChallenger && isVert) {
+    arena.style.gridTemplateColumns = "1fr";
+    arena.style.gridTemplateRows = `${ratio}fr auto ${1 - ratio}fr`;
+  } else {
+    arena.style.gridTemplateColumns = "1fr";
+    arena.style.gridTemplateRows = "1fr";
+  }
+  arena.dataset.layout = arrangement;
+
+  // Update divider orientation
+  const divider = arena.querySelector(".chart-divider");
+  if (divider && showChallenger) {
+    divider.style.display = "";
+    divider.dataset.divider = isHoriz ? "horizontal" : "vertical";
+  } else if (divider) {
+    divider.style.display = "none";
+  }
+
+  // Show/hide challenger pane
+  const challengerPane = arena.querySelector('.chart-pane[data-role="challenger"]');
+  if (challengerPane) {
+    challengerPane.style.display = showChallenger ? "" : "none";
+  }
+
+  // Reorder panes if needed (primary first or second)
+  const primaryFirst = layout.primaryPosition === "left" || layout.primaryPosition === "top";
+  const primaryPane = arena.querySelector('.chart-pane[data-role="primary"]');
+  if (primaryPane && challengerPane && divider) {
+    if (primaryFirst) {
+      arena.insertBefore(primaryPane, arena.firstChild);
+      arena.insertBefore(divider, challengerPane);
+    } else {
+      arena.insertBefore(challengerPane, arena.firstChild);
+      arena.insertBefore(divider, primaryPane);
+    }
+  }
+
+  // Update layout button active states
+  root.querySelectorAll(".layout-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.arrangement === arrangement);
+  });
+
+  // Let grid settle, then update chart sizing
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      for (const role of ["primary", "challenger"]) {
+        if (charts[role]) charts[role].update(buildChartData(role));
+      }
+    });
+  });
+}
+
 /* ═══════════════════════════════════════════════════
    EVENT HANDLERS
    ═══════════════════════════════════════════════════ */
@@ -841,7 +914,7 @@ root.addEventListener("click", (e) => {
     case "set-layout": {
       const arr = t.dataset.arrangement;
       const posMap = { horizontal: "left", vertical: "top", "primary-wide": "left", "primary-tall": "top", single: "left" };
-      commit(setChartLayout(state, arr, posMap[arr] || "left"));
+      commitLayout(setChartLayout(state, arr, posMap[arr] || "left"));
       break;
     }
   }
@@ -944,7 +1017,7 @@ function endDrag() {
       const opposites = { left: "right", right: "left", top: "bottom", bottom: "top" };
       primaryPosition = opposites[activePos];
     }
-    commit(setChartLayout(state, arrangement, primaryPosition));
+    commitLayout(setChartLayout(state, arrangement, primaryPosition));
   }
 
   dragState = null;
