@@ -317,9 +317,9 @@ function renderChartArena() {
   const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
   let gridStyle = "";
   if (showChallenger && isHoriz) {
-    gridStyle = `grid-template-columns: ${ratio}fr ${1 - ratio}fr; grid-template-rows: 1fr;`;
+    gridStyle = `grid-template-columns: ${ratio}fr auto ${1 - ratio}fr; grid-template-rows: 1fr;`;
   } else if (showChallenger && isVert) {
-    gridStyle = `grid-template-columns: 1fr; grid-template-rows: ${ratio}fr ${1 - ratio}fr;`;
+    gridStyle = `grid-template-columns: 1fr; grid-template-rows: ${ratio}fr auto ${1 - ratio}fr;`;
   }
 
   const divider = showChallenger ? `<div class="chart-divider" data-divider="${isHoriz ? "horizontal" : "vertical"}"></div>` : "";
@@ -980,10 +980,10 @@ root.addEventListener("pointermove", (e) => {
   let ratio;
   if (isHoriz) {
     ratio = Math.max(0.2, Math.min(0.8, (e.clientX - rect.left) / rect.width));
-    arena.style.gridTemplateColumns = `${ratio}fr ${1 - ratio}fr`;
+    arena.style.gridTemplateColumns = `${ratio}fr auto ${1 - ratio}fr`;
   } else {
     ratio = Math.max(0.2, Math.min(0.8, (e.clientY - rect.top) / rect.height));
-    arena.style.gridTemplateRows = `${ratio}fr ${1 - ratio}fr`;
+    arena.style.gridTemplateRows = `${ratio}fr auto ${1 - ratio}fr`;
   }
   dividerDrag.lastRatio = ratio;
 });
