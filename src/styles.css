@@ -609,25 +609,38 @@ h1, h2, h3, h4, h5, h6 {
 .chart-divider {
   position: relative;
   z-index: 10;
-  background: var(--border-1, rgba(255,255,255,0.06));
-  transition: background 120ms ease-out;
+  background: var(--chart-border, #DCE0E5);
+  transition: background 100ms ease;
+}
+
+.chart-divider::after {
+  content: "⠿";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 8px;
+  color: var(--chart-text-3);
+  pointer-events: none;
 }
 
 .chart-divider[data-divider="horizontal"] {
-  width: 5px;
+  width: 6px;
   cursor: col-resize;
-  margin: 0 -2px;
 }
 
 .chart-divider[data-divider="vertical"] {
-  height: 5px;
+  height: 6px;
   cursor: row-resize;
-  margin: -2px 0;
 }
 
 .chart-divider:hover,
 .chart-divider.active {
   background: var(--blue, #2D72D2);
+}
+.chart-divider:hover::after,
+.chart-divider.active::after {
+  color: #fff;
 }
 
 /* Chart Pane */
