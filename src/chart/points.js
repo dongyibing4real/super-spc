@@ -1,9 +1,12 @@
 import { fmt } from './utils.js';
+import { select as _d3Select } from 'd3-selection';
 
 /**
  * Render data point circles with rule violation markers and exclusion marks.
+ * @param {string} [seriesKey='primaryValue'] - Which value key to plot
+ * @param {string} [seriesType='primary'] - CSS class for point styling
  */
-export function renderPoints(layer, scales, data, config) {
+export function renderPoints(layer, scales, data, config, seriesKey = 'primaryValue', seriesType = 'primary') {
   const { x, y } = scales;
   const { points, violations, toggles, selectedIndex } = data;
 
@@ -24,9 +27,10 @@ export function renderPoints(layer, scales, data, config) {
 
   merged.each(function (d, i) {
     const g = _d3Select(this);
+    const val = d[seriesKey];
     const cx = x(i);
-    const cy = y(d.primaryValue);
-    const ooc = d.primaryValue >= data.limits.ucl || d.primaryValue <= data.limits.lcl;
+    const cy = y(val);
+    const ooc = val >= data.limits.ucl || val <= data.limits.lcl;
     const rules = violations.get(i);
     const hasViolation = rules && rules.length > 0;
 
@@ -46,13 +50,14 @@ export function renderPoints(layer, scales, data, config) {
     }
 
     // Main data point circle
+    const pointClass = seriesType === 'challenger' ? 'chart-point challenger-point' : 'chart-point';
     const r = i === selectedIndex ? 6 : ooc ? 5 : 4;
     g.append('circle')
-      .attr('class', `chart-point${ooc ? ' ooc' : ''}`)
+      .attr('class', `${pointClass}${ooc ? ' ooc' : ''}`)
       .attr('cx', cx).attr('cy', cy).attr('r', r)
       .attr('tabindex', 0)
       .attr('role', 'button')
-      .attr('aria-label', `${d.lot}, ${fmt(d.primaryValue)} ${data.metric.unit}${hasViolation ? `, rules: ${rules.join(',')}` : ''}`)
+      .attr('aria-label', `${d.lot}, ${fmt(val)} ${data.metric.unit}${hasViolation ? `, rules: ${rules.join(',')}` : ''}`)
       .on('click', (event) => {
         event.stopPropagation();
         if (config.onSelectPoint) config.onSelectPoint(i);
@@ -61,6 +66,3 @@ export function renderPoints(layer, scales, data, config) {
 
   groups.exit().remove();
 }
-
-// Lazy import to avoid circular — d3-selection is imported at module level
-import { select as _d3Select } from 'd3-selection';

@@ -205,6 +205,11 @@ export function createInitialState() {
       excludedMarkers: true,
       confidenceBand: true
     },
+    chartLayout: {
+      arrangement: "horizontal",   // "horizontal" | "vertical" | "single" | "primary-wide" | "primary-tall"
+      primaryPosition: "left",     // "left" | "right" | "top" | "bottom"
+      splitRatio: 0.5,             // 0-1, fraction of space for the first pane
+    },
     ui: {
       notice: null,
       contextMenu: null
@@ -511,5 +516,15 @@ export function openContextMenu(state, x, y) {
 export function closeContextMenu(state) {
   const next = cloneState(state);
   next.ui.contextMenu = null;
+  return next;
+}
+
+export function setChartLayout(state, arrangement, primaryPosition, splitRatio) {
+  const next = cloneState(state);
+  next.chartLayout = {
+    arrangement,
+    primaryPosition,
+    splitRatio: splitRatio != null ? splitRatio : (arrangement.includes("wide") || arrangement.includes("tall") ? 0.67 : 0.5),
+  };
   return next;
 }

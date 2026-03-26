@@ -1,14 +1,67 @@
 import { scaleLinear } from 'd3-scale';
 
 /**
- * Create D3 scales for the chart coordinate system.
- * @param {object} data - Chart data (points, limits)
- * @param {object} config - Chart config (dimensions, padding, range)
- * @returns {{ x: Function, y: Function, sigma: object }}
+ * Compute y-axis range from data — encompasses all points, limits, and spec limits
+ * with some headroom so nothing sits right at the edge.
  */
-export function createScales(data, config) {
-  const { width, height, padding, yMin, yMax } = config;
+function computeYRange(data, seriesKey) {
+  const values = data.points.map(p => p[seriesKey]).filter(v => v != null);
+  const limitsArr = [data.limits.ucl, data.limits.lcl, data.limits.center];
+  if (data.limits.usl != null) limitsArr.push(data.limits.usl);
+  if (data.limits.lsl != null) limitsArr.push(data.limits.lsl);
+
+  const allValues = [...values, ...limitsArr];
+  const dataMin = Math.min(...allValues);
+  const dataMax = Math.max(...allValues);
+  const range = dataMax - dataMin;
+  const headroom = range * 0.12; // 12% padding above and below
+
+  return {
+    yMin: dataMin - headroom,
+    yMax: dataMax + headroom,
+  };
+}
+
+/**
+ * Generate nice y-axis tick values for the given range.
+ */
+function computeYTicks(yMin, yMax, targetCount = 6) {
+  const range = yMax - yMin;
+  const rawStep = range / (targetCount - 1);
+
+  // Find a "nice" step size (1, 2, 5 × 10^n)
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const residual = rawStep / magnitude;
+  let niceStep;
+  if (residual <= 1.5) niceStep = 1 * magnitude;
+  else if (residual <= 3.5) niceStep = 2 * magnitude;
+  else if (residual <= 7.5) niceStep = 5 * magnitude;
+  else niceStep = 10 * magnitude;
+
+  const start = Math.ceil(yMin / niceStep) * niceStep;
+  const ticks = [];
+  for (let v = start; v <= yMax + niceStep * 0.01; v += niceStep) {
+    ticks.push(parseFloat(v.toFixed(6)));
+  }
+  return ticks;
+}
+
+/**
+ * Create D3 scales for the chart coordinate system.
+ * Width and height come from the config (set dynamically by ResizeObserver).
+ * Y-range is computed from the data automatically.
+ *
+ * @param {object} data - Chart data (points, limits)
+ * @param {object} config - Chart config (width, height, padding)
+ * @param {string} [seriesKey='primaryValue'] - Which value key to use for y-range
+ * @returns {{ x: Function, y: Function, sigma: object, yTicks: number[], yMin: number, yMax: number }}
+ */
+export function createScales(data, config, seriesKey = 'primaryValue') {
+  const { width, height, padding } = config;
   const n = data.points.length;
+
+  const { yMin, yMax } = computeYRange(data, seriesKey);
+  const yTicks = computeYTicks(yMin, yMax);
 
   const x = scaleLinear()
     .domain([0, n - 1])
@@ -28,5 +81,5 @@ export function createScales(data, config) {
     s2l: data.limits.center - 2 * sigmaVal,
   };
 
-  return { x, y, sigma };
+  return { x, y, sigma, yTicks, yMin, yMax };
 }

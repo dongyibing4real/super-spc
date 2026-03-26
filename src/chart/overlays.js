@@ -2,14 +2,15 @@ import { fmt } from './utils.js';
 
 /**
  * Render Y-axis grid lines and value labels.
+ * yTicks now come from scales (computed dynamically).
  */
 export function renderGrid(layer, scales, config) {
-  const { y } = scales;
+  const { y, yTicks } = scales;
   const L = config.padding.left;
   const R = config.width - config.padding.right;
 
   // Grid lines
-  const lines = layer.selectAll('line.grid-line').data(config.yTicks);
+  const lines = layer.selectAll('line.grid-line').data(yTicks);
   lines.enter()
     .append('line')
     .attr('class', 'grid-line')
@@ -19,7 +20,7 @@ export function renderGrid(layer, scales, config) {
   lines.exit().remove();
 
   // Grid labels
-  const labels = layer.selectAll('text.grid-label').data(config.yTicks);
+  const labels = layer.selectAll('text.grid-label').data(yTicks);
   labels.enter()
     .append('text')
     .attr('class', 'grid-label')
@@ -31,13 +32,17 @@ export function renderGrid(layer, scales, config) {
 }
 
 /**
- * Render confidence band (light blue shading).
+ * Render confidence band (light blue shading around the center line ±1σ).
+ * Computed from limits data rather than hardcoded config.
  */
-export function renderConfidenceBand(layer, scales, config) {
-  const { y } = scales;
+export function renderConfidenceBand(layer, scales, config, data) {
+  const { y, sigma } = scales;
   const L = config.padding.left;
   const R = config.width - config.padding.right;
-  const [lo, hi] = config.confidenceBandRange;
+
+  // Confidence band spans ±2σ from center
+  const hi = sigma.s2u;
+  const lo = sigma.s2l;
 
   const band = layer.selectAll('rect').data([1]);
   band.enter()

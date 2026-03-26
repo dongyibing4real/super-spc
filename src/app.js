@@ -13,6 +13,7 @@ import {
   recoverTransformStep,
   selectFinding,
   selectPoint,
+  setChartLayout,
   setChallengerStatus,
   toggleChartOption,
   togglePointExclusion,
@@ -24,7 +25,7 @@ import { fmt } from "./chart/utils.js";
 
 const root = document.getElementById("app");
 let state = createInitialState();
-let chart = null; // D3 chart instance
+let charts = { primary: null, challenger: null }; // D3 chart instances
 
 function toneClass(tone) {
   return { critical: "critical", info: "info", neutral: "neutral", positive: "positive", warning: "warning" }[tone] || "neutral";
@@ -257,17 +258,74 @@ function renderContextMenu() {
    CHART — D3-powered light canvas island
    SVG rendering handled by src/chart/ modules
    ═══════════════════════════════════════════════════ */
-function renderChart() {
-  const workspace = deriveWorkspace(state);
-  const sp = workspace.selectedPoint;
+function renderChartPane(role, method, caps, sp, limits, seriesKey) {
+  const val = sp[seriesKey];
+  const ooc = val >= limits.ucl || val <= limits.lcl;
+  const violations = detectRuleViolations();
+
+  return `
+    <div class="chart-pane" data-role="${role}" data-series-key="${seriesKey}">
+      <div class="chart-pane-titlebar" data-drag-handle="${role}">
+        <span class="grip-icon">⠿</span>
+        <span class="method-dot ${role}"></span>
+        <span class="pane-role">${role === "primary" ? "Primary" : "Challenger"}</span>
+        <strong class="pane-method">${method}</strong>
+        ${caps.cpk ? `
+          <div class="pane-caps">
+            <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(caps.cpk)}">${caps.cpk}</span></span>
+            <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(caps.ppk)}">${caps.ppk}</span></span>
+          </div>
+        ` : ""}
+      </div>
+      <div class="chart-stage" id="chart-mount-${role}" tabindex="0" data-chart-focus="true" aria-label="${role} control chart">
+        ${role === "primary" && state.ui.contextMenu ? renderContextMenu() : ""}
+      </div>
+      <div class="chart-readout" data-readout="${role}">
+        <div class="readout-group"><span class="readout-label">Lot</span><span class="readout-value">${sp.lot}</span></div>
+        <div class="readout-sep"></div>
+        <div class="readout-group"><span class="readout-label">Value</span><span class="readout-value">${fmt(val)} ${state.context.metric.unit}</span></div>
+        <span class="readout-status" style="color:${sp.excluded ? "var(--amber)" : ooc ? "var(--red)" : "var(--chart-text-2)"}">${sp.excluded ? "Excl" : ooc ? "OOC" : "OK"}</span>
+        ${violations.has(state.selectedPointIndex) && role === "primary" ? `
+          <div class="readout-sep"></div>
+          <div class="readout-group"><span class="readout-label">Rules</span><span class="readout-value" style="color:var(--red)">${violations.get(state.selectedPointIndex).join(", ")}</span></div>
+        ` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderChartArena() {
+  const sp = state.points[state.selectedPointIndex];
   const primaryCap = computeCapability();
   const challengerCap = computeChallengerCapability();
-  const violations = detectRuleViolations();
   const hasChallenger = state.compare.challengerStatus === "ready";
-  const primaryOoc = sp.primaryValue >= state.limits.ucl || sp.primaryValue <= state.limits.lcl;
-  const challengerOoc = hasChallenger && state.challengerLimits
-    ? (sp.challengerValue >= state.challengerLimits.ucl || sp.challengerValue <= state.challengerLimits.lcl)
-    : false;
+  const layout = state.chartLayout;
+  const arrangement = hasChallenger ? layout.arrangement : "single";
+
+  // Determine pane order based on primaryPosition
+  const primaryFirst = layout.primaryPosition === "left" || layout.primaryPosition === "top";
+
+  const primaryPane = renderChartPane("primary", state.compare.primaryMethod, primaryCap, sp, state.limits, "primaryValue");
+  const showChallenger = hasChallenger && arrangement !== "single";
+  const challengerPane = showChallenger
+    ? renderChartPane("challenger", `${state.compare.challengerMethod} ${state.compare.challengerVersion}`, challengerCap, sp, state.challengerLimits, "challengerValue")
+    : "";
+
+  // Build inline grid template from splitRatio
+  const ratio = layout.splitRatio ?? 0.5;
+  const isHoriz = arrangement === "horizontal" || arrangement === "primary-wide" || arrangement === "challenger-wide";
+  const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
+  let gridStyle = "";
+  if (showChallenger && isHoriz) {
+    gridStyle = `grid-template-columns: ${ratio}fr ${1 - ratio}fr; grid-template-rows: 1fr;`;
+  } else if (showChallenger && isVert) {
+    gridStyle = `grid-template-columns: 1fr; grid-template-rows: ${ratio}fr ${1 - ratio}fr;`;
+  }
+
+  const divider = showChallenger ? `<div class="chart-divider" data-divider="${isHoriz ? "horizontal" : "vertical"}"></div>` : "";
+
+  const firstPane = primaryFirst ? primaryPane : challengerPane;
+  const secondPane = primaryFirst ? challengerPane : primaryPane;
 
   return `
     <section class="chart-card">
@@ -276,53 +334,18 @@ function renderChart() {
           <h3>${state.context.metric.label} — ${state.context.chartType.label}</h3>
           <span class="toolbar-window">${state.context.window}</span>
         </div>
-      </div>
-      <div class="method-comparison">
-        <div class="method-card primary-method">
-          <div class="method-card-header">
-            <span class="method-dot primary"></span>
-            <span class="method-role">Primary</span>
-          </div>
-          <strong class="method-name">${state.compare.primaryMethod}</strong>
-          ${primaryCap.cpk ? `
-            <div class="method-caps">
-              <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(primaryCap.cpk)}">${primaryCap.cpk}</span></span>
-              <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(primaryCap.ppk)}">${primaryCap.ppk}</span></span>
-            </div>
-          ` : ""}
-        </div>
-        <div class="method-vs">vs</div>
-        <div class="method-card challenger-method ${hasChallenger ? "" : "inactive"}">
-          <div class="method-card-header">
-            <span class="method-dot challenger"></span>
-            <span class="method-role">Challenger</span>
-          </div>
-          <strong class="method-name">${hasChallenger ? `${state.compare.challengerMethod} ${state.compare.challengerVersion}` : "None"}</strong>
-          ${hasChallenger && challengerCap.cpk ? `
-            <div class="method-caps">
-              <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(challengerCap.cpk)}">${challengerCap.cpk}</span></span>
-              <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(challengerCap.ppk)}">${challengerCap.ppk}</span></span>
-            </div>
-          ` : hasChallenger ? "" : `<div class="method-caps"><span class="method-hint">Select in Method Lab</span></div>`}
-        </div>
-      </div>
-      <div class="chart-stage" id="chart-mount" tabindex="0" data-chart-focus="true" aria-label="Control chart">
-        ${state.ui.contextMenu ? renderContextMenu() : ""}
-      </div>
-      <div class="chart-readout">
-        <div class="readout-group"><span class="readout-label">Lot</span><span class="readout-value">${sp.lot}</span></div>
-        <div class="readout-sep"></div>
-        <div class="readout-group"><span class="readout-label"><span class="readout-dot primary"></span> Primary</span><span class="readout-value">${fmt(sp.primaryValue)} ${state.context.metric.unit}</span></div>
-        <span class="readout-status" style="color:${sp.excluded ? "var(--amber)" : primaryOoc ? "var(--red)" : "var(--chart-text-2)"}">${sp.excluded ? "Excl" : primaryOoc ? "OOC" : "OK"}</span>
         ${hasChallenger ? `
-          <div class="readout-sep"></div>
-          <div class="readout-group"><span class="readout-label"><span class="readout-dot challenger"></span> Challenger</span><span class="readout-value">${fmt(sp.challengerValue)} ${state.context.metric.unit}</span></div>
-          <span class="readout-status" style="color:${challengerOoc ? "var(--red)" : "var(--chart-text-2)"}">${challengerOoc ? "OOC" : "OK"}</span>
+          <div class="layout-controls">
+            <button class="layout-btn ${arrangement === "horizontal" ? "active" : ""}" data-action="set-layout" data-arrangement="horizontal" title="Side by side (50/50)">◫</button>
+            <button class="layout-btn ${arrangement === "vertical" ? "active" : ""}" data-action="set-layout" data-arrangement="vertical" title="Stacked (50/50)">◩</button>
+            <button class="layout-btn ${arrangement === "primary-wide" ? "active" : ""}" data-action="set-layout" data-arrangement="primary-wide" title="Primary wide (2/3)">◧</button>
+            <button class="layout-btn ${arrangement === "primary-tall" ? "active" : ""}" data-action="set-layout" data-arrangement="primary-tall" title="Primary tall (2/3)">⬒</button>
+            <button class="layout-btn ${arrangement === "single" ? "active" : ""}" data-action="set-layout" data-arrangement="single" title="Primary only">▣</button>
+          </div>
         ` : ""}
-        ${violations.has(state.selectedPointIndex) ? `
-          <div class="readout-sep"></div>
-          <div class="readout-group"><span class="readout-label">Rules</span><span class="readout-value" style="color:var(--red)">${violations.get(state.selectedPointIndex).join(", ")}</span></div>
-        ` : ""}
+      </div>
+      <div class="chart-arena" data-layout="${arrangement}" style="${gridStyle}">
+        ${firstPane}${divider}${secondPane}
       </div>
       <div class="chart-footer">
         <button class="footer-action" data-action="exclude-point" data-index="${state.selectedPointIndex}" type="button">${sp.excluded ? "Restore" : "Exclude"}</button>
@@ -344,7 +367,7 @@ function renderWorkspace() {
     <div class="workspace-layout">
       ${renderRecipeRail()}
       <div class="workspace-main">
-        ${renderChart()}
+        ${renderChartArena()}
         <div class="compare-strip">
           ${workspace.compareCards.map(item => `
             <div class="compare-card ${toneClass(item.tone)}">
@@ -632,11 +655,35 @@ function renderRoute() {
   }
 }
 
+/** Helper: build update data for a chart pane */
+function buildChartData(role) {
+  const isPrimary = role === "primary";
+  const toggles = { ...state.chartToggles, overlay: false }; // No overlay in split view
+  return {
+    points: state.points,
+    limits: isPrimary ? state.limits : state.challengerLimits,
+    phases: state.phases,
+    toggles,
+    selectedIndex: state.selectedPointIndex,
+    violations: isPrimary ? detectRuleViolations() : new Map(),
+    capability: isPrimary ? computeCapability() : computeChallengerCapability(),
+    metric: state.context.metric,
+    chartType: isPrimary ? state.context.chartType : { label: state.compare.challengerMethod },
+    seriesKey: isPrimary ? "primaryValue" : "challengerValue",
+    seriesType: role,
+  };
+}
+
 function render() {
-  // Detach chart SVG before innerHTML destroys it
-  const chartSvgNode = chart?.svg?.node();
-  const savedSvg = chartSvgNode?.parentNode ? chartSvgNode : null;
-  if (savedSvg) savedSvg.remove();
+  // Detach chart SVGs before innerHTML destroys them
+  const savedSvgs = {};
+  for (const role of ["primary", "challenger"]) {
+    const svgNode = charts[role]?.svg?.node();
+    if (svgNode?.parentNode) {
+      savedSvgs[role] = svgNode;
+      svgNode.remove();
+    }
+  }
 
   root.innerHTML = `
     <div class="app-shell">
@@ -649,38 +696,56 @@ function render() {
     </div>
   `;
 
-  // Reattach or create D3 chart if workspace is active
+  // Mount charts if workspace is active
   if (state.route === "workspace") {
-    const mount = document.getElementById("chart-mount");
-    if (mount) {
-      if (savedSvg) {
-        // Reattach the preserved SVG — no teardown/rebuild
-        mount.appendChild(savedSvg);
-      } else if (!chart) {
-        // First time — create new chart
-        chart = createChart(mount, {
+    const hasChallenger = state.compare.challengerStatus === "ready";
+    const roles = hasChallenger ? ["primary", "challenger"] : ["primary"];
+
+    for (const role of roles) {
+      const mount = document.getElementById(`chart-mount-${role}`);
+      if (!mount) continue;
+
+      if (savedSvgs[role]) {
+        // Reattach preserved SVG to new mount element
+        mount.appendChild(savedSvgs[role]);
+        // Update container reference so ResizeObserver tracks the new element
+        charts[role].remount(mount);
+      } else {
+        // Destroy orphaned chart instance if it exists (e.g. after "single" mode hid the pane)
+        if (charts[role]) { charts[role].destroy(); charts[role] = null; }
+        // Create fresh chart instance
+        charts[role] = createChart(mount, {
           onSelectPoint: (index) => commitChart(selectPoint(state, index)),
-          onContextMenu: (x, y) => commit(openContextMenu(state, x, y)),
+          onContextMenu: role === "primary"
+            ? (x, y) => commit(openContextMenu(state, x, y))
+            : null,
         });
       }
 
-      // Update chart with current state (D3 enter/update/exit — surgical)
-      const togglesWithOverlay = { ...state.chartToggles, overlay: state.compare.challengerStatus === "ready" };
-      chart.update({
-        points: state.points,
-        limits: state.limits,
-        phases: state.phases,
-        toggles: togglesWithOverlay,
-        selectedIndex: state.selectedPointIndex,
-        violations: detectRuleViolations(),
-        capability: computeCapability(),
-        metric: state.context.metric,
-        chartType: state.context.chartType,
+      // Update with current data
+      charts[role].update(buildChartData(role));
+    }
+
+    // Deferred re-render: CSS Grid needs a full layout pass before containers have final size.
+    // Double rAF: first triggers layout, second reads the settled dimensions.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        for (const role of roles) {
+          if (charts[role]) charts[role].update(buildChartData(role));
+        }
       });
+    });
+
+    // Destroy challenger chart if no longer active
+    if (!hasChallenger && charts.challenger) {
+      charts.challenger.destroy();
+      charts.challenger = null;
     }
   } else {
-    // Not on workspace — clean up chart if it exists
-    if (chart) { chart.destroy(); chart = null; }
+    // Not on workspace — clean up all charts
+    for (const role of ["primary", "challenger"]) {
+      if (charts[role]) { charts[role].destroy(); charts[role] = null; }
+    }
   }
 }
 
@@ -694,43 +759,30 @@ function commit(next) { state = next; render(); }
 function commitChart(next) {
   state = next;
   const hasChallenger = state.compare.challengerStatus === "ready";
+  const sp = state.points[state.selectedPointIndex];
 
-  // Update D3 chart in-place (surgical SVG updates)
-  if (chart) {
-    const togglesWithOverlay = { ...state.chartToggles, overlay: hasChallenger };
-    chart.update({
-      points: state.points,
-      limits: state.limits,
-      phases: state.phases,
-      toggles: togglesWithOverlay,
-      selectedIndex: state.selectedPointIndex,
-      violations: detectRuleViolations(),
-      capability: computeCapability(),
-      metric: state.context.metric,
-      chartType: state.context.chartType,
-    });
+  // Update all chart instances in-place
+  for (const role of ["primary", "challenger"]) {
+    if (charts[role]) {
+      charts[role].update(buildChartData(role));
+    }
   }
 
-  // Surgically update readout bar
-  const readout = root.querySelector(".chart-readout");
-  if (readout) {
-    const sp = state.points[state.selectedPointIndex];
+  // Surgically update each pane's readout bar
+  for (const role of ["primary", "challenger"]) {
+    const readout = root.querySelector(`[data-readout="${role}"]`);
+    if (!readout) continue;
+    const seriesKey = role === "primary" ? "primaryValue" : "challengerValue";
+    const limits = role === "primary" ? state.limits : state.challengerLimits;
+    const val = sp[seriesKey];
+    const ooc = val >= limits.ucl || val <= limits.lcl;
     const violations = detectRuleViolations();
-    const primaryOoc = sp.primaryValue >= state.limits.ucl || sp.primaryValue <= state.limits.lcl;
-    const challengerOoc = hasChallenger && state.challengerLimits
-      ? (sp.challengerValue >= state.challengerLimits.ucl || sp.challengerValue <= state.challengerLimits.lcl)
-      : false;
     readout.innerHTML = `
       <div class="readout-group"><span class="readout-label">Lot</span><span class="readout-value">${sp.lot}</span></div>
       <div class="readout-sep"></div>
-      <div class="readout-group"><span class="readout-label"><span class="readout-dot primary"></span> Primary</span><span class="readout-value">${fmt(sp.primaryValue)} ${state.context.metric.unit}</span></div>
-      <span class="readout-status" style="color:${sp.excluded ? "var(--amber)" : primaryOoc ? "var(--red)" : "var(--chart-text-2)"}">${sp.excluded ? "Excl" : primaryOoc ? "OOC" : "OK"}</span>
-      ${hasChallenger ? `
-        <div class="readout-sep"></div>
-        <div class="readout-group"><span class="readout-label"><span class="readout-dot challenger"></span> Challenger</span><span class="readout-value">${fmt(sp.challengerValue)} ${state.context.metric.unit}</span></div>
-        <span class="readout-status" style="color:${challengerOoc ? "var(--red)" : "var(--chart-text-2)"}">${challengerOoc ? "OOC" : "OK"}</span>
-      ` : ""}
-      ${violations.has(state.selectedPointIndex) ? `
+      <div class="readout-group"><span class="readout-label">Value</span><span class="readout-value">${fmt(val)} ${state.context.metric.unit}</span></div>
+      <span class="readout-status" style="color:${sp.excluded ? "var(--amber)" : ooc ? "var(--red)" : "var(--chart-text-2)"}">${sp.excluded ? "Excl" : ooc ? "OOC" : "OK"}</span>
+      ${violations.has(state.selectedPointIndex) && role === "primary" ? `
         <div class="readout-sep"></div>
         <div class="readout-group"><span class="readout-label">Rules</span><span class="readout-value" style="color:var(--red)">${violations.get(state.selectedPointIndex).join(", ")}</span></div>
       ` : ""}
@@ -740,27 +792,17 @@ function commitChart(next) {
   // Surgically update footer exclude button label
   const excludeBtn = root.querySelector('.footer-action[data-action="exclude-point"]');
   if (excludeBtn) {
-    const sp = state.points[state.selectedPointIndex];
     excludeBtn.textContent = sp?.excluded ? "Restore" : "Exclude";
     excludeBtn.dataset.index = state.selectedPointIndex;
   }
 
-  // Update method card capability indices
-  const primaryCaps = root.querySelector(".primary-method .method-caps");
-  const challengerCaps = root.querySelector(".challenger-method .method-caps");
-  if (primaryCaps) {
-    const cap = computeCapability();
+  // Update pane title bar capability indices
+  for (const role of ["primary", "challenger"]) {
+    const paneCaps = root.querySelector(`.chart-pane[data-role="${role}"] .pane-caps`);
+    if (!paneCaps) continue;
+    const cap = role === "primary" ? computeCapability() : computeChallengerCapability();
     if (cap.cpk) {
-      primaryCaps.innerHTML = `
-        <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
-        <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>
-      `;
-    }
-  }
-  if (challengerCaps && hasChallenger) {
-    const cap = computeChallengerCapability();
-    if (cap.cpk) {
-      challengerCaps.innerHTML = `
+      paneCaps.innerHTML = `
         <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
         <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>
       `;
@@ -796,6 +838,12 @@ root.addEventListener("click", (e) => {
     case "export-report":      commit(exportReport(state)); break;
     case "toggle-export-failure": commit(toggleReportFailureMode(state)); break;
     case "clear-notice":       commit(clearNotice(state)); break;
+    case "set-layout": {
+      const arr = t.dataset.arrangement;
+      const posMap = { horizontal: "left", vertical: "top", "primary-wide": "left", "primary-tall": "top", single: "left" };
+      commit(setChartLayout(state, arr, posMap[arr] || "left"));
+      break;
+    }
   }
 });
 
@@ -808,6 +856,162 @@ root.addEventListener("keydown", (e) => {
   if (e.key === "F10" && e.shiftKey) { e.preventDefault(); commit(openContextMenu(state, 400, 200)); }
   if (e.key === "Escape" && state.ui.contextMenu) commit(closeContextMenu(state));
 });
+
+/* ═══ Drag-to-arrange chart panes ═══ */
+let dragState = null;
+
+root.addEventListener("pointerdown", (e) => {
+  const handle = e.target.closest("[data-drag-handle]");
+  if (!handle) return;
+  const pane = handle.closest(".chart-pane");
+  const arena = pane?.closest(".chart-arena");
+  if (!pane || !arena) return;
+
+  e.preventDefault();
+  const role = handle.dataset.dragHandle;
+  const rect = arena.getBoundingClientRect();
+
+  // Create ghost
+  const ghost = pane.cloneNode(true);
+  ghost.classList.add("drag-ghost");
+  ghost.style.width = pane.offsetWidth + "px";
+  ghost.style.height = pane.offsetHeight + "px";
+  document.body.appendChild(ghost);
+
+  pane.classList.add("dragging");
+
+  // Create drop zone overlays
+  const zones = ["left", "right", "top", "bottom"].map(pos => {
+    const zone = document.createElement("div");
+    zone.classList.add("drop-zone");
+    zone.dataset.dropPosition = pos;
+    arena.style.position = "relative";
+    arena.appendChild(zone);
+    // Position based on direction
+    Object.assign(zone.style, {
+      position: "absolute", zIndex: "100",
+      ...(pos === "left"   ? { left: 0, top: 0, width: "50%", height: "100%" } : {}),
+      ...(pos === "right"  ? { right: 0, top: 0, width: "50%", height: "100%" } : {}),
+      ...(pos === "top"    ? { left: 0, top: 0, width: "100%", height: "50%" } : {}),
+      ...(pos === "bottom" ? { left: 0, bottom: 0, width: "100%", height: "50%" } : {}),
+    });
+    return zone;
+  });
+
+  dragState = { role, pane, arena, ghost, zones, arenaRect: rect };
+});
+
+root.addEventListener("pointermove", (e) => {
+  if (!dragState) return;
+  const { ghost, zones, arenaRect } = dragState;
+
+  // Move ghost
+  ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + "px";
+  ghost.style.top = (e.clientY - 20) + "px";
+
+  // Detect which zone cursor is over
+  const x = e.clientX - arenaRect.left;
+  const y = e.clientY - arenaRect.top;
+  const w = arenaRect.width;
+  const h = arenaRect.height;
+
+  let activePos = null;
+  if (x < w * 0.35) activePos = "left";
+  else if (x > w * 0.65) activePos = "right";
+  else if (y < h * 0.35) activePos = "top";
+  else if (y > h * 0.65) activePos = "bottom";
+
+  zones.forEach(z => z.classList.toggle("active", z.dataset.dropPosition === activePos));
+  dragState.activePos = activePos;
+});
+
+function endDrag() {
+  if (!dragState) return;
+  const { pane, ghost, zones, activePos, role } = dragState;
+
+  pane.classList.remove("dragging");
+  ghost.remove();
+  zones.forEach(z => z.remove());
+
+  if (activePos) {
+    const arrangement = (activePos === "left" || activePos === "right") ? "horizontal" : "vertical";
+    // If dragged role goes to right/bottom, primary position is the opposite
+    let primaryPosition;
+    if (role === "primary") {
+      primaryPosition = activePos;
+    } else {
+      // Challenger dragged to X → primary goes to opposite
+      const opposites = { left: "right", right: "left", top: "bottom", bottom: "top" };
+      primaryPosition = opposites[activePos];
+    }
+    commit(setChartLayout(state, arrangement, primaryPosition));
+  }
+
+  dragState = null;
+}
+
+root.addEventListener("pointerup", endDrag);
+root.addEventListener("pointercancel", endDrag);
+
+/* ═══ Resize divider between chart panes ═══ */
+let dividerDrag = null;
+
+root.addEventListener("pointerdown", (e) => {
+  const divider = e.target.closest(".chart-divider");
+  if (!divider) return;
+  e.preventDefault();
+  divider.setPointerCapture(e.pointerId);
+
+  const arena = divider.closest(".chart-arena");
+  if (!arena) return;
+  const rect = arena.getBoundingClientRect();
+  const isHoriz = divider.dataset.divider === "horizontal";
+
+  divider.classList.add("active");
+  document.body.style.cursor = isHoriz ? "col-resize" : "row-resize";
+
+  dividerDrag = { divider, arena, rect, isHoriz, pointerId: e.pointerId };
+});
+
+root.addEventListener("pointermove", (e) => {
+  if (!dividerDrag) return;
+  const { rect, isHoriz, arena } = dividerDrag;
+
+  let ratio;
+  if (isHoriz) {
+    ratio = Math.max(0.2, Math.min(0.8, (e.clientX - rect.left) / rect.width));
+    arena.style.gridTemplateColumns = `${ratio}fr ${1 - ratio}fr`;
+  } else {
+    ratio = Math.max(0.2, Math.min(0.8, (e.clientY - rect.top) / rect.height));
+    arena.style.gridTemplateRows = `${ratio}fr ${1 - ratio}fr`;
+  }
+  dividerDrag.lastRatio = ratio;
+});
+
+function endDividerDrag(e) {
+  if (!dividerDrag) return;
+  const { divider, lastRatio } = dividerDrag;
+  divider.classList.remove("active");
+  document.body.style.cursor = "";
+
+  // Persist the ratio to state so it survives re-renders
+  if (lastRatio != null) {
+    state = setChartLayout(state, state.chartLayout.arrangement, state.chartLayout.primaryPosition, lastRatio);
+  }
+  dividerDrag = null;
+
+  // Trigger chart resize after the grid settles
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      for (const role of ["primary", "challenger"]) {
+        if (charts[role]) charts[role].update(buildChartData(role));
+      }
+    });
+  });
+}
+
+root.addEventListener("pointerup", endDividerDrag);
+root.addEventListener("pointercancel", endDividerDrag);
 
 root.addEventListener("contextmenu", (e) => {
   const ch = e.target.closest(".chart-stage");
