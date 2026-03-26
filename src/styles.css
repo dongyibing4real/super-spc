@@ -576,10 +576,130 @@ h1, h2, h3, h4, h5, h6 {
   border-bottom: 1px solid var(--chart-border);
 }
 
+.toolbar-title { display: flex; align-items: baseline; gap: 8px; }
+
 .chart-toolbar h3 {
   font-size: 12px;
   font-weight: 700;
   color: var(--chart-text);
+}
+
+.toolbar-window {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--chart-text-3);
+}
+
+/* ═══ Method Comparison Cards ═══ */
+.method-comparison {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 8px 12px;
+  background: var(--chart-surface);
+  border-bottom: 1px solid var(--chart-border);
+}
+
+.method-card {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--chart-border);
+  border-radius: var(--r-sm, 4px);
+  background: var(--chart-bg);
+  cursor: pointer;
+  transition: border-color var(--dur-short, 150ms) var(--ease, ease-out);
+}
+
+.method-card:hover {
+  border-color: var(--chart-text-3);
+}
+
+.method-card.inactive {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
+.method-card-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+}
+
+.method-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.method-dot.primary { background: var(--blue); }
+.method-dot.challenger { background: var(--teal-bright); }
+
+.method-role {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--chart-text-3);
+}
+
+.method-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--chart-text);
+  margin-bottom: 4px;
+}
+
+.method-caps {
+  display: flex;
+  gap: 10px;
+}
+
+.method-hint {
+  font-size: 10px;
+  font-style: italic;
+  color: var(--chart-text-3);
+}
+
+.method-vs {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--chart-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Readout dot indicators */
+.readout-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+
+.readout-dot.primary { background: var(--blue); }
+.readout-dot.challenger { background: var(--teal-bright); }
+
+.readout-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--chart-border);
+  flex-shrink: 0;
+}
+
+.readout-status {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .chart-stage {
@@ -649,17 +769,11 @@ h1, h2, h3, h4, h5, h6 {
 /* rule violation marker */
 .rule-violation-ring { fill: none; stroke-width: 2; }
 
-/* capability indices */
-.capability-box {
-  display: inline-flex;
-  gap: 12px;
-  margin-left: auto;
-}
-
+/* capability indices (used inside method cards) */
 .cap-item {
-  display: flex;
+  display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 3px;
 }
 
 .cap-label {
@@ -671,7 +785,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .cap-value {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   font-family: "IBM Plex Mono", monospace;
   color: var(--chart-text);

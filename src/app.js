@@ -59,6 +59,24 @@ function capClass(val) {
   return "poor";
 }
 
+/* ═══ Challenger capability computation ═══ */
+function computeChallengerCapability() {
+  if (!state.challengerLimits) return { cpk: null, ppk: null };
+  const vals = state.points.filter(p => !p.excluded).map(p => p.challengerValue);
+  const n = vals.length;
+  if (n < 2) return { cpk: null, ppk: null };
+  const mean = vals.reduce((a, b) => a + b, 0) / n;
+  const stddev = Math.sqrt(vals.reduce((a, v) => a + (v - mean) ** 2, 0) / (n - 1));
+  if (stddev === 0) return { cpk: null, ppk: null };
+  const ucl = state.challengerLimits.ucl;
+  const lcl = state.challengerLimits.lcl;
+  const cpu = (ucl - mean) / (3 * stddev);
+  const cpl = (mean - lcl) / (3 * stddev);
+  const cpk = Math.min(cpu, cpl);
+  const pp = (ucl - lcl) / (6 * stddev);
+  return { cpk: cpk.toFixed(2), ppk: pp.toFixed(2), cp: pp.toFixed(2) };
+}
+
 /* ═══ Rule violation detection ═══ */
 function detectRuleViolations() {
   const violations = new Map(); // index -> [rule names]
@@ -207,7 +225,7 @@ function renderRecipeRail() {
       <div class="recipe-divider"></div>
       <div class="recipe-rail-title">Layers</div>
       <div class="overlay-toggles">
-        ${[["overlay","Robust overlay"],["specLimits","Limits & zones"],["grid","Grid"],["phaseTags","Phases"],["events","Events"],["excludedMarkers","Exclusions"],["confidenceBand","Conf. band"]]
+        ${[["specLimits","Limits & zones"],["grid","Grid"],["phaseTags","Phases"],["events","Events"],["excludedMarkers","Exclusions"],["confidenceBand","Conf. band"]]
           .map(([k,l]) => `
             <button class="overlay-toggle ${state.chartToggles[k] ? "is-on" : ""}"
               data-action="toggle-chart" data-option="${k}" type="button">
@@ -242,36 +260,75 @@ function renderContextMenu() {
 function renderChart() {
   const workspace = deriveWorkspace(state);
   const sp = workspace.selectedPoint;
-  const cap = computeCapability();
+  const primaryCap = computeCapability();
+  const challengerCap = computeChallengerCapability();
   const violations = detectRuleViolations();
+  const hasChallenger = state.compare.challengerStatus === "ready";
+  const primaryOoc = sp.primaryValue >= state.limits.ucl || sp.primaryValue <= state.limits.lcl;
+  const challengerOoc = hasChallenger && state.challengerLimits
+    ? (sp.challengerValue >= state.challengerLimits.ucl || sp.challengerValue <= state.challengerLimits.lcl)
+    : false;
 
   return `
     <section class="chart-card">
       <div class="chart-toolbar">
-        <h3>${state.context.metric.label} \u2014 ${state.context.chartType.label}</h3>
-        ${cap.cpk ? `
-          <div class="capability-box">
-            <div class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></div>
-            <div class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></div>
-            <div class="cap-item"><span class="cap-label">Cp</span><span class="cap-value ${capClass(cap.cp)}">${cap.cp}</span></div>
+        <div class="toolbar-title">
+          <h3>${state.context.metric.label} — ${state.context.chartType.label}</h3>
+          <span class="toolbar-window">${state.context.window}</span>
+        </div>
+      </div>
+      <div class="method-comparison">
+        <div class="method-card primary-method">
+          <div class="method-card-header">
+            <span class="method-dot primary"></span>
+            <span class="method-role">Primary</span>
           </div>
-        ` : ""}
+          <strong class="method-name">${state.compare.primaryMethod}</strong>
+          ${primaryCap.cpk ? `
+            <div class="method-caps">
+              <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(primaryCap.cpk)}">${primaryCap.cpk}</span></span>
+              <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(primaryCap.ppk)}">${primaryCap.ppk}</span></span>
+            </div>
+          ` : ""}
+        </div>
+        <div class="method-vs">vs</div>
+        <div class="method-card challenger-method ${hasChallenger ? "" : "inactive"}">
+          <div class="method-card-header">
+            <span class="method-dot challenger"></span>
+            <span class="method-role">Challenger</span>
+          </div>
+          <strong class="method-name">${hasChallenger ? `${state.compare.challengerMethod} ${state.compare.challengerVersion}` : "None"}</strong>
+          ${hasChallenger && challengerCap.cpk ? `
+            <div class="method-caps">
+              <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(challengerCap.cpk)}">${challengerCap.cpk}</span></span>
+              <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(challengerCap.ppk)}">${challengerCap.ppk}</span></span>
+            </div>
+          ` : hasChallenger ? "" : `<div class="method-caps"><span class="method-hint">Select in Method Lab</span></div>`}
+        </div>
       </div>
       <div class="chart-stage" id="chart-mount" tabindex="0" data-chart-focus="true" aria-label="Control chart">
         ${state.ui.contextMenu ? renderContextMenu() : ""}
       </div>
       <div class="chart-readout">
         <div class="readout-group"><span class="readout-label">Lot</span><span class="readout-value">${sp.lot}</span></div>
-        <div class="readout-group"><span class="readout-label">Value</span><span class="readout-value">${fmt(sp.primaryValue)} ${state.context.metric.unit}</span></div>
-        <div class="readout-group"><span class="readout-label">Phase</span><span class="readout-value">${sp.phaseId}</span></div>
-        <div class="readout-group"><span class="readout-label">Status</span><span class="readout-value" style="color:${sp.excluded ? "var(--amber)" : (sp.primaryValue >= state.limits.ucl || sp.primaryValue <= state.limits.lcl) ? "var(--red)" : "var(--chart-text-2)"}">${sp.excluded ? "Excluded" : (sp.primaryValue >= state.limits.ucl || sp.primaryValue <= state.limits.lcl) ? "OOC" : "OK"}</span></div>
-        ${violations.has(state.selectedPointIndex) ? `<div class="readout-group"><span class="readout-label">Rules</span><span class="readout-value" style="color:var(--red)">${violations.get(state.selectedPointIndex).join(", ")}</span></div>` : ""}
+        <div class="readout-sep"></div>
+        <div class="readout-group"><span class="readout-label"><span class="readout-dot primary"></span> Primary</span><span class="readout-value">${fmt(sp.primaryValue)} ${state.context.metric.unit}</span></div>
+        <span class="readout-status" style="color:${sp.excluded ? "var(--amber)" : primaryOoc ? "var(--red)" : "var(--chart-text-2)"}">${sp.excluded ? "Excl" : primaryOoc ? "OOC" : "OK"}</span>
+        ${hasChallenger ? `
+          <div class="readout-sep"></div>
+          <div class="readout-group"><span class="readout-label"><span class="readout-dot challenger"></span> Challenger</span><span class="readout-value">${fmt(sp.challengerValue)} ${state.context.metric.unit}</span></div>
+          <span class="readout-status" style="color:${challengerOoc ? "var(--red)" : "var(--chart-text-2)"}">${challengerOoc ? "OOC" : "OK"}</span>
+        ` : ""}
+        ${violations.has(state.selectedPointIndex) ? `
+          <div class="readout-sep"></div>
+          <div class="readout-group"><span class="readout-label">Rules</span><span class="readout-value" style="color:var(--red)">${violations.get(state.selectedPointIndex).join(", ")}</span></div>
+        ` : ""}
       </div>
       <div class="chart-footer">
         <button class="footer-action" data-action="exclude-point" data-index="${state.selectedPointIndex}" type="button">${sp.excluded ? "Restore" : "Exclude"}</button>
         <button class="footer-action" data-action="create-finding" type="button">Finding</button>
         <button class="footer-action" data-action="navigate" data-route="methodlab" type="button">Method lab</button>
-        <span class="chart-a11y">\u2190 \u2192 navigate \u00b7 Shift+F10 actions</span>
+        <span class="chart-a11y">← → navigate · Shift+F10 actions</span>
       </div>
     </section>
   `;
@@ -608,11 +665,12 @@ function render() {
       }
 
       // Update chart with current state (D3 enter/update/exit — surgical)
+      const togglesWithOverlay = { ...state.chartToggles, overlay: state.compare.challengerStatus === "ready" };
       chart.update({
         points: state.points,
         limits: state.limits,
         phases: state.phases,
-        toggles: state.chartToggles,
+        toggles: togglesWithOverlay,
         selectedIndex: state.selectedPointIndex,
         violations: detectRuleViolations(),
         capability: computeCapability(),
@@ -635,14 +693,16 @@ function commit(next) { state = next; render(); }
  */
 function commitChart(next) {
   state = next;
+  const hasChallenger = state.compare.challengerStatus === "ready";
 
   // Update D3 chart in-place (surgical SVG updates)
   if (chart) {
+    const togglesWithOverlay = { ...state.chartToggles, overlay: hasChallenger };
     chart.update({
       points: state.points,
       limits: state.limits,
       phases: state.phases,
-      toggles: state.chartToggles,
+      toggles: togglesWithOverlay,
       selectedIndex: state.selectedPointIndex,
       violations: detectRuleViolations(),
       capability: computeCapability(),
@@ -654,16 +714,26 @@ function commitChart(next) {
   // Surgically update readout bar
   const readout = root.querySelector(".chart-readout");
   if (readout) {
-    const workspace = deriveWorkspace(state);
-    const sp = workspace.selectedPoint;
+    const sp = state.points[state.selectedPointIndex];
     const violations = detectRuleViolations();
-    const ooc = sp.primaryValue >= state.limits.ucl || sp.primaryValue <= state.limits.lcl;
+    const primaryOoc = sp.primaryValue >= state.limits.ucl || sp.primaryValue <= state.limits.lcl;
+    const challengerOoc = hasChallenger && state.challengerLimits
+      ? (sp.challengerValue >= state.challengerLimits.ucl || sp.challengerValue <= state.challengerLimits.lcl)
+      : false;
     readout.innerHTML = `
       <div class="readout-group"><span class="readout-label">Lot</span><span class="readout-value">${sp.lot}</span></div>
-      <div class="readout-group"><span class="readout-label">Value</span><span class="readout-value">${fmt(sp.primaryValue)} ${state.context.metric.unit}</span></div>
-      <div class="readout-group"><span class="readout-label">Phase</span><span class="readout-value">${sp.phaseId}</span></div>
-      <div class="readout-group"><span class="readout-label">Status</span><span class="readout-value" style="color:${sp.excluded ? "var(--amber)" : ooc ? "var(--red)" : "var(--chart-text-2)"}">${sp.excluded ? "Excluded" : ooc ? "OOC" : "OK"}</span></div>
-      ${violations.has(state.selectedPointIndex) ? `<div class="readout-group"><span class="readout-label">Rules</span><span class="readout-value" style="color:var(--red)">${violations.get(state.selectedPointIndex).join(", ")}</span></div>` : ""}
+      <div class="readout-sep"></div>
+      <div class="readout-group"><span class="readout-label"><span class="readout-dot primary"></span> Primary</span><span class="readout-value">${fmt(sp.primaryValue)} ${state.context.metric.unit}</span></div>
+      <span class="readout-status" style="color:${sp.excluded ? "var(--amber)" : primaryOoc ? "var(--red)" : "var(--chart-text-2)"}">${sp.excluded ? "Excl" : primaryOoc ? "OOC" : "OK"}</span>
+      ${hasChallenger ? `
+        <div class="readout-sep"></div>
+        <div class="readout-group"><span class="readout-label"><span class="readout-dot challenger"></span> Challenger</span><span class="readout-value">${fmt(sp.challengerValue)} ${state.context.metric.unit}</span></div>
+        <span class="readout-status" style="color:${challengerOoc ? "var(--red)" : "var(--chart-text-2)"}">${challengerOoc ? "OOC" : "OK"}</span>
+      ` : ""}
+      ${violations.has(state.selectedPointIndex) ? `
+        <div class="readout-sep"></div>
+        <div class="readout-group"><span class="readout-label">Rules</span><span class="readout-value" style="color:var(--red)">${violations.get(state.selectedPointIndex).join(", ")}</span></div>
+      ` : ""}
     `;
   }
 
@@ -675,15 +745,24 @@ function commitChart(next) {
     excludeBtn.dataset.index = state.selectedPointIndex;
   }
 
-  // Update capability indices
-  const capBox = root.querySelector(".capability-box");
-  if (capBox) {
+  // Update method card capability indices
+  const primaryCaps = root.querySelector(".primary-method .method-caps");
+  const challengerCaps = root.querySelector(".challenger-method .method-caps");
+  if (primaryCaps) {
     const cap = computeCapability();
     if (cap.cpk) {
-      capBox.innerHTML = `
-        <div class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></div>
-        <div class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></div>
-        <div class="cap-item"><span class="cap-label">Cp</span><span class="cap-value ${capClass(cap.cp)}">${cap.cp}</span></div>
+      primaryCaps.innerHTML = `
+        <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
+        <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>
+      `;
+    }
+  }
+  if (challengerCaps && hasChallenger) {
+    const cap = computeChallengerCapability();
+    if (cap.cpk) {
+      challengerCaps.innerHTML = `
+        <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
+        <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>
       `;
     }
   }

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "super-spc-algo"
+version = "0.1.0"
+description = "Control chart algorithm package for Super SPC"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "attrs>=23.1",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "hypothesis>=6.82",
+    "pytest-cov>=4.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["algo*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"

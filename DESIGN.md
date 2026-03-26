@@ -195,7 +195,7 @@ The control chart is the single most important element in the product. Everythin
 ### Control Panel (Recipe Rail — JMP-Inspired)
 This is the JMP "control panel alongside chart" concept: a vertical panel that shows all current chart configuration.
 
-- **Organized in sections:** Variables (prominent chips), Config (compact chips for sigma/tests/compare), Layers (minimal toggle rows for overlay visibility)
+- **Organized in sections:** Variables (prominent chips), Config (compact chips for sigma/tests/compare), Layers (minimal toggle rows for chart layer visibility — limits, grid, phases, events, exclusions, confidence band; challenger overlay is NOT here, it's controlled by method selection)
 - **Each parameter is a "chip"** showing: eyebrow label, current value, and optional detail text
 - **Active chip** has a left-border highlight (`--blue`, 2px)
 - **Clicking a chip** opens an inline inspector/editor — never a full modal
@@ -214,23 +214,46 @@ The right rail is language-led, not widget-led. It explains, cites, and recommen
 
 ### Toolbar (Chart-Local)
 - **Belongs to the chart card**, not the app shell
-- **Contains only:** chart title, and context actions (export, fullscreen, settings)
-- **Does NOT contain** overlay toggles (those live in the control panel)
+- **Contains:** chart title (metric — chart type), data window label
+- **Does NOT contain** overlay toggles (those live in the control panel) or capability indices (those live in method cards)
 - **Light background** (`--chart-surface`) to match the chart island
 - **Right-click context menus** on chart points may include point-specific actions (exclude, create finding) but must NOT duplicate layer/overlay toggles. Context menus are for point-level operations, not chart configuration.
 
+### Method Comparison Bar
+The method comparison is the intellectual heart of SPC — it must be explicit, not hidden as a toggle.
+
+```
+┌─────────────────────────────────────────────┐
+│ ┌──────────────────┐  vs  ┌──────────────┐ │
+│ │● Primary         │      │● Challenger   │ │
+│ │  EWMA-1.0        │      │  Robust RA-2  │ │
+│ │  Cpk 1.24  Ppk…  │      │  Cpk 1.31  …  │ │
+│ └──────────────────┘      └──────────────┘ │
+└─────────────────────────────────────────────┘
+```
+
+- **Two method cards** side by side with "vs" separator
+- Each card shows: colored dot (blue=primary, teal=challenger), role label, method name, per-method capability indices (Cpk, Ppk)
+- **Primary card** always present; **Challenger card** shows "None — Select in Method Lab" when no challenger is configured
+- **Clicking a method card** navigates to Method Lab for method selection (future)
+- **Challenger overlay visibility** is automatic — the teal dashed line appears when a challenger method is ready, disappears when none is selected. There is NO manual toggle for overlay visibility.
+- **Light background** (`--chart-surface`), sits between toolbar and chart SVG
+
 ### Data Readout Bar
 - **Bottom of the chart card**, light background
-- **Selected point data:** Lot, Value, Phase, Status — in IBM Plex Mono, 11-12px, bold
-- **Must be immediately scannable.** This is the primary feedback when clicking a point.
+- **Shows both methods' values** for the selected point, separated by vertical dividers
+- **Layout:** `Lot | ● Primary: 8.10 nm OK | ● Challenger: 8.08 nm OK | Rules`
+- **Colored dots** match the method card dots (blue/teal) for visual continuity
+- **Status labels** (OK/OOC/Excl) in uppercase monospace, colored semantically
 - **Keyboard hint:** `← → navigate · Shift+F10 actions`
 
 ### Navigation Sidebar
-- **48px icon rail** with section abbreviations or simple SVG icons
-- **Active section** indicated by left-border highlight and subtle background
-- **Status indicator** (dot) for system state
-- **Sections:** Workspace (WK), Data Prep (DP), Method Lab (ML), Findings (FD), Reports (RP)
-- **Future:** Replace abbreviations with proper SVG icons for production
+- **140px text sidebar** with full labels, dark background (`--bg-0`)
+- **Brand block** at top: product name "Super SPC" + version number
+- **Full text labels:** Workspace, Data Prep, Method Lab, Findings, Reports
+- **Active section** indicated by left-border highlight (`--blue`), subtle background, and bold text
+- **Pipeline status** at bottom with green dot indicator
+- **Responsive:** collapses to 48px at viewport < 1200px, showing 2-letter abbreviations as fallback
 
 ### Tables and Dense Data
 - **IBM Plex Mono** for all volatile values: lots, timestamps, limits, IDs, version numbers
@@ -1150,3 +1173,5 @@ Every surface must specify what users see when there's no data, when something f
 | 2025-03-25 | Initial design system created | Created by /design-consultation based on Super SPC product context |
 | 2026-03-25 | **Major rewrite: Dark-first Palantir aesthetic + JMP interaction model** | Original DESIGN.md specified Manrope/Plus Jakarta Sans fonts (too soft), light-mode neutrals (product is dark-first), oversized radii (12px+ is SaaS, not instrument), and no SPC-specific chart requirements (zones, capability indices, rule markers). Updated to use Blueprint color tokens, Inter/IBM Plex Mono typography, 3-8px radii ceiling, explicit zone shading spec, and Palantir density principles. Informed by product critique: chart must be hero (55%+ viewport), no duplicate controls, evidence rail needs hierarchy. |
 | 2026-03-26 | **Complete feature design expansion** | Gap analysis against JMP Control Chart Builder revealed DESIGN.md was strong on aesthetic system (7/10) but missing feature design specs. Added: full chart type inventory (20+ types across 5 categories), paired chart layout, drag-drop variable zones, statistic/sigma/K-sigma configuration, all 8 Nelson + 6 Westgard rules, CUSUM/EWMA/multivariate platform designs, data import flow, spec/control limits management, capability report layout, alarm system, save/export operations, empty/error/loading states, accessibility spec, keyboard shortcuts. Informed by JMP Quality and Process Methods reference documentation. |
+| 2026-03-26 | **Chart panel redesign: Method Comparison Bar** | "Robust overlay" toggle was hiding the core SPC concept — primary vs challenger method comparison — as a visual layer. Promoted to explicit method cards in chart toolbar with per-method capability indices and dual readout bar. Challenger overlay visibility now tied to method selection state, not a manual toggle. Removes overlay from Layers toggles. |
+| 2026-03-26 | **Navigation sidebar: full text labels** | 2-letter abbreviations (WK, DP, ML) were cryptic. Redesigned to 140px text sidebar with full labels, brand block, and pipeline status. Responsive collapse to 48px at <1200px. |
