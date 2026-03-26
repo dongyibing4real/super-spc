@@ -647,8 +647,8 @@ h1, h2, h3, h4, h5, h6 {
 .chart-pane-titlebar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 8px;
+  padding: 8px 12px;
   background: var(--chart-surface);
   cursor: grab;
   user-select: none;
@@ -664,8 +664,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .method-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -674,7 +674,7 @@ h1, h2, h3, h4, h5, h6 {
 .method-dot.challenger { background: var(--teal-bright); }
 
 .pane-role {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -682,7 +682,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .pane-method {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--chart-text);
 }
