@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Design System &mdash; Super SPC</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <h1 id="design-system--super-spc">Design System — Super SPC</h1>
+<h2 id="product-context">Product Context</h2>
+<ul>
+<li><strong>What this is:</strong> A semiconductor process-control decision platform for SPC review, method comparison, evidence capture, and report generation. It should feel like a precision instrument for high-stakes process judgment — not a generic BI dashboard, not a chart builder, not a SaaS analytics product.</li>
+<li><strong>Who it's for:</strong> Process engineers, yield engineers, manufacturing quality leads, and technical reviewers inside fabs and advanced manufacturing environments. These users are trained statisticians who use JMP, Minitab, and internal tools daily. They expect statistical rigor and density.</li>
+<li><strong>Space/industry:</strong> Semiconductor manufacturing, industrial analytics, SPC tooling. Category peers: JMP Control Chart Builder, Minitab, Northwest Analytics, InfinityQS. The product competes on trust, decision speed, and evidence traceability — not chart count or dashboard prettiness.</li>
+<li><strong>Project type:</strong> Desktop-first analytical web app with report-generation surfaces. Minimum effective viewport: 1440×900.</li>
+</ul>
+<h2 id="aesthetic-direction">Aesthetic Direction</h2>
+<ul>
+<li><strong>Direction:</strong> Command-Center Analytical — Palantir product density meets JMP interaction precision</li>
+<li><strong>Decoration level:</strong> Zero. Every pixel earns its place through information or affordance.</li>
+<li><strong>Mood:</strong> Dark, exacting, dense, and audit-ready. The product should feel like a command center for process judgment: the kind of tool where an engineer opens it at 6am during an escalation and trusts it immediately. No marketing energy, no SaaS softness, no dashboard vibes.</li>
+<li><strong>Reference systems:</strong>
+<ul>
+<li><strong>Palantir Blueprint</strong> — Dark theme tokens, dense layout, icon-driven navigation, flat surfaces with border hierarchy</li>
+<li><strong>JMP Control Chart Builder</strong> — Control panel alongside chart, drag-drop variable zones, right-click contextual options, statistical overlay layers</li>
+<li><strong>Bloomberg Terminal</strong> — Information density, monospace data, keyboard-first interaction</li>
+</ul>
+</li>
+<li><strong>Anti-references:</strong> Notion, Linear, Vercel dashboard, Stripe dashboard — these are beautiful products but wrong for this domain. Too airy, too marketing-adjacent, too much whitespace.</li>
+</ul>
+<h2 id="typography">Typography</h2>
+<ul>
+<li><strong>UI/Body:</strong> <code>Inter</code> — Best-in-class for dense data UI. Tabular figures, consistent x-height, excellent legibility at 11-13px. This is what Palantir uses internally.</li>
+<li><strong>Data/Mono:</strong> <code>IBM Plex Mono</code> — Credible technical texture for metrics, lots, limits, timestamps, and all numeric values. Tabular figures by default.</li>
+<li><strong>Code:</strong> <code>IBM Plex Mono</code> (same family — no need for a separate code font in this product)</li>
+<li><strong>Loading:</strong> Google Fonts for <code>Inter</code> (weights 400, 500, 600, 700, 800) and <code>IBM Plex Mono</code> (weights 400, 500, 600). Self-host before production if deploying into restricted fab networks.</li>
+<li><strong>Why not Manrope/Plus Jakarta Sans:</strong> These are display/marketing fonts — too round, too friendly for an instrument UI. Inter has the mechanical precision this product needs. JMP uses system fonts; Bloomberg uses monospace. We split the difference with Inter for structure and IBM Plex Mono for data.</li>
+<li><strong>Scale (compact analytical — not marketing):</strong>
+<ul>
+<li><code>page-title</code>: 16px / 22px / 800 — pages don't need hero text</li>
+<li><code>section-head</code>: 13px / 18px / 700</li>
+<li><code>body</code>: 12px / 18px / 500</li>
+<li><code>body-dense</code>: 11px / 16px / 500</li>
+<li><code>label</code>: 10px / 14px / 600, uppercase, letter-spacing 0.06em</li>
+<li><code>eyebrow</code>: 9px / 12px / 700, uppercase, letter-spacing 0.1em</li>
+<li><code>data-value</code>: 11-12px / 16px / 600, IBM Plex Mono</li>
+<li><code>data-large</code>: 14px / 18px / 700, IBM Plex Mono — for hero metrics (Cpk, capability indices)</li>
+</ul>
+</li>
+</ul>
+<h2 id="color">Color</h2>
+<h3 id="dark-theme-primary--this-is-the-default">Dark Theme (Primary — this is the default)</h3>
+<p>Derived from Palantir Blueprint's dark palette with SPC-specific extensions.</p>
+<p><strong>Surfaces (darkest → lightest):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Hex</th>
+<th>Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--bg-0</code></td>
+<td><code>#111418</code></td>
+<td>App background (Blueprint BLACK)</td>
+</tr>
+<tr>
+<td><code>--bg-1</code></td>
+<td><code>#1C2127</code></td>
+<td>Primary panels, workspace canvas (Blueprint DARK_GRAY1)</td>
+</tr>
+<tr>
+<td><code>--bg-2</code></td>
+<td><code>#252A31</code></td>
+<td>Side rails, elevated panels (Blueprint DARK_GRAY2)</td>
+</tr>
+<tr>
+<td><code>--bg-3</code></td>
+<td><code>#2F343C</code></td>
+<td>Cards, list items, interactive surfaces (Blueprint DARK_GRAY3)</td>
+</tr>
+<tr>
+<td><code>--bg-4</code></td>
+<td><code>#383E47</code></td>
+<td>Hover states, active surfaces (Blueprint DARK_GRAY4)</td>
+</tr>
+<tr>
+<td><code>--bg-5</code></td>
+<td><code>#404854</code></td>
+<td>Strong hover, pressed states (Blueprint DARK_GRAY5)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Text:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Hex</th>
+<th>Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--t-1</code></td>
+<td><code>#F6F7F9</code></td>
+<td>Primary text (Blueprint LIGHT_GRAY5)</td>
+</tr>
+<tr>
+<td><code>--t-2</code></td>
+<td><code>#C5CBD3</code></td>
+<td>Secondary text (Blueprint GRAY5)</td>
+</tr>
+<tr>
+<td><code>--t-3</code></td>
+<td><code>#8F99A8</code></td>
+<td>Tertiary text, descriptions (Blueprint GRAY3)</td>
+</tr>
+<tr>
+<td><code>--t-4</code></td>
+<td><code>#5F6B7C</code></td>
+<td>Disabled text, eyebrow labels (Blueprint GRAY1)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Borders:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Hex</th>
+<th>Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--border-1</code></td>
+<td><code>rgba(0,0,0,0.4)</code></td>
+<td>Subtle dividers (Blueprint dark divider)</td>
+</tr>
+<tr>
+<td><code>--border-2</code></td>
+<td><code>rgba(255,255,255,0.1)</code></td>
+<td>Panel edges, muted borders</td>
+</tr>
+<tr>
+<td><code>--border-3</code></td>
+<td><code>rgba(255,255,255,0.2)</code></td>
+<td>Active borders, hover borders</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Intent colors (Blueprint-derived):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Hex</th>
+<th>Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--blue</code></td>
+<td><code>#2D72D2</code></td>
+<td>Primary method, selected states, trust emphasis (Blueprint BLUE3)</td>
+</tr>
+<tr>
+<td><code>--blue-bright</code></td>
+<td><code>#4C90F0</code></td>
+<td>Links, active focus (Blueprint BLUE4)</td>
+</tr>
+<tr>
+<td><code>--blue-dim</code></td>
+<td><code>rgba(45,114,210,0.15)</code></td>
+<td>Selected backgrounds</td>
+</tr>
+<tr>
+<td><code>--teal</code></td>
+<td><code>#1C6E42</code></td>
+<td>Robust/alternative method, secondary positive (Blueprint GREEN2)</td>
+</tr>
+<tr>
+<td><code>--teal-bright</code></td>
+<td><code>#32A467</code></td>
+<td>Challenger overlay, comparison (Blueprint GREEN4)</td>
+</tr>
+<tr>
+<td><code>--green</code></td>
+<td><code>#238551</code></td>
+<td>Success, in-control, center line (Blueprint GREEN3)</td>
+</tr>
+<tr>
+<td><code>--green-dim</code></td>
+<td><code>rgba(35,133,81,0.15)</code></td>
+<td>Success backgrounds</td>
+</tr>
+<tr>
+<td><code>--red</code></td>
+<td><code>#CD4246</code></td>
+<td>Error, OOC points, critical alerts (Blueprint RED3)</td>
+</tr>
+<tr>
+<td><code>--red-dim</code></td>
+<td><code>rgba(205,66,70,0.15)</code></td>
+<td>Error backgrounds</td>
+</tr>
+<tr>
+<td><code>--amber</code></td>
+<td><code>#C87619</code></td>
+<td>Warning, maintenance events (Blueprint ORANGE3)</td>
+</tr>
+<tr>
+<td><code>--amber-dim</code></td>
+<td><code>rgba(200,118,25,0.15)</code></td>
+<td>Warning backgrounds</td>
+</tr>
+<tr>
+<td><code>--gold</code></td>
+<td><code>#D1980B</code></td>
+<td>Phase transitions, annotations (Blueprint GOLD3)</td>
+</tr>
+<tr>
+<td><code>--gold-dim</code></td>
+<td><code>rgba(209,152,11,0.12)</code></td>
+<td>Gold dim backgrounds</td>
+</tr>
+<tr>
+<td><code>--teal-dim</code></td>
+<td><code>rgba(28,110,66,0.12)</code></td>
+<td>Teal dim backgrounds</td>
+</tr>
+<tr>
+<td><code>--purple</code></td>
+<td><code>#8B5CF6</code></td>
+<td>Spec limits, event annotations</td>
+</tr>
+</tbody>
+</table>
+<h3 id="chart-island-light-on-dark">Chart Island (Light-on-Dark)</h3>
+<p>The control chart is rendered on a <strong>warm light surface</strong> embedded in the dark workspace. This is not pure white — it's tinted to integrate with the dark environment.</p>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Hex</th>
+<th>Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--chart-bg</code></td>
+<td><code>#F6F7F9</code></td>
+<td>Chart background (Blueprint LIGHT_GRAY5, NOT white)</td>
+</tr>
+<tr>
+<td><code>--chart-surface</code></td>
+<td><code>#EDEFF2</code></td>
+<td>Chart toolbar, readout bar (Blueprint LIGHT_GRAY4)</td>
+</tr>
+<tr>
+<td><code>--chart-border</code></td>
+<td><code>#DCE0E5</code></td>
+<td>Chart internal borders (Blueprint LIGHT_GRAY2)</td>
+</tr>
+<tr>
+<td><code>--chart-grid</code></td>
+<td><code>#E5E8EB</code></td>
+<td>Grid lines (Blueprint LIGHT_GRAY3)</td>
+</tr>
+<tr>
+<td><code>--chart-text</code></td>
+<td><code>#1C2127</code></td>
+<td>Primary chart text (Blueprint DARK_GRAY1)</td>
+</tr>
+<tr>
+<td><code>--chart-text-2</code></td>
+<td><code>#5F6B7C</code></td>
+<td>Secondary chart text (Blueprint GRAY1)</td>
+</tr>
+<tr>
+<td><code>--chart-text-3</code></td>
+<td><code>#8F99A8</code></td>
+<td>Tertiary chart text (Blueprint GRAY3)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why not pure white (#FFFFFF)?</strong> Pure white on <code>#111418</code> creates a 21:1 surface contrast that feels like a PowerPoint slide pasted onto a terminal. <code>#F6F7F9</code> is perceptually white but integrates. Palantir and Bloomberg both use tinted light surfaces inside dark frames.</p>
+<h3 id="spc-specific-chart-colors">SPC-Specific Chart Colors</h3>
+<p>These colors are reserved for statistical chart elements and must not be used for UI chrome.</p>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Color</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Primary series line</td>
+<td><code>--blue</code> (#2D72D2)</td>
+<td>1.5-2px solid</td>
+</tr>
+<tr>
+<td>Primary series points</td>
+<td><code>--blue</code> (#2D72D2)</td>
+<td>4px circles, white stroke</td>
+</tr>
+<tr>
+<td>Challenger/overlay line</td>
+<td><code>--teal-bright</code> (#32A467)</td>
+<td>1px dashed</td>
+</tr>
+<tr>
+<td>OOC points</td>
+<td><code>--red</code> (#CD4246)</td>
+<td>Enlarged, filled red</td>
+</tr>
+<tr>
+<td>Center line (CL)</td>
+<td><code>--green</code> (#238551)</td>
+<td>1px solid, 0.7 opacity</td>
+</tr>
+<tr>
+<td>UCL/LCL lines</td>
+<td><code>--red</code> (#CD4246)</td>
+<td>1px dashed, 0.5 opacity</td>
+</tr>
+<tr>
+<td>Spec limits (USL/LSL)</td>
+<td><code>--purple</code> (#8B5CF6)</td>
+<td>1px dashed, 0.3 opacity</td>
+</tr>
+<tr>
+<td>Zone A fill (2σ–3σ)</td>
+<td><code>rgba(205,66,70,0.06)</code></td>
+<td>Subtle red tint</td>
+</tr>
+<tr>
+<td>Zone B fill (1σ–2σ)</td>
+<td><code>rgba(200,118,25,0.04)</code></td>
+<td>Subtle amber tint</td>
+</tr>
+<tr>
+<td>Zone C fill (0–1σ)</td>
+<td><code>rgba(35,133,81,0.04)</code></td>
+<td>Subtle green tint</td>
+</tr>
+<tr>
+<td>Phase boundary</td>
+<td><code>--gold</code> (#D1980B)</td>
+<td>1px dashed, 0.4 opacity</td>
+</tr>
+<tr>
+<td>Event annotation</td>
+<td><code>#8B5CF6</code></td>
+<td>Chip with subtle background</td>
+</tr>
+<tr>
+<td>Excluded point</td>
+<td>Primary color at 25% opacity</td>
+<td>X-mark overlay in <code>--amber</code></td>
+</tr>
+<tr>
+<td>Rule violation marker</td>
+<td><code>--red</code> ring or <code>--amber</code> ring</td>
+<td>2px ring around violated point</td>
+</tr>
+<tr>
+<td>Selected point halo</td>
+<td><code>--blue</code> at 20% opacity</td>
+<td>3px stroke ring</td>
+</tr>
+</tbody>
+</table>
+<h2 id="spacing">Spacing</h2>
+<ul>
+<li><strong>Base unit:</strong> 4px</li>
+<li><strong>Density:</strong> Dense-comfortable — tighter than typical SaaS, looser than Bloomberg</li>
+<li><strong>Scale:</strong> 2xs(2) xs(4) sm(6) md(8) lg(12) xl(16) 2xl(24) 3xl(32)</li>
+<li><strong>Panel padding:</strong> 8-12px (not 16-24px — that's too airy for analytical surfaces)</li>
+<li><strong>List item padding:</strong> 6-8px vertical, 8-12px horizontal</li>
+<li><strong>Section gaps:</strong> 0px between continuous sections (use 1px borders as dividers)</li>
+</ul>
+<h2 id="layout">Layout</h2>
+<h3 id="app-shell">App Shell</h3>
+<pre><code>┌─────────────────────────────────────────────────────┐
+│ [Icon Sidebar 48px] │ [Workspace Content]           │
+│                     │                               │
+│  WK                 │  ┌──────┬─────────┬────────┐  │
+│  DP                 │  │Ctrl  │  Chart  │Evidence│  │
+│  ML                 │  │Panel │  Canvas │  Rail  │  │
+│  FD                 │  │      │         │        │  │
+│  RP                 │  │~180px│  flex   │ ~280px │  │
+│                     │  └──────┴─────────┴────────┘  │
+└─────────────────────────────────────────────────────┘
+</code></pre>
+<ul>
+<li><strong>Icon sidebar:</strong> 48px wide, dark (<code>--bg-0</code>), contains 2-letter nav labels or icons. Fixed. This is NOT a full sidebar — it's a rail.</li>
+<li><strong>Control panel (recipe rail):</strong> 160-180px, collapsible to ~40px icon strip. Contains JMP-style variable/parameter configuration. Background: <code>--bg-2</code>.</li>
+<li><strong>Chart canvas:</strong> Fluid, takes all remaining space. This is the hero. Background: <code>--bg-1</code>.</li>
+<li><strong>Evidence rail:</strong> 260-300px, scrollable. Contains signal narrative, evidence, and actions. Background: <code>--bg-2</code>.</li>
+</ul>
+<p><strong>Critical rule:</strong> The chart must get at least 55% of viewport width at 1440px. At 1440px with 48+180+280 = 508px of chrome, the chart gets 932px (64.7%). ✓</p>
+<h3 id="responsive-breakpoints">Responsive Breakpoints</h3>
+<table>
+<thead>
+<tr>
+<th>Width</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>≥1600px</td>
+<td>Full 3-column layout, control panel expanded</td>
+</tr>
+<tr>
+<td>1400-1599px</td>
+<td>Control panel narrowed to 160px, evidence rail to 260px</td>
+</tr>
+<tr>
+<td>1100-1399px</td>
+<td>Control panel collapsed to icon strip (~40px), evidence rail to 260px</td>
+</tr>
+<tr>
+<td>&lt;1100px</td>
+<td>Single column stack: control panel horizontal → chart → evidence</td>
+</tr>
+</tbody>
+</table>
+<h3 id="border-radius">Border Radius</h3>
+<ul>
+<li><strong>xs:</strong> 3px — chips, tags, inline badges</li>
+<li><strong>sm:</strong> 4px — buttons, inputs, list items, panel cards</li>
+<li><strong>md:</strong> 6px — context menus, step cards, report previews</li>
+<li><strong>lg:</strong> 8px — chart card, modal dialogs</li>
+<li><strong>Never exceed 8px</strong> in the analytical UI. 12px+ radii create a soft SaaS feel that undermines instrument credibility. JMP uses 0px. Palantir uses 2-6px. We use 3-8px.</li>
+</ul>
+<h3 id="surface-treatment">Surface Treatment</h3>
+<ul>
+<li><strong>Flat planes only.</strong> No shadows as primary hierarchy. Borders and background-color steps do the work.</li>
+<li><strong>1px solid borders</strong> between all panel zones. No gaps, no floating cards.</li>
+<li><strong>No elevation/shadow</strong> except: context menus (8px shadow), tooltips (4px shadow), modals (16px shadow).</li>
+</ul>
+<h2 id="motion">Motion</h2>
+<ul>
+<li><strong>Approach:</strong> Invisible-functional. Motion exists to prevent disorientation, not to delight.</li>
+<li><strong>Easing:</strong> <code>ease</code> for all transitions (simple, fast, predictable — cubic-bezier curves add complexity without visible benefit at these durations)</li>
+<li><strong>Duration:</strong> micro <code>60ms</code> (hover, toggle), short <code>100ms</code> (state changes), medium <code>150ms</code> (panel reveal — future), long <code>250ms</code> (screen transition — future)</li>
+<li><strong>Rule:</strong> If removing the animation wouldn't confuse the user, remove the animation.</li>
+</ul>
+<h2 id="component-principles">Component Principles</h2>
+<h3 id="chart-the-hero">Chart (THE HERO)</h3>
+<p>The control chart is the single most important element in the product. Everything else serves it.</p>
+<ul>
+<li><strong>Zone shading is required.</strong> Every professional SPC tool (JMP, Minitab, InfinityQS) shows 1σ/2σ/3σ zone fills. Zone C (inner) gets a subtle green tint, Zone B gets amber, Zone A gets red. This is SPC table stakes — not optional decoration.</li>
+<li><strong>Capability indices (Cpk, Ppk, Cp, Pp) must be visible</strong> near the chart — either in the readout bar or as a compact summary. Engineers look for these immediately. Hiding them in a separate tab is a product failure.</li>
+<li><strong>Rule violation markers on points.</strong> When a Nelson/Westgard rule fires, the triggering points must have a colored ring/marker directly on the chart. Text-only rule descriptions in the evidence rail are insufficient.</li>
+<li><strong>Grid lines stay soft</strong> (<code>--chart-grid</code>, 0.5px). Grid supports reading, never dominates.</li>
+<li><strong>Limit labels pin to chart edge</strong> with their numeric value: <code>UCL 8.145</code>, <code>CL 8.078</code>, <code>LCL 8.011</code>.</li>
+<li><strong>Phase boundaries</strong> use dashed vertical lines with a labeled chip above the chart area.</li>
+<li><strong>Selected point</strong> gets a halo ring and anchors the readout bar update. The readout should be prominent: 12px+ mono values, clear lot/value/phase/status display.</li>
+<li><strong>Excluded points</strong> are dimmed (25% opacity) with an X-mark, never silently removed.</li>
+<li><strong>Histogram sidebar (future):</strong> A vertical histogram docked to the Y-axis showing data distribution is standard in serious SPC tools. Plan for this in the layout.</li>
+</ul>
+<h3 id="control-panel-recipe-rail--jmp-inspired">Control Panel (Recipe Rail — JMP-Inspired)</h3>
+<p>This is the JMP &quot;control panel alongside chart&quot; concept: a vertical panel that shows all current chart configuration.</p>
+<ul>
+<li><strong>Organized in sections:</strong> Variables (prominent chips), Config (compact chips for sigma/tests/compare), Layers (minimal toggle rows for overlay visibility)</li>
+<li><strong>Each parameter is a &quot;chip&quot;</strong> showing: eyebrow label, current value, and optional detail text</li>
+<li><strong>Active chip</strong> has a left-border highlight (<code>--blue</code>, 2px)</li>
+<li><strong>Clicking a chip</strong> opens an inline inspector/editor — never a full modal</li>
+<li><strong>Collapsible</strong> to a 40px icon strip showing section icons only</li>
+<li><strong>This is the ONLY place for overlay toggles.</strong> Do not duplicate toggles in both the toolbar and the panel. One location, one source of truth.</li>
+</ul>
+<h3 id="evidence-rail">Evidence Rail</h3>
+<p>The right rail is language-led, not widget-led. It explains, cites, and recommends.</p>
+<ul>
+<li><strong>Signal section is the hero of the rail.</strong> Elevated background (<code>--bg-3</code>), larger heading (13px, 700 weight), severity badge, and narrative summary. This must have more visual weight than everything below it.</li>
+<li><strong>Why it triggered:</strong> Explicit rule/method explanation with point references</li>
+<li><strong>Evidence ledger:</strong> Key-value pairs in a compact list — lots, transform steps, phase definition, subgroup logic, limits version, method version</li>
+<li><strong>Recommended checks:</strong> Operational suggestions, not vague AI chatter</li>
+<li><strong>Finding draft:</strong> Title and summary with action buttons (Create, View all). Full finding detail (severity, citations, owner, export) lives on the Findings screen — the rail shows a preview only.</li>
+<li><strong>Section differentiation:</strong> Use varying background treatments or spacing to break the monotony. The signal section should feel elevated (<code>--bg-3</code> background, larger heading); the evidence ledger should feel like a data table; checks should feel like a checklist.</li>
+</ul>
+<h3 id="toolbar-chart-local">Toolbar (Chart-Local)</h3>
+<ul>
+<li><strong>Belongs to the chart card</strong>, not the app shell</li>
+<li><strong>Contains only:</strong> chart title, and context actions (export, fullscreen, settings)</li>
+<li><strong>Does NOT contain</strong> overlay toggles (those live in the control panel)</li>
+<li><strong>Light background</strong> (<code>--chart-surface</code>) to match the chart island</li>
+<li><strong>Right-click context menus</strong> on chart points may include point-specific actions (exclude, create finding) but must NOT duplicate layer/overlay toggles. Context menus are for point-level operations, not chart configuration.</li>
+</ul>
+<h3 id="data-readout-bar">Data Readout Bar</h3>
+<ul>
+<li><strong>Bottom of the chart card</strong>, light background</li>
+<li><strong>Selected point data:</strong> Lot, Value, Phase, Status — in IBM Plex Mono, 11-12px, bold</li>
+<li><strong>Must be immediately scannable.</strong> This is the primary feedback when clicking a point.</li>
+<li><strong>Keyboard hint:</strong> <code>← → navigate · Shift+F10 actions</code></li>
+</ul>
+<h3 id="navigation-sidebar">Navigation Sidebar</h3>
+<ul>
+<li><strong>48px icon rail</strong> with section abbreviations or simple SVG icons</li>
+<li><strong>Active section</strong> indicated by left-border highlight and subtle background</li>
+<li><strong>Status indicator</strong> (dot) for system state</li>
+<li><strong>Sections:</strong> Workspace (WK), Data Prep (DP), Method Lab (ML), Findings (FD), Reports (RP)</li>
+<li><strong>Future:</strong> Replace abbreviations with proper SVG icons for production</li>
+</ul>
+<h3 id="tables-and-dense-data">Tables and Dense Data</h3>
+<ul>
+<li><strong>IBM Plex Mono</strong> for all volatile values: lots, timestamps, limits, IDs, version numbers</li>
+<li><strong>Inter</strong> for labels and explanatory text</li>
+<li><strong>Uniform row backgrounds</strong> using <code>--bg-3</code> with <code>--border-2</code> borders for dense lists (alternating backgrounds add visual noise at this density level)</li>
+<li><strong>Right-align</strong> numeric values in evidence lists and key-value pairs</li>
+</ul>
+<h3 id="reports">Reports</h3>
+<ul>
+<li>More editorial than the app shell, but still technical</li>
+<li>Report surfaces can use slightly larger type (14px body) and more generous spacing</li>
+<li>Still dark-themed — no sudden mode switch to white</li>
+<li>Report should feel boardroom-ready without losing traceability</li>
+</ul>
+<h2 id="safe-choices">Safe Choices</h2>
+<ul>
+<li>Blueprint-derived color system: proven at scale across Palantir's products, WCAG 2.0 compliant</li>
+<li>Inter + IBM Plex Mono: the same pairing used by many data-heavy products (Vercel, Linear, various fintech)</li>
+<li>Dense but readable: no tiny text for critical state, no oversized marketing spacing</li>
+<li>Minimal surface effects: borders and color steps do hierarchy, not blur/glow/shadow</li>
+<li>Zone shading on control charts: industry standard, not decorative</li>
+</ul>
+<h2 id="risks-and-tradeoffs">Risks and Tradeoffs</h2>
+<table>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Why it's worth it</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dark-first UI in a light-office environment</td>
+<td>Creates memorable product identity; reduces eye strain during long review sessions; matches Palantir/Bloomberg category aesthetic</td>
+<td>Chart island provides light relief; consider future light-mode toggle</td>
+</tr>
+<tr>
+<td>Chart island (light surface in dark frame)</td>
+<td>Essential for chart readability — gridlines and data points read better on light backgrounds</td>
+<td>Use <code>#F6F7F9</code> not <code>#FFFFFF</code>; add intermediate border tint; never hard-cut</td>
+</tr>
+<tr>
+<td>Mono-heavy data display</td>
+<td>Makes numbers trustworthy and scannable</td>
+<td>Keep mono scoped to data values only; labels stay in Inter</td>
+</tr>
+<tr>
+<td>Dense layout may intimidate new users</td>
+<td>Target users are JMP/Minitab power users who expect density</td>
+<td>Add progressive disclosure where possible; never hide critical state</td>
+</tr>
+</tbody>
+</table>
+<h2 id="interaction-model">Interaction Model</h2>
+<h3 id="jmp-inspired-principles">JMP-Inspired Principles</h3>
+<ol>
+<li><strong>Control panel alongside chart</strong> — configuration is always visible and editable, not hidden behind menus</li>
+<li><strong>Right-click context</strong> — chart points, phases, and limits all support contextual menus</li>
+<li><strong>Direct manipulation</strong> — click points to inspect, drag to select ranges, toggle layers inline</li>
+<li><strong>Inspector pattern</strong> — selecting a parameter opens a focused inline editor, not a full-page modal</li>
+</ol>
+<h3 id="palantir-inspired-principles">Palantir-Inspired Principles</h3>
+<ol>
+<li><strong>Icon-driven navigation</strong> — thin sidebar rail, not a wide nav drawer</li>
+<li><strong>Flat hierarchy</strong> — surfaces are differentiated by background-color steps and borders, not elevation</li>
+<li><strong>Dense by default</strong> — show more information in less space; trust the user's expertise</li>
+<li><strong>Keyboard-accessible</strong> — every critical action has a keyboard shortcut</li>
+</ol>
+<h3 id="rules">Rules</h3>
+<ul>
+<li>Default to reveal, not hide. Signals, exclusions, lineage, and method deltas should remain visible by default.</li>
+<li>Prefer inline inspectors over modal configuration.</li>
+<li>Animate only where it prevents disorientation: screen transitions, panel collapse, point selection.</li>
+<li>Never make engineers wait on decorative motion.</li>
+<li>State is communicated through language, position, and contrast — never through motion or glow alone.</li>
+</ul>
+<h2 id="do-not-do">Do Not Do</h2>
+<ul>
+<li>❌ Border radius &gt; 8px on any analytical surface</li>
+<li>❌ Pure white (#FFFFFF) backgrounds — use <code>#F6F7F9</code> minimum</li>
+<li>❌ Soft, bubbly SaaS cards with large padding and rounded corners</li>
+<li>❌ Gradient backgrounds, glassmorphism, frosted panels, decorative blur</li>
+<li>❌ Glowing chips, neon-like selection states, animated attention-grabbing badges</li>
+<li>❌ Duplicate controls (same toggle in two places)</li>
+<li>❌ Hiding zone shading, capability indices, or rule markers — these are SPC essentials</li>
+<li>❌ Marketing typography scale (24px+ headings in the analytical workspace)</li>
+<li>❌ Dashboard-style card grids transplanted into analytical surfaces</li>
+<li>❌ Shadows as primary hierarchy mechanism</li>
+<li>❌ Display/hero fonts (Manrope, Plus Jakarta Sans, etc.) — wrong density for this product</li>
+</ul>
+<h2 id="spc-feature-checklist-design-must-support">SPC Feature Checklist (Design Must Support)</h2>
+<p>These statistical features must be designed for, even if not all are implemented in v1:</p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> 1σ/2σ/3σ zone shading on control chart</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Capability indices (Cpk, Ppk, Cp, Pp) visible near chart</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Rule violation markers directly on chart points (Nelson, Westgard, Western Electric)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Histogram sidebar docked to Y-axis (future)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Phase-specific limit recalculation with visual before/after</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Method comparison overlay (challenger vs. primary)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Exclusion lineage — every excluded point traceable to a reason</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Confidence bands for modern/robust methods</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Box-and-whisker per subgroup (optional layer)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"type="checkbox"> Run-chart mode (no limits, just sequence)</li>
+</ul>
+<h2 id="decisions-log">Decisions Log</h2>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Decision</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2025-03-25</td>
+<td>Initial design system created</td>
+<td>Created by /design-consultation based on Super SPC product context</td>
+</tr>
+<tr>
+<td>2026-03-25</td>
+<td><strong>Major rewrite: Dark-first Palantir aesthetic + JMP interaction model</strong></td>
+<td>Original <a href="http://DESIGN.html">DESIGN.md</a> specified Manrope/Plus Jakarta Sans fonts (too soft), light-mode neutrals (product is dark-first), oversized radii (12px+ is SaaS, not instrument), and no SPC-specific chart requirements (zones, capability indices, rule markers). Updated to use Blueprint color tokens, Inter/IBM Plex Mono typography, 3-8px radii ceiling, explicit zone shading spec, and Palantir density principles. Informed by product critique: chart must be hero (55%+ viewport), no duplicate controls, evidence rail needs hierarchy.</td>
+</tr>
+</tbody>
+</table>
+
+            
+            
+        </body>
+        </html>
