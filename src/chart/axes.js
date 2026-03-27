@@ -1,4 +1,24 @@
 /**
+ * Compute a "nice stride" for categorical axis labels.
+ * This is the categorical equivalent of the y-axis "nice numbers" algorithm:
+ *   y-axis: snap to 1, 2, 5 × 10^n  (value steps)
+ *   x-axis: snap to 1, 2, 5 × 10^n  (index strides)
+ *
+ * Both follow the same 1-2-5 progression from the Heckbert/Wilkinson algorithm.
+ * @param {number} raw - the raw (fractional) stride from pixel density
+ * @returns {number} the nearest nice integer stride (≥1)
+ */
+function niceStride(raw) {
+  if (raw <= 1) return 1;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+  const residual = raw / magnitude;
+  if (residual <= 1.5) return Math.round(1 * magnitude);
+  if (residual <= 3.5) return Math.round(2 * magnitude);
+  if (residual <= 7.5) return Math.round(5 * magnitude);
+  return Math.round(10 * magnitude);
+}
+
+/**
  * Render X-axis baseline and lot labels.
  *
  * AXIS LABEL SYSTEM (inspired by Highcharts tickPixelInterval + D3-FC collision adapters):
@@ -29,14 +49,21 @@ export function renderAxes(layer, scales, data, config) {
   const visibleMax = Math.min(data.points.length - 1, Math.ceil(domainMax));
   const visibleCount = visibleMax - visibleMin + 1;
 
-  // ── 2. Pixel-based tick density (Highcharts-style) ─────────────────
-  //    pointSpacing = pixels between adjacent data points at current zoom
-  //    tickPixelInterval = minimum distance between label centers
+  // ── 2. Pixel-based tick density (Highcharts-style tickPixelInterval) ─
+  //    Same philosophy as y-axis "nice numbers" but for categorical data:
+  //    y-axis picks nice VALUE steps (1, 2, 5, 10, 20, 50...)
+  //    x-axis picks nice INDEX strides (1, 2, 5, 10, 20, 50...)
+  //    Both derive from available pixels / minimum gap.
   const pointSpacing = visibleCount > 1 ? plotWidth / (domainMax - domainMin) : plotWidth;
   const TICK_PIXEL_INTERVAL = 42; // minimum px between label centers
 
-  // Stride = how many data points to skip between labels
-  const stride = Math.max(1, Math.ceil(TICK_PIXEL_INTERVAL / pointSpacing));
+  // Raw stride from pixel density
+  const rawStride = TICK_PIXEL_INTERVAL / pointSpacing;
+
+  // "Nice stride" — categorical equivalent of nice numbers (1, 2, 5 × 10^n)
+  // Just as the y-axis snaps to round values like 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10...
+  // the x-axis snaps to round sampling intervals: every 1, 2, 5, 10, 20, 50... points
+  const stride = niceStride(rawStride);
 
   // ── 3. Measure-first collision detection ───────────────────────────
   //    Estimate label width from typical lot label character count

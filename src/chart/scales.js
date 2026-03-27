@@ -25,8 +25,16 @@ function computeYRange(data, seriesKey) {
 /**
  * Generate nice y-axis tick values for the given range.
  */
+/**
+ * Nice step candidates in the 1-2-5 progression.
+ * Same sequence used by the x-axis niceStride — unified philosophy.
+ */
+const NICE_SEQUENCE = [1, 2, 5];
+
 function computeYTicks(yMin, yMax, targetCount = 6) {
   const range = yMax - yMin;
+  if (range <= 0) return [yMin];
+
   const rawStep = range / (targetCount - 1);
 
   // Find a "nice" step size (1, 2, 5 × 10^n)
@@ -38,9 +46,23 @@ function computeYTicks(yMin, yMax, targetCount = 6) {
   else if (residual <= 7.5) niceStep = 5 * magnitude;
   else niceStep = 10 * magnitude;
 
-  const start = Math.ceil(yMin / niceStep) * niceStep;
+  // Generate ticks
+  let ticks = generateTicks(yMin, yMax, niceStep);
+
+  // If we got too few ticks, try the next smaller nice step.
+  // This handles narrow ranges where the nice step overshoots.
+  if (ticks.length < Math.max(2, Math.floor(targetCount / 2))) {
+    const smallerStep = niceStep / 2;
+    ticks = generateTicks(yMin, yMax, smallerStep);
+  }
+
+  return ticks;
+}
+
+function generateTicks(yMin, yMax, step) {
+  const start = Math.ceil(yMin / step) * step;
   const ticks = [];
-  for (let v = start; v <= yMax + niceStep * 0.01; v += niceStep) {
+  for (let v = start; v <= yMax + step * 0.01; v += step) {
     ticks.push(parseFloat(v.toFixed(6)));
   }
   return ticks;

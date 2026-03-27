@@ -103,112 +103,100 @@ export function createChart(container, options = {}) {
     config.onContextMenu(localX, localY, { axis });
   });
 
-  // ── X-axis drag: JMP-style ──────────────────────────────────────────
-  //   drag along axis (left/right) → PAN x domain
-  //   drag perpendicular (up/down) → SCALE x domain
-  xAxisHit.on('pointerdown', (event) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (!currentScales) return;
-    const startClientX = event.clientX;
-    const startClientY = event.clientY;
-    const startXMin = currentScales.xMin;
-    const startXMax = currentScales.xMax;
-    const xRange = startXMax - startXMin;
-    const pixelRange = currentWidth - config.padding.left - config.padding.right;
+  // ── Unified axis drag: JMP-style ────────────────────────────────────
+  //   Both axes use identical interaction logic:
+  //     drag ALONG the axis    → PAN  (translate visible range)
+  //     drag PERPENDICULAR     → SCALE (zoom in/out)
+  //   Only differs in: which mouse axis is "along" vs "perpendicular",
+  //   data bounds for clamping, and the output event shape.
+  //
+  //   X-axis: horizontal = along (pan), vertical = perpendicular (scale)
+  //   Y-axis: vertical = along (pan), horizontal = perpendicular (scale)
+  // ───────────────────────────────────────────────────────────────────
+  function setupAxisDrag(hitElement, axisType) {
+    hitElement.on('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!currentScales) return;
 
-    document.body.style.cursor = 'grabbing';
-    xAxisHit.style('cursor', 'grabbing');
+      const startClientX = event.clientX;
+      const startClientY = event.clientY;
 
-    // Data bounds for clamping (prevent dragging beyond all data)
-    const nPoints = currentScales.xMax !== undefined
-      ? Math.max(startXMax, currentData?.points?.length - 1 ?? startXMax)
-      : startXMax;
-    const dataMin = 0;
-    const dataMax = nPoints;
+      // Read current domain bounds for this axis
+      const startMin = axisType === 'x' ? currentScales.xMin : currentScales.yMin;
+      const startMax = axisType === 'x' ? currentScales.xMax : currentScales.yMax;
+      const range = startMax - startMin;
 
-    const onMove = (e) => {
-      const dx = e.clientX - startClientX;
-      const dy = e.clientY - startClientY;
+      // Pixel range for this axis direction
+      const pixelRange = axisType === 'x'
+        ? currentWidth - config.padding.left - config.padding.right
+        : currentHeight - config.padding.top - config.padding.bottom;
 
-      // Pan: drag left/right moves the visible window
-      // Scale: drag up/down zooms (up = zoom in, down = zoom out)
-      const panDelta = -dx * (xRange / pixelRange);
-      const scaleFactor = Math.max(0.1, 1 + dy * 0.005);
+      // Data bounds for clamping
+      const dataBounds = axisType === 'x'
+        ? { min: 0, max: currentData?.points?.length - 1 ?? startMax, bleed: 1 }
+        : { min: startMin - range * 2, max: startMax + range * 2, bleed: 0 };
 
-      const center = (startXMin + startXMax) / 2 + panDelta;
-      let halfRange = xRange / 2 * scaleFactor;
+      // Clamping limits
+      const minRange = axisType === 'x' ? 2 : range * 0.05;       // x: min 3 points; y: 5% of original
+      const maxRange = axisType === 'x'
+        ? (dataBounds.max - dataBounds.min) * 1.1                   // x: all data + 10%
+        : range * 5;                                                 // y: 5x original
 
-      // Clamp: minimum 3 points visible, maximum = all data + 10% margin
-      const minRange = 2;
-      const maxRange = (dataMax - dataMin) * 1.1;
-      halfRange = Math.max(minRange / 2, Math.min(maxRange / 2, halfRange));
+      document.body.style.cursor = 'grabbing';
+      hitElement.style('cursor', 'grabbing');
 
-      // Clamp: don't pan beyond data bounds (allow 1 point bleed)
-      let lo = center - halfRange;
-      let hi = center + halfRange;
-      if (lo < dataMin - 1) { lo = dataMin - 1; hi = lo + halfRange * 2; }
-      if (hi > dataMax + 1) { hi = dataMax + 1; lo = hi - halfRange * 2; }
+      const onMove = (e) => {
+        const dx = e.clientX - startClientX;
+        const dy = e.clientY - startClientY;
 
-      config.onAxisDrag?.({ axis: 'x', min: lo, max: hi });
-    };
-    const onUp = () => {
-      document.body.style.cursor = '';
-      xAxisHit.style('cursor', 'grab');
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  });
+        // Along-axis → PAN, perpendicular → SCALE
+        // X-axis: dx = pan (inverted), dy = scale
+        // Y-axis: dy = pan, dx = scale (inverted)
+        const panDelta = axisType === 'x'
+          ? -dx * (range / pixelRange)    // drag right → see later data
+          :  dy * (range / pixelRange);   // drag up → see higher values (SVG y inverted)
+        const scaleFactor = Math.max(0.1, axisType === 'x'
+          ? 1 + dy * 0.005               // drag down → zoom out
+          : 1 - dx * 0.005);             // drag right → zoom in
 
-  // ── Y-axis drag: JMP-style ──────────────────────────────────────────
-  //   drag along axis (up/down) → PAN y domain
-  //   drag perpendicular (left/right) → SCALE y domain
-  yAxisHit.on('pointerdown', (event) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (!currentScales) return;
-    const startClientX = event.clientX;
-    const startClientY = event.clientY;
-    const startYMin = currentScales.yMin;
-    const startYMax = currentScales.yMax;
-    const yRange = startYMax - startYMin;
-    const pixelRange = currentHeight - config.padding.top - config.padding.bottom;
+        const center = (startMin + startMax) / 2 + panDelta;
+        let halfRange = range / 2 * scaleFactor;
 
-    document.body.style.cursor = 'grabbing';
-    yAxisHit.style('cursor', 'grabbing');
+        // Clamp range
+        halfRange = Math.max(minRange / 2, Math.min(maxRange / 2, halfRange));
 
-    const onMove = (e) => {
-      const dx = e.clientX - startClientX;
-      const dy = e.clientY - startClientY;
+        // Clamp position (don't pan beyond data bounds)
+        let lo = center - halfRange;
+        let hi = center + halfRange;
+        const b = dataBounds.bleed;
+        if (axisType === 'x') {
+          if (lo < dataBounds.min - b) { lo = dataBounds.min - b; hi = lo + halfRange * 2; }
+          if (hi > dataBounds.max + b) { hi = dataBounds.max + b; lo = hi - halfRange * 2; }
+        }
 
-      // Pan: drag up/down moves the visible range (inverted: SVG y increases downward)
-      const panDelta = dy * (yRange / pixelRange);
-      // Scale: drag left/right zooms (right = zoom in, left = zoom out)
-      const scaleFactor = Math.max(0.1, 1 - dx * 0.005);
+        // Emit unified event
+        if (axisType === 'x') {
+          config.onAxisDrag?.({ axis: 'x', min: lo, max: hi });
+        } else {
+          config.onAxisDrag?.({ axis: 'y', yMin: lo, yMax: hi });
+        }
+      };
 
-      const center = (startYMin + startYMax) / 2 + panDelta;
-      let halfRange = yRange / 2 * scaleFactor;
+      const onUp = () => {
+        document.body.style.cursor = '';
+        hitElement.style('cursor', 'grab');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+  }
 
-      // Clamp: minimum range prevents collapsing to zero, max prevents 10x zoom out
-      const minYRange = yRange * 0.05; // 5% of original range
-      const maxYRange = yRange * 5;    // 5x of original range
-      halfRange = Math.max(minYRange / 2, Math.min(maxYRange / 2, halfRange));
-
-      config.onAxisDrag?.({ axis: 'y', yMin: center - halfRange, yMax: center + halfRange });
-    };
-    const onUp = () => {
-      document.body.style.cursor = '';
-      yAxisHit.style('cursor', 'grab');
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  });
+  setupAxisDrag(xAxisHit, 'x');
+  setupAxisDrag(yAxisHit, 'y');
 
   // ── Double-click to reset ──────────────────────────────────────────
   xAxisHit.on('dblclick', () => config.onAxisReset?.('x'));
