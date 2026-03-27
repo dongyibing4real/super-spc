@@ -1,14 +1,15 @@
 /**
- * Render phase boundary lines and phase label chips.
+ * Render phase boundary lines (clipped) and phase label chips (unclipped).
  */
-export function renderPhases(layer, scales, data, config) {
+export function renderPhases(layer, labelLayer, scales, data, config) {
   const { x } = scales;
   const T = config.padding.top;
   const B = config.height - config.padding.bottom;
 
   layer.selectAll('*').remove();
+  labelLayer.selectAll('*').remove();
 
-  // Phase boundary vertical lines (for all phases except the first)
+  // Phase boundary vertical lines (clipped — for all phases except the first)
   data.phases.slice(1).forEach(ph => {
     const bx = x(ph.start);
     layer.append('line')
@@ -17,7 +18,7 @@ export function renderPhases(layer, scales, data, config) {
       .attr('y1', T).attr('y2', B);
   });
 
-  // Phase label chips
+  // Phase label chips (unclipped — sit above plot area)
   data.phases.forEach(ph => {
     const sx = x(ph.start);
     const ex = x(ph.end);
@@ -25,11 +26,11 @@ export function renderPhases(layer, scales, data, config) {
     const labelText = ph.id;
     const w = labelText.length * 6 + 12;
 
-    const g = layer.append('g');
+    const g = labelLayer.append('g');
 
     g.append('rect')
-      .attr('x', cx - w / 2).attr('y', 6)
-      .attr('width', w).attr('height', 16)
+      .attr('x', cx - w / 2).attr('y', 2)
+      .attr('width', w).attr('height', 14)
       .attr('rx', 3)
       .attr('fill', 'rgba(209,152,11,0.08)')
       .attr('stroke', 'rgba(209,152,11,0.2)')
@@ -37,7 +38,7 @@ export function renderPhases(layer, scales, data, config) {
 
     g.append('text')
       .attr('class', 'phase-label')
-      .attr('x', cx).attr('y', 17)
+      .attr('x', cx).attr('y', 13)
       .attr('text-anchor', 'middle')
       .text(labelText);
   });

@@ -59,6 +59,7 @@ export function createChart(container, options = {}) {
     grid: plotClip.append('g').attr('class', 'layer-grid'),
     gridLabels: svg.append('g').attr('class', 'layer-grid-labels'),   // outside clip — y-axis labels visible
     phases: plotClip.append('g').attr('class', 'layer-phases'),
+    phaseLabels: svg.append('g').attr('class', 'layer-phase-labels'), // outside clip — phase chips visible
     limits: plotClip.append('g').attr('class', 'layer-limits'),
     limitLabels: svg.append('g').attr('class', 'layer-limit-labels'), // outside clip — edge labels visible
     challenger: plotClip.append('g').attr('class', 'layer-challenger'),
@@ -237,8 +238,8 @@ export function createChart(container, options = {}) {
     if (data.toggles.grid) renderGrid(layers.grid, layers.gridLabels, scales, sizedConfig);
     else { layers.grid.selectAll('*').remove(); layers.gridLabels.selectAll('*').remove(); }
 
-    // Phase boundaries + label chips
-    renderPhases(layers.phases, scales, data, sizedConfig);
+    // Phase boundaries (clipped) + label chips (unclipped)
+    renderPhases(layers.phases, layers.phaseLabels, scales, data, sizedConfig);
 
     // Limit lines (clipped) + edge labels (unclipped, separate layer)
     if (data.toggles.specLimits) renderLimits(layers.limits, layers.limitLabels, scales, data, sizedConfig);
