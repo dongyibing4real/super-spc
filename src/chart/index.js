@@ -57,6 +57,7 @@ export function createChart(container, options = {}) {
     zones: plotClip.append('g').attr('class', 'layer-zones'),
     confidenceBand: plotClip.append('g').attr('class', 'layer-confidence'),
     grid: plotClip.append('g').attr('class', 'layer-grid'),
+    gridLabels: svg.append('g').attr('class', 'layer-grid-labels'),   // outside clip — y-axis labels visible
     phases: plotClip.append('g').attr('class', 'layer-phases'),
     limits: plotClip.append('g').attr('class', 'layer-limits'),
     limitLabels: svg.append('g').attr('class', 'layer-limit-labels'), // outside clip — edge labels visible
@@ -232,9 +233,9 @@ export function createChart(container, options = {}) {
     if (data.toggles.confidenceBand) renderConfidenceBand(layers.confidenceBand, scales, sizedConfig, data);
     else layers.confidenceBand.selectAll('*').remove();
 
-    // Grid lines + Y-axis labels
-    if (data.toggles.grid) renderGrid(layers.grid, scales, sizedConfig);
-    else layers.grid.selectAll('*').remove();
+    // Grid lines (clipped) + Y-axis labels (unclipped)
+    if (data.toggles.grid) renderGrid(layers.grid, layers.gridLabels, scales, sizedConfig);
+    else { layers.grid.selectAll('*').remove(); layers.gridLabels.selectAll('*').remove(); }
 
     // Phase boundaries + label chips
     renderPhases(layers.phases, scales, data, sizedConfig);

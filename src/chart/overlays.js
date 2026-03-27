@@ -1,15 +1,15 @@
 import { fmt } from './utils.js';
 
 /**
- * Render Y-axis grid lines and value labels.
+ * Render Y-axis grid lines (clipped) and value labels (unclipped).
  * yTicks now come from scales (computed dynamically).
  */
-export function renderGrid(layer, scales, config) {
+export function renderGrid(layer, labelLayer, scales, config) {
   const { y, yTicks } = scales;
   const L = config.padding.left;
   const R = config.width - config.padding.right;
 
-  // Grid lines
+  // Grid lines (stay in clipped layer)
   const lines = layer.selectAll('line.grid-line').data(yTicks);
   lines.enter()
     .append('line')
@@ -19,8 +19,8 @@ export function renderGrid(layer, scales, config) {
     .attr('y1', d => y(d)).attr('y2', d => y(d));
   lines.exit().remove();
 
-  // Grid labels
-  const labels = layer.selectAll('text.grid-label').data(yTicks);
+  // Grid labels (unclipped layer — positioned left of clip area)
+  const labels = labelLayer.selectAll('text.grid-label').data(yTicks);
   labels.enter()
     .append('text')
     .attr('class', 'grid-label')
