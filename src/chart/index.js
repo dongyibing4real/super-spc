@@ -133,16 +133,9 @@ export function createChart(container, options = {}) {
         ? currentWidth - config.padding.left - config.padding.right
         : currentHeight - config.padding.top - config.padding.bottom;
 
-      // Data bounds for clamping
-      const dataBounds = axisType === 'x'
-        ? { min: 0, max: currentData?.points?.length - 1 ?? startMax, bleed: 1 }
-        : { min: startMin - range * 2, max: startMax + range * 2, bleed: 0 };
-
-      // Clamping limits
-      const minRange = axisType === 'x' ? 2 : range * 0.05;       // x: min 3 points; y: 5% of original
-      const maxRange = axisType === 'x'
-        ? (dataBounds.max - dataBounds.min) * 1.1                   // x: all data + 10%
-        : range * 5;                                                 // y: 5x original
+      // Clamping — identical for both axes: generous range, no position walls
+      const minRange = range * 0.05;   // can zoom to 5% of original range
+      const maxRange = range * 5;      // can zoom out to 5x original range
 
       document.body.style.cursor = 'grabbing';
       hitElement.style('cursor', 'grabbing');
@@ -164,17 +157,10 @@ export function createChart(container, options = {}) {
         const center = (startMin + startMax) / 2 + panDelta;
         let halfRange = range / 2 * scaleFactor;
 
-        // Clamp range
+        // Clamp range only — no position walls, free pan like y-axis
         halfRange = Math.max(minRange / 2, Math.min(maxRange / 2, halfRange));
-
-        // Clamp position (don't pan beyond data bounds)
-        let lo = center - halfRange;
-        let hi = center + halfRange;
-        const b = dataBounds.bleed;
-        if (axisType === 'x') {
-          if (lo < dataBounds.min - b) { lo = dataBounds.min - b; hi = lo + halfRange * 2; }
-          if (hi > dataBounds.max + b) { hi = dataBounds.max + b; lo = hi - halfRange * 2; }
-        }
+        const lo = center - halfRange;
+        const hi = center + halfRange;
 
         // Emit unified event
         if (axisType === 'x') {
