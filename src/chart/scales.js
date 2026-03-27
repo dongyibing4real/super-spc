@@ -51,7 +51,8 @@ function computeYTicks(yMin, yMax, targetCount = 6) {
 
   // If we got too few ticks, try the next smaller nice step.
   // This handles narrow ranges where the nice step overshoots.
-  if (ticks.length < Math.max(2, Math.floor(targetCount / 2))) {
+  // Threshold: want at least 3 ticks, or half the target — whichever is larger.
+  if (ticks.length < Math.max(3, Math.ceil(targetCount / 2))) {
     const smallerStep = niceStep / 2;
     ticks = generateTicks(yMin, yMax, smallerStep);
   }
@@ -89,9 +90,10 @@ export function createScales(data, config, seriesKey = 'primaryValue') {
   const { yMin, yMax } = config.yDomainOverride ?? computeYRange(data, seriesKey);
 
   // Always recompute nice ticks for the CURRENT domain (including after pan/scale).
-  // Target tick count adapts to available pixel height (Highcharts-style tickPixelInterval).
+  // Target tick count adapts to available pixel height — same tickPixelInterval
+  // philosophy as the x-axis (Highcharts-style), adapted for compact SPC charts.
   const plotHeight = height - padding.top - padding.bottom;
-  const tickPixelInterval = 50; // minimum px between y-axis ticks
+  const tickPixelInterval = 35; // minimum px between y-axis ticks (compact analytical charts)
   const targetTickCount = Math.max(3, Math.min(12, Math.floor(plotHeight / tickPixelInterval) + 1));
   const yTicks = computeYTicks(yMin, yMax, targetTickCount);
 

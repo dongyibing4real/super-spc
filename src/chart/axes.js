@@ -21,20 +21,17 @@ function niceStride(raw) {
 /**
  * Render X-axis baseline and lot labels.
  *
- * AXIS LABEL SYSTEM (inspired by Highcharts tickPixelInterval + D3-FC collision adapters):
- * ──────────────────────────────────────────────────────────────────────────────────────────
- * 1. Compute available pixel space per data point from the CURRENT domain (not static count).
- * 2. Derive stride from tickPixelInterval — minimum px between label centers.
- *    This auto-adapts as the user pans/scales the x-axis.
- * 3. Measure-first collision avoidance: estimate label width from character count,
- *    then decide rotation (0° → -45° → -90°) and font-size reduction.
- * 4. Selected-point label always wins — suppress any stride label within collision distance.
- * 5. Labels that fall outside the plot area (after pan) are clipped.
+ * ALGORITHM (rotation-aware, same philosophy as y-axis nice ticks):
+ * ─────────────────────────────────────────────────────────────────
+ * 1. Compute pointSpacing from current domain (adapts to pan/scale)
+ * 2. Estimate label dimensions from character count + font size
+ * 3. Determine rotation FIRST from raw density vs label width
+ * 4. Compute effective horizontal footprint for that rotation
+ * 5. Derive stride from footprint / pointSpacing → snap to nice stride
+ * 6. Render with selected-point collision suppression
  *
- * Sources:
- *   Highcharts tickPixelInterval: https://www.highcharts.com/docs/chart-concepts/axes
- *   D3-FC label adapters: https://github.com/d3fc/d3fc/tree/master/packages/d3fc-axis
- *   Talbot/Lin/Hanrahan "nice numbers": http://vis.stanford.edu/files/2010-TickLabels-InfoVis.pdf
+ * The stride is responsive to label dimensions AND rotation state,
+ * so labels never overlap at any zoom level.
  */
 export function renderAxes(layer, scales, data, config) {
   const { x } = scales;
@@ -43,42 +40,47 @@ export function renderAxes(layer, scales, data, config) {
   const B = config.height - config.padding.bottom;
   const plotWidth = R - L;
 
-  // ── 1. Determine visible range from the x scale domain ─────────────
+  // ── 1. Visible range from current domain ──────────────────────────
   const [domainMin, domainMax] = x.domain();
   const visibleMin = Math.max(0, Math.floor(domainMin));
   const visibleMax = Math.min(data.points.length - 1, Math.ceil(domainMax));
   const visibleCount = visibleMax - visibleMin + 1;
-
-  // ── 2. Pixel-based tick density (Highcharts-style tickPixelInterval) ─
-  //    Same philosophy as y-axis "nice numbers" but for categorical data:
-  //    y-axis picks nice VALUE steps (1, 2, 5, 10, 20, 50...)
-  //    x-axis picks nice INDEX strides (1, 2, 5, 10, 20, 50...)
-  //    Both derive from available pixels / minimum gap.
   const pointSpacing = visibleCount > 1 ? plotWidth / (domainMax - domainMin) : plotWidth;
-  const TICK_PIXEL_INTERVAL = 42; // minimum px between label centers
 
-  // Raw stride from pixel density
-  const rawStride = TICK_PIXEL_INTERVAL / pointSpacing;
+  // ── 2. Estimate label dimensions ──────────────────────────────────
+  const sampleLabel = data.points[visibleMin]?.lot?.replace('LOT-', '') ?? '';
+  const CHAR_WIDTH = 6.5;  // px per char at 10px IBM Plex Mono
+  const CHAR_WIDTH_SM = 5;  // px per char at 8px
+  const labelWidth = sampleLabel.length * CHAR_WIDTH;
 
-  // "Nice stride" — categorical equivalent of nice numbers (1, 2, 5 × 10^n)
-  // Just as the y-axis snaps to round values like 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10...
-  // the x-axis snaps to round sampling intervals: every 1, 2, 5, 10, 20, 50... points
+  // ── 3. Determine rotation from RAW density (before stride) ────────
+  //    If labels at stride=1 would overlap, rotation is needed
+  const rotate45 = pointSpacing < labelWidth * 0.8;
+  const rotate90 = pointSpacing < labelWidth * 0.2;
+  const smallFont = rotate45 && pointSpacing < labelWidth * 0.35;
+  const fontSize = smallFont ? 8 : 10;
+  const effectiveCharW = smallFont ? CHAR_WIDTH_SM : CHAR_WIDTH;
+
+  // ── 4. Effective horizontal footprint per label ───────────────────
+  //    Conservative estimates that guarantee no visual overlap AND readability.
+  //    The floor (MIN_LABEL_GAP) ensures labels never get denser than the y-axis
+  //    tick interval — same philosophy, both axes respect the same density bound.
+  const MIN_LABEL_GAP = 24; // px — readability floor, analogous to y-axis tickPixelInterval
+  let footprint;
+  if (rotate90) {
+    footprint = fontSize * 2 + 4; // vertical text needs breathing room
+  } else if (rotate45) {
+    footprint = sampleLabel.length * effectiveCharW * 0.75 + 6;
+  } else {
+    footprint = sampleLabel.length * effectiveCharW + 12;
+  }
+  footprint = Math.max(footprint, MIN_LABEL_GAP);
+
+  // ── 5. Compute stride from footprint ──────────────────────────────
+  const rawStride = footprint / pointSpacing;
   const stride = niceStride(rawStride);
 
-  // ── 3. Measure-first collision detection ───────────────────────────
-  //    Estimate label width from typical lot label character count
-  //    then decide rotation angle and font size
-  const sampleLabel = data.points[visibleMin]?.lot?.replace('LOT-', '') ?? '';
-  const charWidth = 6.5; // approximate px per character at 10px IBM Plex Mono
-  const estLabelWidth = sampleLabel.length * charWidth;
-  const spaceBetween = pointSpacing * stride;
-
-  // Rotation tiers: upright → 45° → 90° (only if extremely tight)
-  const rotate45 = spaceBetween < estLabelWidth * 1.0;
-  const rotate90 = spaceBetween < estLabelWidth * 0.35;
-  const smallFont = rotate45 && spaceBetween < estLabelWidth * 0.5;
-
-  // ── 4. Clear and render ────────────────────────────────────────────
+  // ── 6. Clear and render ───────────────────────────────────────────
   layer.selectAll('*').remove();
 
   // X-axis baseline
@@ -88,15 +90,11 @@ export function renderAxes(layer, scales, data, config) {
     .attr('stroke', 'var(--chart-grid)')
     .attr('stroke-width', 0.5);
 
-  // ── 5. Render labels with collision avoidance ──────────────────────
+  // ── 7. Labels with collision avoidance ────────────────────────────
   const selectedX = data.selectedIndex != null ? x(data.selectedIndex) : null;
-  const fontSize = smallFont ? 8 : 10;
-  const effectiveLabelWidth = sampleLabel.length * (smallFont ? 5 : charWidth);
-
-  // Collision radius: how close (px) a stride label can be to the selected label
   const collisionRadius = rotate45
-    ? effectiveLabelWidth * 0.6  // rotated labels are narrower horizontally
-    : effectiveLabelWidth * 1.1; // upright labels need more horizontal space
+    ? sampleLabel.length * effectiveCharW * 0.5
+    : sampleLabel.length * effectiveCharW * 0.9;
 
   for (let i = visibleMin; i <= visibleMax; i++) {
     const p = data.points[i];
@@ -113,16 +111,16 @@ export function renderAxes(layer, scales, data, config) {
     if (!isSelected && selectedX != null && Math.abs(x(i) - selectedX) < collisionRadius) continue;
 
     const px = x(i);
-    // Clip labels outside the plot area (with small bleed allowance)
+    // Clip labels outside the plot area (with small bleed)
     if (px < L - 8 || px > R + 8) continue;
 
     // Position
-    const yPos = B + (rotate45 ? 12 : 16);
+    const yPos = B + (rotate45 || rotate90 ? 12 : 16);
     const text = layer.append('text')
       .attr('class', 'x-axis-label')
       .attr('x', px)
       .attr('y', yPos)
-      .attr('text-anchor', rotate45 ? 'end' : 'middle')
+      .attr('text-anchor', rotate45 || rotate90 ? 'end' : 'middle')
       .style('font-size', `${fontSize}px`)
       .text(label);
 
