@@ -181,11 +181,6 @@ function renderHeader() {
           <span>${state.context.window}</span>
         </p>
       </div>
-      <div class="header-badges">
-        <span class="status-chip info"><span class="sdot"></span> ${state.context.metric.label} \u00b7 ${state.context.chartType.label}</span>
-        <span class="status-chip warning"><span class="sdot"></span> ${state.context.status}</span>
-        <span class="status-chip"><span class="sdot" style="background:var(--teal-bright)"></span> ${state.compare.primaryMethod}</span>
-      </div>
     </header>
   `;
 }
