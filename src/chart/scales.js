@@ -65,7 +65,13 @@ export function createScales(data, config, seriesKey = 'primaryValue') {
 
   // Y domain: default is auto-computed from data, overridable by axis drag
   const { yMin, yMax } = config.yDomainOverride ?? computeYRange(data, seriesKey);
-  const yTicks = computeYTicks(yMin, yMax);
+
+  // Always recompute nice ticks for the CURRENT domain (including after pan/scale).
+  // Target tick count adapts to available pixel height (Highcharts-style tickPixelInterval).
+  const plotHeight = height - padding.top - padding.bottom;
+  const tickPixelInterval = 50; // minimum px between y-axis ticks
+  const targetTickCount = Math.max(3, Math.min(12, Math.floor(plotHeight / tickPixelInterval) + 1));
+  const yTicks = computeYTicks(yMin, yMax, targetTickCount);
 
   const x = scaleLinear()
     .domain([xMin, xMax])

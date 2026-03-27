@@ -121,18 +121,37 @@ export function createChart(container, options = {}) {
     document.body.style.cursor = 'grabbing';
     xAxisHit.style('cursor', 'grabbing');
 
+    // Data bounds for clamping (prevent dragging beyond all data)
+    const nPoints = currentScales.xMax !== undefined
+      ? Math.max(startXMax, currentData?.points?.length - 1 ?? startXMax)
+      : startXMax;
+    const dataMin = 0;
+    const dataMax = nPoints;
+
     const onMove = (e) => {
       const dx = e.clientX - startClientX;
       const dy = e.clientY - startClientY;
 
       // Pan: drag left/right moves the visible window
       // Scale: drag up/down zooms (up = zoom in, down = zoom out)
-      const panDelta = -dx * (xRange / pixelRange); // invert: drag right = see later data
-      const scaleFactor = Math.max(0.1, 1 + dy * 0.005); // drag down = zoom out
+      const panDelta = -dx * (xRange / pixelRange);
+      const scaleFactor = Math.max(0.1, 1 + dy * 0.005);
 
       const center = (startXMin + startXMax) / 2 + panDelta;
-      const halfRange = xRange / 2 * scaleFactor;
-      config.onAxisDrag?.({ axis: 'x', min: center - halfRange, max: center + halfRange });
+      let halfRange = xRange / 2 * scaleFactor;
+
+      // Clamp: minimum 3 points visible, maximum = all data + 10% margin
+      const minRange = 2;
+      const maxRange = (dataMax - dataMin) * 1.1;
+      halfRange = Math.max(minRange / 2, Math.min(maxRange / 2, halfRange));
+
+      // Clamp: don't pan beyond data bounds (allow 1 point bleed)
+      let lo = center - halfRange;
+      let hi = center + halfRange;
+      if (lo < dataMin - 1) { lo = dataMin - 1; hi = lo + halfRange * 2; }
+      if (hi > dataMax + 1) { hi = dataMax + 1; lo = hi - halfRange * 2; }
+
+      config.onAxisDrag?.({ axis: 'x', min: lo, max: hi });
     };
     const onUp = () => {
       document.body.style.cursor = '';
@@ -167,12 +186,18 @@ export function createChart(container, options = {}) {
       const dy = e.clientY - startClientY;
 
       // Pan: drag up/down moves the visible range (inverted: SVG y increases downward)
-      const panDelta = dy * (yRange / pixelRange); // drag up = see higher values
+      const panDelta = dy * (yRange / pixelRange);
       // Scale: drag left/right zooms (right = zoom in, left = zoom out)
-      const scaleFactor = Math.max(0.1, 1 - dx * 0.005); // drag right = zoom in
+      const scaleFactor = Math.max(0.1, 1 - dx * 0.005);
 
       const center = (startYMin + startYMax) / 2 + panDelta;
-      const halfRange = yRange / 2 * scaleFactor;
+      let halfRange = yRange / 2 * scaleFactor;
+
+      // Clamp: minimum range prevents collapsing to zero, max prevents 10x zoom out
+      const minYRange = yRange * 0.05; // 5% of original range
+      const maxYRange = yRange * 5;    // 5x of original range
+      halfRange = Math.max(minYRange / 2, Math.min(maxYRange / 2, halfRange));
+
       config.onAxisDrag?.({ axis: 'y', yMin: center - halfRange, yMax: center + halfRange });
     };
     const onUp = () => {
@@ -189,8 +214,9 @@ export function createChart(container, options = {}) {
   xAxisHit.on('dblclick', () => config.onAxisReset?.('x'));
   yAxisHit.on('dblclick', () => config.onAxisReset?.('y'));
 
-  // Track last data for re-rendering on resize
+  // Track last data for re-rendering on resize and axis drag clamping
   let lastData = null;
+  let currentData = null;
 
   // ResizeObserver — re-render when container size changes
   const resizeObserver = new ResizeObserver((entries) => {
@@ -212,6 +238,7 @@ export function createChart(container, options = {}) {
    * Internal render — paints all layers with current dimensions.
    */
   function renderAll(data) {
+    currentData = data; // store for axis drag clamping
     if (currentWidth < 10 || currentHeight < 10) return; // Skip if too small
     const seriesKey = data.seriesKey || 'primaryValue';
     const seriesType = data.seriesType || 'primary';
