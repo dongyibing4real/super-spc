@@ -49,12 +49,12 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
         .attr('stroke', ooc ? 'rgba(205,66,70,0.6)' : 'rgba(200,118,25,0.6)');
     }
 
-    // Main data point circle
-    const pointClass = seriesType === 'challenger' ? 'chart-point challenger-point' : 'chart-point';
-    const r = i === selectedIndex ? 6 : ooc ? 5 : 4;
+    // Invisible hit circle — expands click target to 16px diameter
     g.append('circle')
-      .attr('class', `${pointClass}${ooc ? ' ooc' : ''}`)
-      .attr('cx', cx).attr('cy', cy).attr('r', r)
+      .attr('class', 'point-hit')
+      .attr('cx', cx).attr('cy', cy).attr('r', 8)
+      .attr('fill', 'transparent')
+      .style('cursor', 'pointer')
       .attr('tabindex', 0)
       .attr('role', 'button')
       .attr('aria-label', `${d.lot}, ${fmt(val)} ${data.metric.unit}${hasViolation ? `, rules: ${rules.join(',')}` : ''}`)
@@ -62,6 +62,14 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
         event.stopPropagation();
         if (config.onSelectPoint) config.onSelectPoint(i);
       });
+
+    // Main data point circle (visual only — hit target is the invisible circle above)
+    const pointClass = seriesType === 'challenger' ? 'chart-point challenger-point' : 'chart-point';
+    const r = i === selectedIndex ? 6 : ooc ? 5 : 4;
+    g.append('circle')
+      .attr('class', `${pointClass}${ooc ? ' ooc' : ''}`)
+      .attr('cx', cx).attr('cy', cy).attr('r', r)
+      .style('pointer-events', 'none');
   });
 
   groups.exit().remove();
