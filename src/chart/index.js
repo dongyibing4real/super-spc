@@ -15,7 +15,7 @@ import { DEFAULT_CONFIG } from './config.js';
  * Create a D3-powered SPC control chart that auto-sizes to its container.
  *
  * @param {HTMLElement} container - DOM element to mount the SVG into
- * @param {object} options - Config overrides + callbacks (onSelectPoint, onContextMenu)
+ * @param {object} options - Config overrides + callbacks (onSelectPoint, onContextMenu, onAxisDrag, onAxisReset)
  * @returns {{ update: Function, destroy: Function, svg: Selection }}
  */
 export function createChart(container, options = {}) {
@@ -29,6 +29,10 @@ export function createChart(container, options = {}) {
   let currentWidth = 0;
   let currentHeight = 0;
 
+  // Track current scales and config for axis drag computations
+  let currentScales = null;
+  let currentSizedConfig = null;
+
   const svg = select(container)
     .append('svg')
     .attr('preserveAspectRatio', 'none')
@@ -38,32 +42,149 @@ export function createChart(container, options = {}) {
     .style('height', '100%')
     .style('display', 'block');
 
+  // ── Clip path: constrains all plot content to the inner plot area ──
+  const clipId = `plot-clip-${Math.random().toString(36).slice(2, 8)}`;
+  const defs = svg.append('defs');
+  const clipRect = defs.append('clipPath').attr('id', clipId)
+    .append('rect');
+
+  // Plot content group — everything inside gets clipped to the plot area
+  const plotClip = svg.append('g').attr('clip-path', `url(#${clipId})`);
+
   // Create layer groups in correct z-order (back to front)
+  // Clipped layers go inside plotClip; axis labels stay outside
   const layers = {
-    zones: svg.append('g').attr('class', 'layer-zones'),
-    confidenceBand: svg.append('g').attr('class', 'layer-confidence'),
-    grid: svg.append('g').attr('class', 'layer-grid'),
-    phases: svg.append('g').attr('class', 'layer-phases'),
-    limits: svg.append('g').attr('class', 'layer-limits'),
-    challenger: svg.append('g').attr('class', 'layer-challenger'),
-    primary: svg.append('g').attr('class', 'layer-primary'),
-    events: svg.append('g').attr('class', 'layer-events'),
-    points: svg.append('g').attr('class', 'layer-points'),
-    xAxis: svg.append('g').attr('class', 'layer-x-axis'),
-    selection: svg.append('g').attr('class', 'layer-selection'),
+    zones: plotClip.append('g').attr('class', 'layer-zones'),
+    confidenceBand: plotClip.append('g').attr('class', 'layer-confidence'),
+    grid: plotClip.append('g').attr('class', 'layer-grid'),
+    phases: plotClip.append('g').attr('class', 'layer-phases'),
+    limits: plotClip.append('g').attr('class', 'layer-limits'),
+    challenger: plotClip.append('g').attr('class', 'layer-challenger'),
+    primary: plotClip.append('g').attr('class', 'layer-primary'),
+    events: plotClip.append('g').attr('class', 'layer-events'),
+    points: plotClip.append('g').attr('class', 'layer-points'),
+    xAxis: svg.append('g').attr('class', 'layer-x-axis'),       // outside clip — labels visible
+    selection: plotClip.append('g').attr('class', 'layer-selection'),
   };
 
-  // Context menu handler on the SVG
+  // ── Axis hit regions (invisible rects for drag + right-click) ──────
+  const xAxisHit = svg.append('rect')
+    .attr('class', 'axis-hit axis-hit-x')
+    .attr('fill', 'transparent')
+    .style('cursor', 'grab');
+
+  const yAxisHit = svg.append('rect')
+    .attr('class', 'axis-hit axis-hit-y')
+    .attr('fill', 'transparent')
+    .style('cursor', 'grab');
+
+  /** Detect which axis region a click falls in based on padding */
+  function hitTestAxis(localX, localY) {
+    if (!currentSizedConfig) return null;
+    const p = currentSizedConfig.padding;
+    const w = currentWidth;
+    const h = currentHeight;
+    if (localY > h - p.bottom) return 'x';
+    if (localX < p.left) return 'y';
+    return null;
+  }
+
+  // ── Context menu: route to axis or point menu ──────────────────────
   svg.on('contextmenu', (event) => {
     event.preventDefault();
-    if (config.onContextMenu) {
-      const rect = container.getBoundingClientRect();
-      config.onContextMenu(
-        event.clientX - rect.left,
-        event.clientY - rect.top
-      );
-    }
+    if (!config.onContextMenu) return;
+    const rect = container.getBoundingClientRect();
+    const localX = event.clientX - rect.left;
+    const localY = event.clientY - rect.top;
+    const axis = hitTestAxis(localX, localY);
+    config.onContextMenu(localX, localY, { axis });
   });
+
+  // ── X-axis drag: JMP-style ──────────────────────────────────────────
+  //   drag along axis (left/right) → PAN x domain
+  //   drag perpendicular (up/down) → SCALE x domain
+  xAxisHit.on('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!currentScales) return;
+    const startClientX = event.clientX;
+    const startClientY = event.clientY;
+    const startXMin = currentScales.xMin;
+    const startXMax = currentScales.xMax;
+    const xRange = startXMax - startXMin;
+    const pixelRange = currentWidth - config.padding.left - config.padding.right;
+
+    document.body.style.cursor = 'grabbing';
+    xAxisHit.style('cursor', 'grabbing');
+
+    const onMove = (e) => {
+      const dx = e.clientX - startClientX;
+      const dy = e.clientY - startClientY;
+
+      // Pan: drag left/right moves the visible window
+      // Scale: drag up/down zooms (up = zoom in, down = zoom out)
+      const panDelta = -dx * (xRange / pixelRange); // invert: drag right = see later data
+      const scaleFactor = Math.max(0.1, 1 + dy * 0.005); // drag down = zoom out
+
+      const center = (startXMin + startXMax) / 2 + panDelta;
+      const halfRange = xRange / 2 * scaleFactor;
+      config.onAxisDrag?.({ axis: 'x', min: center - halfRange, max: center + halfRange });
+    };
+    const onUp = () => {
+      document.body.style.cursor = '';
+      xAxisHit.style('cursor', 'grab');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+
+  // ── Y-axis drag: JMP-style ──────────────────────────────────────────
+  //   drag along axis (up/down) → PAN y domain
+  //   drag perpendicular (left/right) → SCALE y domain
+  yAxisHit.on('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!currentScales) return;
+    const startClientX = event.clientX;
+    const startClientY = event.clientY;
+    const startYMin = currentScales.yMin;
+    const startYMax = currentScales.yMax;
+    const yRange = startYMax - startYMin;
+    const pixelRange = currentHeight - config.padding.top - config.padding.bottom;
+
+    document.body.style.cursor = 'grabbing';
+    yAxisHit.style('cursor', 'grabbing');
+
+    const onMove = (e) => {
+      const dx = e.clientX - startClientX;
+      const dy = e.clientY - startClientY;
+
+      // Pan: drag up/down moves the visible range (inverted: SVG y increases downward)
+      const panDelta = dy * (yRange / pixelRange); // drag up = see higher values
+      // Scale: drag left/right zooms (right = zoom in, left = zoom out)
+      const scaleFactor = Math.max(0.1, 1 - dx * 0.005); // drag right = zoom in
+
+      const center = (startYMin + startYMax) / 2 + panDelta;
+      const halfRange = yRange / 2 * scaleFactor;
+      config.onAxisDrag?.({ axis: 'y', yMin: center - halfRange, yMax: center + halfRange });
+    };
+    const onUp = () => {
+      document.body.style.cursor = '';
+      yAxisHit.style('cursor', 'grab');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+
+  // ── Double-click to reset ──────────────────────────────────────────
+  xAxisHit.on('dblclick', () => config.onAxisReset?.('x'));
+  yAxisHit.on('dblclick', () => config.onAxisReset?.('y'));
 
   // Track last data for re-rendering on resize
   let lastData = null;
@@ -91,8 +212,16 @@ export function createChart(container, options = {}) {
     if (currentWidth < 10 || currentHeight < 10) return; // Skip if too small
     const seriesKey = data.seriesKey || 'primaryValue';
     const seriesType = data.seriesType || 'primary';
-    const sizedConfig = { ...config, width: currentWidth, height: currentHeight };
+    const sizedConfig = {
+      ...config,
+      width: currentWidth,
+      height: currentHeight,
+      xDomainOverride: data.toggles.xDomainOverride ?? null,
+      yDomainOverride: data.toggles.yDomainOverride ?? null,
+    };
+    currentSizedConfig = sizedConfig;
     const scales = createScales(data, sizedConfig, seriesKey);
+    currentScales = scales;
 
     // Zone shading
     if (data.toggles.specLimits) renderZones(layers.zones, scales, data, sizedConfig);
@@ -135,6 +264,27 @@ export function createChart(container, options = {}) {
 
     // Selection halo (using configurable seriesKey)
     renderSelection(layers.selection, scales, data, seriesKey);
+
+    // ── Update clip rect to match plot area ────────────────────────
+    const p = sizedConfig.padding;
+    clipRect
+      .attr('x', p.left)
+      .attr('y', p.top)
+      .attr('width', Math.max(0, currentWidth - p.left - p.right))
+      .attr('height', Math.max(0, currentHeight - p.top - p.bottom));
+
+    // ── Position axis hit regions ──────────────────────────────────
+    xAxisHit
+      .attr('x', p.left)
+      .attr('y', currentHeight - p.bottom)
+      .attr('width', currentWidth - p.left - p.right)
+      .attr('height', p.bottom);
+
+    yAxisHit
+      .attr('x', 0)
+      .attr('y', p.top)
+      .attr('width', p.left)
+      .attr('height', currentHeight - p.top - p.bottom);
   }
 
   /** Sync viewBox to current container size */

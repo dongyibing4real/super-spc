@@ -203,7 +203,9 @@ export function createInitialState() {
       phaseTags: true,
       events: true,
       excludedMarkers: true,
-      confidenceBand: true
+      confidenceBand: true,
+      xDomainOverride: null,  // { min, max } fractional indices when user has panned/scaled x-axis
+      yDomainOverride: null,  // { yMin, yMax } when user has panned/scaled y-axis
     },
     chartLayout: {
       arrangement: "horizontal",   // "horizontal" | "vertical" | "single" | "primary-wide" | "primary-tall"
@@ -507,9 +509,9 @@ export function clearNotice(state) {
   return next;
 }
 
-export function openContextMenu(state, x, y) {
+export function openContextMenu(state, x, y, axisInfo) {
   const next = cloneState(state);
-  next.ui.contextMenu = { x, y };
+  next.ui.contextMenu = { x, y, axis: axisInfo?.axis ?? null };
   return next;
 }
 
@@ -526,5 +528,27 @@ export function setChartLayout(state, arrangement, primaryPosition, splitRatio) 
     primaryPosition,
     splitRatio: splitRatio != null ? splitRatio : (arrangement.includes("wide") || arrangement.includes("tall") ? 0.67 : 0.5),
   };
+  return next;
+}
+
+export function setXDomainOverride(state, min, max) {
+  const next = cloneState(state);
+  next.chartToggles.xDomainOverride = { min, max };
+  return next;
+}
+
+export function setYDomainOverride(state, yMin, yMax) {
+  const next = cloneState(state);
+  next.chartToggles.yDomainOverride = { yMin, yMax };
+  return next;
+}
+
+export function resetAxis(state, axis) {
+  const next = cloneState(state);
+  if (axis === 'x') {
+    next.chartToggles.xDomainOverride = null;
+  } else if (axis === 'y') {
+    next.chartToggles.yDomainOverride = null;
+  }
   return next;
 }

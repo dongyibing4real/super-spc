@@ -23,11 +23,11 @@ export function renderLimits(layer, scales, data, config) {
 
   // Main limit lines
   const mainLines = [
-    { y: yUCL, cls: 'limit-line critical', dash: '6 4' },
+    { y: yUCL, cls: 'limit-line critical', dash: null },
     { y: yCL, cls: 'limit-line center', dash: null },
-    { y: yLCL, cls: 'limit-line critical', dash: '6 4' },
-    { y: yUSL, cls: 'limit-line spec', dash: '3 5', color: 'rgba(139,92,246,0.3)' },
-    { y: yLSL, cls: 'limit-line spec', dash: '3 5', color: 'rgba(139,92,246,0.3)' },
+    { y: yLCL, cls: 'limit-line critical', dash: null },
+    { y: yUSL, cls: 'limit-line spec', dash: '4 6', color: 'rgba(139,92,246,0.35)' },
+    { y: yLSL, cls: 'limit-line spec', dash: '4 6', color: 'rgba(139,92,246,0.35)' },
   ];
 
   mainLines.forEach(d => {
@@ -52,8 +52,7 @@ export function renderLimits(layer, scales, data, config) {
       .attr('x1', L).attr('x2', R)
       .attr('y1', d.y).attr('y2', d.y)
       .attr('stroke', d.color)
-      .attr('stroke-width', 0.5)
-      .attr('stroke-dasharray', '3 4');
+      .attr('stroke-width', 0.5);
   });
 
   // Edge label pill backgrounds

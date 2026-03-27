@@ -3,7 +3,7 @@
  *  Y-range is computed from data (limits + headroom).
  */
 export const DEFAULT_CONFIG = {
-  padding: { top: 28, right: 52, bottom: 48, left: 52 },
+  padding: { top: 16, right: 32, bottom: 32, left: 40 },
 
   // Callbacks (set by app)
   onSelectPoint: null,

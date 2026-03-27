@@ -108,13 +108,15 @@ These colors are reserved for statistical chart elements and must not be used fo
 | Primary series points | `--blue` (#2D72D2) | 4px circles, white stroke |
 | Challenger/overlay line | `--teal-bright` (#32A467) | 1px dashed |
 | OOC points | `--red` (#CD4246) | Enlarged, filled red |
-| Center line (CL) | `--green` (#238551) | 1px solid, 0.7 opacity |
-| UCL/LCL lines | `--red` (#CD4246) | 1px dashed, 0.5 opacity |
-| Spec limits (USL/LSL) | `--purple` (#8B5CF6) | 1px dashed, 0.3 opacity |
+| Center line (CL) | `--green` (#238551) | 1.5px solid, 0.85 opacity (dominant anchor) |
+| UCL/LCL lines | `--red` (#CD4246) | 1.5px solid, 0.75 opacity (primary control limits — solid, not dashed) |
+| Spec limits (USL/LSL) | `--purple` (#8B5CF6) | 1px dashed `4 6`, 0.35 opacity (reference only) |
+| Sigma ref lines (±1σ, ±2σ) | contextual green/amber | 0.5px solid hairline, 0.15 opacity (no dash — background reference) |
 | Zone A fill (2σ–3σ) | `rgba(205,66,70,0.06)` | Subtle red tint |
 | Zone B fill (1σ–2σ) | `rgba(200,118,25,0.04)` | Subtle amber tint |
 | Zone C fill (0–1σ) | `rgba(35,133,81,0.04)` | Subtle green tint |
-| Phase boundary | `--gold` (#D1980B) | 1px dashed, 0.4 opacity |
+| Phase boundary | `--gold` (#D1980B) | 1px dashed `4 6`, 0.25 opacity (reduced from 0.4 — phase markers recede behind data) |
+| Confidence band | `--blue` (#2D72D2) | fill opacity 0.10 (was 0.04 — now actually visible) |
 | Event annotation | `#8B5CF6` | Chip with subtle background |
 | Excluded point | Primary color at 25% opacity | X-mark overlay in `--amber` |
 | Rule violation marker | `--red` ring or `--amber` ring | 2px ring around violated point |
@@ -287,7 +289,7 @@ The method comparison is the intellectual heart of SPC — it must be explicit, 
 ### JMP-Inspired Principles
 1. **Control panel alongside chart** — configuration is always visible and editable, not hidden behind menus
 2. **Right-click context** — chart points, phases, and limits all support contextual menus
-3. **Direct manipulation** — click points to inspect, drag to select ranges, toggle layers inline
+3. **Direct manipulation** — click points to inspect, drag axes to adjust, toggle layers inline
 4. **Inspector pattern** — selecting a parameter opens a focused inline editor, not a full-page modal
 
 ### Palantir-Inspired Principles
@@ -295,6 +297,15 @@ The method comparison is the intellectual heart of SPC — it must be explicit, 
 2. **Flat hierarchy** — surfaces are differentiated by background-color steps and borders, not elevation
 3. **Dense by default** — show more information in less space; trust the user's expertise
 4. **Keyboard-accessible** — every critical action has a keyboard shortcut
+
+### Axis Interaction (JMP-style)
+- **Right-click x-axis** → context menu: Auto / Sparse / Dense density presets + Reset axis
+- **Right-click y-axis** → context menu: Reset axis
+- **Drag x-axis left/right** → continuous label density adjustment (ew-resize cursor)
+- **Drag y-axis up/down** → scale y-range around center (ns-resize cursor). Drag up = zoom in, drag down = zoom out
+- **Double-click any axis** → reset to auto-computed range/density
+- **Tick collision avoidance** — when a point is selected, its x-axis label is always shown; nearby stride-based labels are suppressed to prevent overlap
+- Axis controls live on the axes themselves, not in the recipe rail. The axis is the affordance.
 
 ### Rules
 - Default to reveal, not hide. Signals, exclusions, lineage, and method deltas should remain visible by default.

@@ -9,8 +9,11 @@ import {
   failTransformStep,
   generateReportDraft,
   recoverTransformStep,
+  resetAxis,
   selectPoint,
   setChallengerStatus,
+  setXDomainOverride,
+  setYDomainOverride,
   togglePointExclusion
 } from "../src/core/state.js";
 
@@ -67,4 +70,44 @@ test("report export succeeds after recovery and challenger completion", () => {
   assert.equal(draftState.reportDraft.partial, false);
   assert.equal(exported.reportExport.status, "exported");
   assert.match(exported.reportExport.lastArtifactId, /artifact-/);
+});
+
+// ── Axis interaction state tests ──────────────────────────────────
+
+test("setXDomainOverride stores custom x-axis range", () => {
+  const initial = createInitialState();
+  const next = setXDomainOverride(initial, 5, 20);
+
+  assert.deepEqual(next.chartToggles.xDomainOverride, { min: 5, max: 20 });
+});
+
+test("setYDomainOverride stores custom y-axis range", () => {
+  const initial = createInitialState();
+  const next = setYDomainOverride(initial, 10, 50);
+
+  assert.deepEqual(next.chartToggles.yDomainOverride, { yMin: 10, yMax: 50 });
+});
+
+test("resetAxis('x') clears xDomainOverride", () => {
+  const initial = createInitialState();
+  const panned = setXDomainOverride(initial, 3, 15);
+  const reset = resetAxis(panned, "x");
+
+  assert.equal(reset.chartToggles.xDomainOverride, null);
+});
+
+test("resetAxis('y') clears yDomainOverride", () => {
+  const initial = createInitialState();
+  const scaled = setYDomainOverride(initial, 5, 100);
+  const reset = resetAxis(scaled, "y");
+
+  assert.equal(reset.chartToggles.yDomainOverride, null);
+});
+
+test("setXDomainOverride does not mutate original state", () => {
+  const initial = createInitialState();
+  const next = setXDomainOverride(initial, 2, 18);
+
+  assert.equal(initial.chartToggles.xDomainOverride, null);
+  assert.notEqual(initial, next);
 });

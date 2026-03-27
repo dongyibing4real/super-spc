@@ -52,5 +52,5 @@ export function renderConfidenceBand(layer, scales, config, data) {
     .attr('y', y(hi))
     .attr('width', R - L)
     .attr('height', y(lo) - y(hi))
-    .attr('fill', 'rgba(45,114,210,0.04)');
+    .attr('fill', 'rgba(45,114,210,0.10)');
 }

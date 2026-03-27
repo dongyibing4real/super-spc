@@ -13,8 +13,11 @@ import {
   recoverTransformStep,
   selectFinding,
   selectPoint,
+  resetAxis,
   setChartLayout,
   setChallengerStatus,
+  setXDomainOverride,
+  setYDomainOverride,
   toggleChartOption,
   togglePointExclusion,
   toggleReportFailureMode,
@@ -247,9 +250,20 @@ function renderContextMenu() {
   const sp = state.points[state.selectedPointIndex];
   return `
     <div class="context-menu" style="left:${x}px;top:${y}px;" role="menu">
-      <button data-action="exclude-point" data-index="${state.selectedPointIndex}" type="button">${sp?.excluded ? "Restore point" : "Exclude point"}</button>
-      <button data-action="create-finding" type="button">Create finding from selection</button>
-      <button data-action="navigate" data-route="methodlab" type="button">Open in Method Lab</button>
+      <button data-action="exclude-point" data-index="${state.selectedPointIndex}" role="menuitem" type="button">${sp?.excluded ? "Restore point" : "Exclude point"}</button>
+      <button data-action="create-finding" role="menuitem" type="button">Create finding from selection</button>
+      <button data-action="navigate" data-route="methodlab" role="menuitem" type="button">Open in Method Lab</button>
+    </div>
+  `;
+}
+
+function renderAxisContextMenu() {
+  const { x, y, axis } = state.ui.contextMenu;
+  const label = axis === 'x' ? 'X-Axis' : 'Y-Axis';
+  return `
+    <div class="context-menu axis-context-menu" style="left:${x}px;top:${y}px;" role="menu">
+      <div class="context-menu-header">${label}</div>
+      <button data-action="reset-axis" data-axis="${axis}" role="menuitem" type="button">Reset axis</button>
     </div>
   `;
 }
@@ -717,7 +731,16 @@ function render() {
         charts[role] = createChart(mount, {
           onSelectPoint: (index) => commitChart(selectPoint(state, index)),
           onContextMenu: role === "primary"
-            ? (x, y) => commit(openContextMenu(state, x, y))
+            ? (x, y, axisInfo) => commitContextMenu(openContextMenu(state, x, y, axisInfo))
+            : null,
+          onAxisDrag: role === "primary"
+            ? (info) => {
+                if (info.axis === 'x') commitChart(setXDomainOverride(state, info.min, info.max));
+                if (info.axis === 'y') commitChart(setYDomainOverride(state, info.yMin, info.yMax));
+              }
+            : null,
+          onAxisReset: role === "primary"
+            ? (axis) => commitChart(resetAxis(state, axis))
             : null,
         });
       }
@@ -889,24 +912,56 @@ function commitLayout(next) {
   });
 }
 
+/**
+ * Surgical context menu commit — injects or removes the context menu DOM node
+ * without touching innerHTML. No flash, no SVG detach/reattach.
+ *
+ *   open  → state.ui.contextMenu = { x, y }
+ *           injects renderContextMenu() HTML into #chart-mount-primary
+ *           focuses first menu item
+ *   close → state.ui.contextMenu = null
+ *           removes existing .context-menu node, returns focus to chart stage
+ */
+function commitContextMenu(next) {
+  state = next;
+  const stage = root.querySelector("#chart-mount-primary");
+  if (!stage) return;
+
+  // Remove any existing context menu
+  stage.querySelector(".context-menu")?.remove();
+
+  if (state.ui.contextMenu) {
+    const div = document.createElement("div");
+    div.innerHTML = state.ui.contextMenu.axis
+      ? renderAxisContextMenu()
+      : renderContextMenu();
+    stage.appendChild(div.firstElementChild);
+    // Focus first item for keyboard nav
+    stage.querySelector(".context-menu [role='menuitem']")?.focus();
+  } else {
+    // Return focus to the chart stage
+    stage.focus();
+  }
+}
+
 /* ═══════════════════════════════════════════════════
    EVENT HANDLERS
    ═══════════════════════════════════════════════════ */
 root.addEventListener("click", (e) => {
   const t = e.target.closest("[data-action]");
-  if (!t) { if (state.ui.contextMenu) commit(closeContextMenu(state)); return; }
+  if (!t) { if (state.ui.contextMenu) commitContextMenu(closeContextMenu(state)); return; }
   const a = t.dataset.action;
   switch (a) {
     case "navigate":           commit(navigate(state, t.dataset.route)); break;
     case "select-point":       commitChart(selectPoint(state, Number(t.dataset.index))); break;
     case "toggle-chart":       commitChart(toggleChartOption(state, t.dataset.option)); break;
-    case "exclude-point":      commitChart(togglePointExclusion(state, Number(t.dataset.index))); break;
+    case "exclude-point":      commitChart(togglePointExclusion(state, Number(t.dataset.index))); commitContextMenu(closeContextMenu(state)); break;
     case "toggle-transform":   commit(toggleTransform(state, t.dataset.stepId)); break;
     case "fail-transform":     commit(failTransformStep(state, t.dataset.stepId)); break;
     case "recover-transform":  commit(recoverTransformStep(state, t.dataset.stepId)); break;
     case "set-challenger-status": commit(setChallengerStatus(state, t.dataset.status)); break;
     case "select-finding":     commit(selectFinding(state, t.dataset.findingId)); break;
-    case "create-finding":     commit(createFindingFromSelection(state)); break;
+    case "create-finding":     commit(createFindingFromSelection(state)); commitContextMenu(closeContextMenu(state)); break;
     case "generate-report":    commit(generateReportDraft(state)); break;
     case "export-report":      commit(exportReport(state)); break;
     case "toggle-export-failure": commit(toggleReportFailureMode(state)); break;
@@ -917,17 +972,32 @@ root.addEventListener("click", (e) => {
       commitLayout(setChartLayout(state, arr, posMap[arr] || "left"));
       break;
     }
+    case "reset-axis": commitChart(resetAxis(state, t.dataset.axis)); commitContextMenu(closeContextMenu(state)); break;
   }
 });
 
 root.addEventListener("keydown", (e) => {
+  // Arrow key navigation within an open context menu
+  if (state.ui.contextMenu && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    e.preventDefault();
+    const menu = root.querySelector(".context-menu");
+    if (!menu) return;
+    const items = Array.from(menu.querySelectorAll("[role='menuitem']"));
+    const idx = items.indexOf(document.activeElement);
+    const next = e.key === "ArrowDown"
+      ? items[(idx + 1) % items.length]
+      : items[(idx - 1 + items.length) % items.length];
+    next?.focus();
+    return;
+  }
+
   const ch = e.target.closest("[data-chart-focus], [data-action='select-point']");
   if (!ch) return;
   if (e.key === "ArrowRight") { e.preventDefault(); commitChart(moveSelection(state, 1)); }
   if (e.key === "ArrowLeft") { e.preventDefault(); commitChart(moveSelection(state, -1)); }
   if (e.key === "Enter" && e.target.matches("[data-action='select-point']")) { e.preventDefault(); commitChart(selectPoint(state, Number(e.target.dataset.index))); }
-  if (e.key === "F10" && e.shiftKey) { e.preventDefault(); commit(openContextMenu(state, 400, 200)); }
-  if (e.key === "Escape" && state.ui.contextMenu) commit(closeContextMenu(state));
+  if (e.key === "F10" && e.shiftKey) { e.preventDefault(); commitContextMenu(openContextMenu(state, 400, 200)); }
+  if (e.key === "Escape" && state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
 });
 
 /* ═══ Drag-to-arrange chart panes ═══ */
@@ -1087,11 +1157,15 @@ root.addEventListener("pointerup", endDividerDrag);
 root.addEventListener("pointercancel", endDividerDrag);
 
 root.addEventListener("contextmenu", (e) => {
+  // SVG-level handler in chart/index.js handles right-clicks inside the chart SVG
+  // (including axis hit regions). This fallback catches right-clicks on .chart-stage
+  // elements outside the SVG (e.g. titlebar, readout bar).
+  if (e.defaultPrevented) return;
   const ch = e.target.closest(".chart-stage");
   if (!ch) return;
   e.preventDefault();
   const r = root.getBoundingClientRect();
-  commit(openContextMenu(state, e.clientX - r.left, e.clientY - r.top));
+  commitContextMenu(openContextMenu(state, e.clientX - r.left, e.clientY - r.top));
 });
 
 render();

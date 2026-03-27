@@ -48,23 +48,27 @@ function computeYTicks(yMin, yMax, targetCount = 6) {
 
 /**
  * Create D3 scales for the chart coordinate system.
- * Width and height come from the config (set dynamically by ResizeObserver).
- * Y-range is computed from the data automatically.
+ * Supports domain overrides for JMP-style axis pan/scale.
  *
  * @param {object} data - Chart data (points, limits)
- * @param {object} config - Chart config (width, height, padding)
+ * @param {object} config - Chart config (width, height, padding, xDomainOverride, yDomainOverride)
  * @param {string} [seriesKey='primaryValue'] - Which value key to use for y-range
- * @returns {{ x: Function, y: Function, sigma: object, yTicks: number[], yMin: number, yMax: number }}
+ * @returns {{ x: Function, y: Function, sigma: object, yTicks: number[], yMin: number, yMax: number, xMin: number, xMax: number }}
  */
 export function createScales(data, config, seriesKey = 'primaryValue') {
   const { width, height, padding } = config;
   const n = data.points.length;
 
-  const { yMin, yMax } = computeYRange(data, seriesKey);
+  // X domain: default is [0, n-1], overridable by axis drag
+  const xDefault = { min: 0, max: n - 1 };
+  const { min: xMin, max: xMax } = config.xDomainOverride ?? xDefault;
+
+  // Y domain: default is auto-computed from data, overridable by axis drag
+  const { yMin, yMax } = config.yDomainOverride ?? computeYRange(data, seriesKey);
   const yTicks = computeYTicks(yMin, yMax);
 
   const x = scaleLinear()
-    .domain([0, n - 1])
+    .domain([xMin, xMax])
     .range([padding.left, width - padding.right]);
 
   const y = scaleLinear()
@@ -81,5 +85,5 @@ export function createScales(data, config, seriesKey = 'primaryValue') {
     s2l: data.limits.center - 2 * sigmaVal,
   };
 
-  return { x, y, sigma, yTicks, yMin, yMax };
+  return { x, y, sigma, yTicks, yMin, yMax, xMin, xMax };
 }
