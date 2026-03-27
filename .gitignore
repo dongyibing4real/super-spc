@@ -10,5 +10,7 @@ build/
 .coverage
 htmlcov/
 .gstack/
-*.db
+.claude/
+.codex/
 .hypothesis/
+*.db
