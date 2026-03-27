@@ -52,13 +52,14 @@ export function createChart(container, options = {}) {
   const plotClip = svg.append('g').attr('clip-path', `url(#${clipId})`);
 
   // Create layer groups in correct z-order (back to front)
-  // Clipped layers go inside plotClip; axis labels stay outside
+  // Clipped layers go inside plotClip; labels stay outside for visibility
   const layers = {
     zones: plotClip.append('g').attr('class', 'layer-zones'),
     confidenceBand: plotClip.append('g').attr('class', 'layer-confidence'),
     grid: plotClip.append('g').attr('class', 'layer-grid'),
     phases: plotClip.append('g').attr('class', 'layer-phases'),
     limits: plotClip.append('g').attr('class', 'layer-limits'),
+    limitLabels: svg.append('g').attr('class', 'layer-limit-labels'), // outside clip — edge labels visible
     challenger: plotClip.append('g').attr('class', 'layer-challenger'),
     primary: plotClip.append('g').attr('class', 'layer-primary'),
     events: plotClip.append('g').attr('class', 'layer-events'),
@@ -238,9 +239,9 @@ export function createChart(container, options = {}) {
     // Phase boundaries + label chips
     renderPhases(layers.phases, scales, data, sizedConfig);
 
-    // Limit lines + edge labels
-    if (data.toggles.specLimits) renderLimits(layers.limits, scales, data, sizedConfig);
-    else layers.limits.selectAll('*').remove();
+    // Limit lines (clipped) + edge labels (unclipped, separate layer)
+    if (data.toggles.specLimits) renderLimits(layers.limits, layers.limitLabels, scales, data, sizedConfig);
+    else { layers.limits.selectAll('*').remove(); layers.limitLabels.selectAll('*').remove(); }
 
     // Overlay line (only if overlay toggle is on AND this chart is primary)
     if (data.toggles.overlay && seriesType === 'primary') {

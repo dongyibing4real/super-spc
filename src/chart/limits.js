@@ -3,7 +3,7 @@ import { fmt } from './utils.js';
 /**
  * Render limit lines (UCL/CL/LCL/USL/LSL), sigma reference lines, and edge labels.
  */
-export function renderLimits(layer, scales, data, config) {
+export function renderLimits(layer, labelLayer, scales, data, config) {
   const { y, sigma } = scales;
   const L = config.padding.left;
   const R = config.width - config.padding.right;
@@ -55,6 +55,9 @@ export function renderLimits(layer, scales, data, config) {
       .attr('stroke-width', 0.5);
   });
 
+  // Edge labels — rendered to separate unclipped layer so they're never cut off
+  labelLayer.selectAll('*').remove();
+
   // Edge label pill backgrounds
   const pills = [
     { y: yUCL, fill: 'rgba(205,66,70,0.06)', w: 48 },
@@ -63,7 +66,7 @@ export function renderLimits(layer, scales, data, config) {
   ];
 
   pills.forEach(d => {
-    layer.append('rect')
+    labelLayer.append('rect')
       .attr('x', R + 2).attr('y', d.y - 8)
       .attr('width', d.w).attr('height', 14)
       .attr('rx', 2).attr('fill', d.fill);
@@ -81,7 +84,7 @@ export function renderLimits(layer, scales, data, config) {
   ];
 
   edgeLabels.forEach(d => {
-    const t = layer.append('text')
+    const t = labelLayer.append('text')
       .attr('class', 'edge-label')
       .attr('x', R + 5).attr('y', d.y + 3)
       .attr('fill', d.fill)
