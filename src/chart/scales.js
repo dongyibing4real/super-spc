@@ -14,7 +14,7 @@ function computeYRange(data, seriesKey) {
   const dataMin = Math.min(...allValues);
   const dataMax = Math.max(...allValues);
   const range = dataMax - dataMin;
-  const headroom = range * 0.12; // 12% padding above and below
+  const headroom = range * 0.06; // 6% padding — tight, data-dense SPC style
 
   return {
     yMin: dataMin - headroom,

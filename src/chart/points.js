@@ -42,11 +42,12 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
         .attr('x1', cx + 3).attr('y1', cy - 3).attr('x2', cx - 3).attr('y2', cy + 3);
     }
 
-    // Rule violation ring
+    // Rule violation ring — subtle indicator, not dominant
     if (hasViolation && !d.excluded) {
       g.append('circle').attr('class', 'rule-violation-ring')
-        .attr('cx', cx).attr('cy', cy).attr('r', 8)
-        .attr('stroke', ooc ? 'rgba(205,66,70,0.6)' : 'rgba(200,118,25,0.6)');
+        .attr('cx', cx).attr('cy', cy).attr('r', 6)
+        .attr('stroke', ooc ? 'rgba(205,66,70,0.4)' : 'rgba(200,118,25,0.4)')
+        .attr('stroke-width', 1);
     }
 
     // Invisible hit circle — expands click target to 16px diameter
