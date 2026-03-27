@@ -376,6 +376,7 @@ Detailed feature specs have been extracted from this file into individual docume
 | **Shortcuts** | [.claude/design/keyboard-shortcuts-v1.md](.claude/design/keyboard-shortcuts-v1.md) | All keyboard shortcuts with contexts |
 | **States** | [.claude/design/empty-error-loading-v1.md](.claude/design/empty-error-loading-v1.md) | Empty, error, and loading states for all surfaces |
 | **Accessibility** | [.claude/design/accessibility-v1.md](.claude/design/accessibility-v1.md) | Keyboard nav, screen readers, WCAG AA, touch targets |
+| **Axis Spec** | [.claude/spec/src-chart/axis-interaction-spec-v1.md](.claude/spec/src-chart/axis-interaction-spec-v1.md) | Unified axis pan/scale/tick system (JMP-style) |
 | **Algo Spec** | [.claude/spec/algo/control-charts-spec-v1.md](.claude/spec/algo/control-charts-spec-v1.md) | Algorithm package design for 16 chart types |
 | **Algo Plan** | [.claude/plan/algo/control-charts-plan-v1.md](.claude/plan/algo/control-charts-plan-v1.md) | 32-task implementation plan for algo package |
 | **API Spec** | [.claude/spec/api/backend-architecture-v1.md](.claude/spec/api/backend-architecture-v1.md) | FastAPI + SQLite architecture, schema, API surface |
