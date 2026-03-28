@@ -4,9 +4,10 @@ Super SPC algo package.
 Provides control chart algorithms including:
 - Constants tables (d2, d3, c4, c5) and derived factors (A2, A3, B3, B4, D3, D4)
 - Sigma estimators for variable and attribute charts
-- Control limit computations for 16 chart types
+- Control limit computations for 24 chart types
 - Western Electric / Nelson rule detection
 - Westgard rule detection
+- Multivariate charts (Hotelling T², MEWMA)
 """
 
 # --- Core types ---
@@ -39,6 +40,14 @@ from .three_way import ThreeWayConfig, ThreeWayResult, compute_three_way
 from .short_run import ShortRunConfig, ShortRunResult, compute_short_run
 from .g_chart import GChartConfig, GChartResult, compute_g_chart
 from .t_chart import TChartConfig, TChartResult, compute_t_chart
+from .r_chart import RChartConfig, RChartResult, compute_r_chart
+from .s_chart import SChartConfig, SChartResult, compute_s_chart
+from .mr_chart import MRChartConfig, MRChartResult, compute_mr_chart
+from .run_chart import RunChartConfig, RunChartResult, compute_run_chart
+from .presummarize import PresummarizeConfig, PresummarizeResult, compute_presummarize
+from .cusum_vmask import CUSUMVMaskConfig, CUSUMVMaskResult, compute_cusum_vmask
+from .hotelling_t2 import HotellingT2Config, HotellingT2Result, compute_hotelling_t2
+from .mewma import MEWMAConfig, MEWMAResult, compute_mewma
 
 __all__ = [
     # Core types
@@ -129,4 +138,36 @@ __all__ = [
     "TChartConfig",
     "TChartResult",
     "compute_t_chart",
+    # R chart
+    "RChartConfig",
+    "RChartResult",
+    "compute_r_chart",
+    # S chart
+    "SChartConfig",
+    "SChartResult",
+    "compute_s_chart",
+    # MR chart
+    "MRChartConfig",
+    "MRChartResult",
+    "compute_mr_chart",
+    # Run chart
+    "RunChartConfig",
+    "RunChartResult",
+    "compute_run_chart",
+    # Presummarize
+    "PresummarizeConfig",
+    "PresummarizeResult",
+    "compute_presummarize",
+    # CUSUM V-Mask
+    "CUSUMVMaskConfig",
+    "CUSUMVMaskResult",
+    "compute_cusum_vmask",
+    # Hotelling T²
+    "HotellingT2Config",
+    "HotellingT2Result",
+    "compute_hotelling_t2",
+    # MEWMA
+    "MEWMAConfig",
+    "MEWMAResult",
+    "compute_mewma",
 ]

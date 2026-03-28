@@ -33,12 +33,30 @@ class Dataset(Base):
     measurements: Mapped[list[Measurement]] = relationship(
         back_populates="dataset", cascade="all, delete-orphan", passive_deletes=True,
     )
+    columns: Mapped[list[DatasetColumn]] = relationship(
+        back_populates="dataset", cascade="all, delete-orphan", passive_deletes=True,
+    )
     analyses: Mapped[list[Analysis]] = relationship(
         back_populates="dataset", cascade="all, delete-orphan", passive_deletes=True,
     )
     findings: Mapped[list[Finding]] = relationship(
         back_populates="dataset", cascade="all, delete-orphan", passive_deletes=True,
     )
+
+
+class DatasetColumn(Base):
+    __tablename__ = "dataset_columns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dataset_id: Mapped[str] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    dtype: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    dataset: Mapped[Dataset] = relationship(back_populates="columns")
 
 
 class Measurement(Base):
@@ -52,6 +70,7 @@ class Measurement(Base):
     subgroup: Mapped[str | None] = mapped_column(String, nullable=True)
     sequence_index: Mapped[int] = mapped_column(Integer, nullable=False)
     metadata_json: Mapped[str | None] = mapped_column("metadata", Text, nullable=True)
+    raw_json: Mapped[str | None] = mapped_column("raw_data", Text, nullable=True)
 
     dataset: Mapped[Dataset] = relationship(back_populates="measurements")
 

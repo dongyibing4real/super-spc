@@ -9,7 +9,7 @@ import { renderPoints } from './points.js';
 import { renderSelection } from './selection.js';
 import { renderAxes } from './axes.js';
 import { renderEvents } from './events.js';
-import { DEFAULT_CONFIG } from './config.js';
+import { DEFAULT_CONFIG, computeLayout } from './config.js';
 
 /**
  * Create a D3-powered SPC control chart that auto-sizes to its container.
@@ -92,7 +92,7 @@ export function createChart(container, options = {}) {
     return null;
   }
 
-  // ── Context menu: route to axis or point menu ──────────────────────
+  // ── Context menu: route to point / line / axis / canvas menu ───────
   svg.on('contextmenu', (event) => {
     event.preventDefault();
     if (!config.onContextMenu) return;
@@ -100,7 +100,11 @@ export function createChart(container, options = {}) {
     const localX = event.clientX - rect.left;
     const localY = event.clientY - rect.top;
     const axis = hitTestAxis(localX, localY);
-    config.onContextMenu(localX, localY, { axis });
+    const el = event.target;
+    const pointGroup = el.closest?.('.point-group') || el.parentNode?.closest?.('.point-group');
+    const isLine = el.classList?.contains('primary-path') || el.classList?.contains('challenger-path');
+    const target = axis ? 'axis' : pointGroup ? 'point' : isLine ? 'line' : 'canvas';
+    config.onContextMenu(localX, localY, { axis, target });
   });
 
   // ── Unified axis drag: JMP-style ────────────────────────────────────
@@ -216,8 +220,15 @@ export function createChart(container, options = {}) {
     if (currentWidth < 10 || currentHeight < 10) return; // Skip if too small
     const seriesKey = data.seriesKey || 'primaryValue';
     const seriesType = data.seriesType || 'primary';
+
+    // Compute dynamic padding + font sizes from actual data values
+    const layout = computeLayout(data, currentWidth, currentHeight);
+
     const sizedConfig = {
       ...config,
+      padding: layout.padding,
+      yLabelFontSize: layout.yLabelFontSize,
+      edgeLabelFontSize: layout.edgeLabelFontSize,
       width: currentWidth,
       height: currentHeight,
       xDomainOverride: data.toggles.xDomainOverride ?? null,
@@ -267,7 +278,7 @@ export function createChart(container, options = {}) {
     renderAxes(layers.xAxis, scales, data, sizedConfig);
 
     // Selection halo (using configurable seriesKey)
-    renderSelection(layers.selection, scales, data, seriesKey);
+    renderSelection(layers.selection, scales, data, seriesKey, sizedConfig);
 
     // ── Update clip rect to match plot area ────────────────────────
     const p = sizedConfig.padding;

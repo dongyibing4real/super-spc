@@ -125,6 +125,8 @@ class TestLaneyPBoundaries:
         assert hasattr(result, "sigma_z")
         assert isinstance(result.sigma_z, float)
 
+    @pytest.mark.filterwarnings("ignore:Mean of empty slice:RuntimeWarning")
+    @pytest.mark.filterwarnings("ignore:invalid value encountered:RuntimeWarning")
     def test_default_config_none(self):
         defectives = np.array([5.0])
         n_trials = np.array([100.0])

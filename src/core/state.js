@@ -1,9 +1,3 @@
-import { createMockModel } from "../data/mock-data.js";
-
-function cloneState(state) {
-  return structuredClone(state);
-}
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -22,137 +16,145 @@ function getPhaseLabel(state, phaseId) {
 
 function buildSignalNarrative(state, point) {
   if (!point) {
-    return {
-      title: "Choose a point to inspect the signal.",
-      confidence: "Pending",
-      statusTone: "neutral"
-    };
+    return { title: "Select a point to inspect.", confidence: "Pending", statusTone: "neutral" };
   }
 
-  if (point.primaryValue >= state.limits.ucl) {
+  const primary = getPrimary(state);
+  const violations = primary.violations || [];
+  const idx = state.selectedPointIndex;
+  const pointViolations = violations.filter(v => v.indices.includes(idx));
+
+  if (pointViolations.length > 0) {
+    const ruleNames = pointViolations.map(v => v.description).join("; ");
     return {
-      title: `Persistent upward drift began in ${point.phaseId} and is now beyond the saved UCL.`,
-      confidence: state.compare.challengerStatus === "ready" ? "High" : "Medium",
-      statusTone: "critical"
+      title: `Rule violation detected at point ${idx + 1}: ${ruleNames}`,
+      confidence: pointViolations.length > 1 ? "High" : "Medium",
+      statusTone: "critical",
     };
   }
 
   if (point.excluded) {
     return {
-      title: `Selected lot ${point.lot} is excluded from limit calculations but remains visible for audit review.`,
+      title: `Point ${point.label} is excluded from limit calculations but visible for audit.`,
       confidence: "Review exclusion",
-      statusTone: "warning"
+      statusTone: "warning",
+    };
+  }
+
+  if (point.primaryValue > primary.limits.ucl || point.primaryValue < primary.limits.lcl) {
+    return {
+      title: `Point ${point.label} is beyond control limits (value: ${point.primaryValue.toFixed(4)}).`,
+      confidence: "High",
+      statusTone: "critical",
     };
   }
 
   return {
-    title: `Signal is building through ${point.phaseId}; review the event boundary and subgroup split before publishing.`,
-    confidence: "Moderate",
-    statusTone: "info"
+    title: `Point ${point.label} is within control limits (value: ${point.primaryValue.toFixed(4)}).`,
+    confidence: "In control",
+    statusTone: "info",
   };
 }
 
 function buildWhyTriggered(state, point) {
-  const rules = [
-    "Rule 1 breach at lots L-2865, L-2866, and L-2867.",
-    "Eight-point upward run begins after the P3 maintenance boundary.",
-    "Robust adaptive overlay discounts transient spikes without hiding them."
-  ];
-
-  if (state.compare.challengerStatus !== "ready") {
-    rules[2] = "Challenger method is partial; comparison deltas remain visible but unresolved.";
+  const violations = getPrimary(state).violations || [];
+  if (violations.length === 0) {
+    return ["No rule violations detected in this dataset."];
   }
 
-  if (point?.excluded) {
-    rules.unshift(`Lot ${point.lot} is excluded from the current compute but still displayed as an audit marker.`);
-  }
-
-  return rules;
+  return violations.map(v => {
+    const count = v.indices.length;
+    return `${v.description} — ${count} point${count !== 1 ? "s" : ""} flagged.`;
+  });
 }
 
 function buildEvidence(state, point) {
-  const transformResolved = state.pipeline.status === "ready";
-  const methodResolved = state.compare.challengerStatus === "ready";
+  const primary = getPrimary(state);
+  const sigma = primary.sigma;
+  const violationCount = (primary.violations || []).reduce((sum, v) => sum + v.indices.length, 0);
 
   return [
     {
-      label: "Lots",
-      value: point ? `${point.lot} through L-2867` : "Choose a point",
-      resolved: Boolean(point)
+      label: "Selected point",
+      value: point ? `${point.label} (${point.primaryValue.toFixed(4)})` : "None",
+      resolved: Boolean(point),
     },
     {
-      label: "Transform steps",
-      value: state.transforms
-        .filter((step) => step.active || step.status === "failed")
-        .map((step) => step.id)
-        .join(", "),
-      resolved: transformResolved
+      label: "Sigma estimate",
+      value: sigma ? `${sigma.sigma_hat.toFixed(6)} (${sigma.method})` : "Not computed",
+      resolved: Boolean(sigma),
     },
     {
-      label: "Phase definition",
-      value: `${point?.phaseId || "P3"} via event boundary M-204`,
-      resolved: true
+      label: "Control limits",
+      value: `UCL ${primary.limits.ucl.toFixed(4)} / CL ${primary.limits.center.toFixed(4)} / LCL ${primary.limits.lcl.toFixed(4)}`,
+      resolved: true,
     },
     {
-      label: "Subgroup logic",
-      value: state.context.subgroup.label,
-      resolved: true
+      label: "Rule violations",
+      value: violationCount > 0 ? `${violationCount} points flagged` : "None",
+      resolved: violationCount === 0,
+    },
+    {
+      label: "Excluded points",
+      value: `${state.points.filter(p => p.excluded).length} of ${state.points.length}`,
+      resolved: true,
+    },
+    {
+      label: "Transform pipeline",
+      value: state.pipeline.status === "ready" ? "All steps valid" : "Pipeline partial — some steps failed",
+      resolved: state.pipeline.status === "ready",
     },
     {
       label: "Limits version",
-      value: state.limits.version,
-      resolved: true
+      value: primary.limits.version || "—",
+      resolved: true,
     },
-    {
-      label: "Method version",
-      value: methodResolved ? `EWMA-1.0 and ${state.compare.challengerVersion}` : "Primary only",
-      resolved: methodResolved
-    }
   ];
 }
 
 function buildRecommendations(state, point) {
-  const checks = [
-    "Compare chamber clean timestamp against the P3 boundary.",
-    "Inspect cavity-specific behavior before widening scope.",
-    "Generate a fresh post-maintenance limits set for Cavity 1."
-  ];
+  const checks = [];
+  const violations = getPrimary(state).violations || [];
 
-  if (point?.excluded) {
-    checks.unshift(`Review why ${point.lot} is excluded and whether the exclusion should remain active.`);
+  if (violations.some(v => v.testId === "1")) {
+    checks.push("Investigate points beyond control limits — check for assignable causes.");
   }
-
-  if (state.compare.challengerStatus !== "ready") {
-    checks.push("Re-run the challenger method before promoting a final finding.");
+  if (violations.some(v => v.testId === "2")) {
+    checks.push("9+ consecutive points on same side of CL — possible process shift.");
+  }
+  if (violations.some(v => ["3", "5"].includes(v.testId))) {
+    checks.push("Trending pattern detected — check for gradual process drift.");
+  }
+  if (violations.length === 0) {
+    checks.push("Process appears in statistical control. Continue monitoring.");
+  }
+  if (point?.excluded) {
+    checks.push(`Review exclusion of point ${point.label} — verify the reason is still valid.`);
   }
 
   return checks;
 }
 
 function buildComparisonStrip(state) {
-  if (state.compare.challengerStatus === "ready") {
-    return [
-      { label: "False alarms", value: "12 -> 4", tone: "positive" },
-      { label: "Earliest detection", value: "5 lots earlier", tone: "neutral" },
-      { label: "Method agreement", value: "High", tone: "positive" },
-      { label: "Limits scope", value: state.limits.scope, tone: "neutral" }
-    ];
-  }
+  const primary = getPrimary(state);
+  const violations = primary.violations || [];
+  const violationCount = violations.reduce((sum, v) => sum + v.indices.length, 0);
+  const ruleCount = violations.length;
 
-  if (state.compare.challengerStatus === "partial") {
+  if (state.chartOrder.length > 1) {
     return [
-      { label: "False alarms", value: "Primary only", tone: "warning" },
-      { label: "Earliest detection", value: "Pending challenger", tone: "warning" },
-      { label: "Method agreement", value: "Unresolved", tone: "warning" },
-      { label: "Limits scope", value: state.limits.scope, tone: "neutral" }
+      { label: "OOC points", value: String(violationCount), tone: violationCount > 0 ? "critical" : "positive" },
+      { label: "Rules triggered", value: String(ruleCount), tone: ruleCount > 0 ? "warning" : "positive" },
+      { label: "Method", value: primary.context.chartType?.label || "—", tone: "neutral" },
+      { label: "Limits scope", value: primary.limits.scope, tone: "neutral" },
     ];
   }
 
   return [
-    { label: "False alarms", value: "Timed out", tone: "critical" },
-    { label: "Earliest detection", value: "Unknown", tone: "critical" },
-    { label: "Method agreement", value: "Unavailable", tone: "critical" },
-    { label: "Limits scope", value: state.limits.scope, tone: "neutral" }
+    { label: "OOC points", value: String(violationCount), tone: violationCount > 0 ? "critical" : "positive" },
+    { label: "Rules triggered", value: String(ruleCount), tone: ruleCount > 0 ? "warning" : "positive" },
+    { label: "Sigma method", value: primary.sigma?.method || "—", tone: "neutral" },
+    { label: "Limits scope", value: primary.limits.scope, tone: "neutral" },
   ];
 }
 
@@ -164,32 +166,87 @@ function buildReportEligibility(finding) {
   };
 }
 
-export function createInitialState() {
-  const model = createMockModel();
+/* ═══ Default empty state for initial load ═══ */
+const DEFAULT_CONTEXT = {
+  title: "",
+  metric: { id: "value", label: "Value", unit: "" },
+  subgroup: { id: "default", label: "Individual", detail: "n=1" },
+  phase: { id: "default", label: "All data", detail: "No phases" },
+  chartType: { id: "imr", label: "IMR", detail: "Individual + Moving Range" },
+  sigma: { label: "3 Sigma", detail: "Moving range" },
+  tests: { label: "Nelson", detail: "Rule 1, 2, 5" },
+  compare: { label: "None", detail: "No challenger" },
+  window: "",
+  methodBadge: "IMR",
+  status: "Loading"
+};
 
+const DEFAULT_LIMITS = {
+  center: 0, ucl: 0, lcl: 0, usl: null, lsl: null,
+  version: "", scope: "Dataset"
+};
+
+const DEFAULT_PARAMS = {
+  chart_type: "imr",
+  sigma_method: "moving_range",
+  k_sigma: 3.0,
+  nelson_tests: [1, 2, 5],
+  phase_column: null,
+  n_trials: null,
+};
+
+export function createSlot(overrides = {}) {
+  return {
+    params: { ...DEFAULT_PARAMS },
+    context: { ...DEFAULT_CONTEXT },
+    limits: { ...DEFAULT_LIMITS },
+    capability: null,
+    violations: [],
+    sigma: null,
+    zones: null,
+    overrides: { x: null, y: null },
+    ...overrides,
+  };
+}
+
+function updateSlot(state, id, updates) {
+  return {
+    ...state,
+    charts: {
+      ...state.charts,
+      [id]: { ...state.charts[id], ...updates },
+    },
+  };
+}
+
+/** Helper to read the primary chart slot */
+export function getPrimary(state) {
+  return state.charts[state.chartOrder[0]];
+}
+
+export function createInitialState() {
   return {
     route: "workspace",
-    context: model.context,
-    limits: model.limits,
-    challengerLimits: model.challengerLimits,
-    phases: model.phases,
-    points: model.points,
-    transforms: model.transforms,
-    findings: model.findings,
-    reportTemplate: model.reportTemplate,
-    compare: {
-      primaryMethod: "EWMA-1.0",
-      challengerMethod: "Robust Adaptive",
-      challengerVersion: "RA-2.1",
-      challengerStatus: "ready"
+    loading: true,
+    error: null,
+    datasets: [],
+    activeDatasetId: null,
+    showDataTable: false,
+    phases: [],
+    points: [],
+    transforms: [],
+    findings: [],
+    reportTemplate: {
+      title: "SPC Investigation Report",
+      sections: ["Executive summary", "Evidence ledger", "Method comparison", "Recommended actions"]
     },
     pipeline: {
       status: "ready",
       rescueMode: "none",
-      lastSuccessfulAt: "2026-03-25 11:12"
+      lastSuccessfulAt: null
     },
-    selectedPointIndex: 24,
-    activeFindingId: model.findings[0].id,
+    selectedPointIndex: 0,
+    activeFindingId: null,
     reportDraft: null,
     reportExport: {
       status: "idle",
@@ -204,25 +261,80 @@ export function createInitialState() {
       events: true,
       excludedMarkers: true,
       confidenceBand: true,
-      xDomainOverride: null,  // { min, max } fractional indices when user has panned/scaled x-axis
-      yDomainOverride: null,  // { yMin, yMax } when user has panned/scaled y-axis
     },
+    charts: {
+      primary: createSlot(),
+      challenger: createSlot({ params: { ...DEFAULT_PARAMS, chart_type: "xbar_r" } }),
+    },
+    chartOrder: ["primary", "challenger"],
     chartLayout: {
-      arrangement: "horizontal",   // "horizontal" | "vertical" | "single" | "primary-wide" | "primary-tall"
-      primaryPosition: "left",     // "left" | "right" | "top" | "bottom"
-      splitRatio: 0.5,             // 0-1, fraction of space for the first pane
+      arrangement: "horizontal",
+      primaryPosition: "left",
+      splitRatio: 0.5,
     },
     ui: {
       notice: null,
-      contextMenu: null
+      contextMenu: null,
+      layersExpanded: false
     },
-    auditLog: [
-      "Workspace loaded from normalized CSV dataset.",
-      "Phase-aware limits resolved from limits-v12.4.",
-      "Robust adaptive challenger completed successfully."
-    ]
+    auditLog: [],
+    dataPrep: {
+      selectedDatasetId: null,
+      datasetPoints: [],
+      loading: false,
+      error: null,
+      sortColumn: 'sequence_index',
+      sortDirection: 'asc',
+    },
+    columnConfig: {
+      columns: [],
+      loading: false,
+    },
+    activeChipEditor: null,
   };
 }
+
+/* ═══ New actions for API integration ═══ */
+
+export function setDatasets(state, datasets) {
+  return { ...state, datasets };
+}
+
+export function loadDataset(state, { points, slots, datasetId, phases }) {
+  const updatedCharts = { ...state.charts };
+  for (const [id, result] of Object.entries(slots)) {
+    if (updatedCharts[id]) {
+      updatedCharts[id] = { ...updatedCharts[id], ...result, overrides: { x: null, y: null } };
+    }
+  }
+  return {
+    ...state,
+    loading: false,
+    error: null,
+    activeDatasetId: datasetId,
+    phases: phases || [],
+    points,
+    selectedPointIndex: points.length > 0 ? points.length - 1 : 0,
+    findings: [],
+    activeFindingId: null,
+    auditLog: [`Dataset loaded with ${points.length} points.`],
+    charts: updatedCharts,
+  };
+}
+
+export function toggleDataTable(state) {
+  return { ...state, showDataTable: !state.showDataTable };
+}
+
+export function setLoadingState(state, loading) {
+  return { ...state, loading, error: loading ? null : state.error };
+}
+
+export function setError(state, message) {
+  return { ...state, loading: false, error: message };
+}
+
+/* ═══ Existing actions — refactored to selective cloning ═══ */
 
 export function deriveWorkspace(state) {
   const point = getSelectedPoint(state);
@@ -248,17 +360,92 @@ export function deriveWorkspace(state) {
 }
 
 export function navigate(state, route) {
-  const next = cloneState(state);
-  next.route = route;
-  next.ui.contextMenu = null;
+  const next = {
+    ...state,
+    route,
+    ui: { ...state.ui, contextMenu: null }
+  };
+  // Auto-select active dataset when entering Data Prep
+  if (route === 'dataprep' && !next.dataPrep.selectedDatasetId && next.activeDatasetId) {
+    next.dataPrep = { ...next.dataPrep, selectedDatasetId: next.activeDatasetId };
+  }
   return next;
 }
 
+/* ═══ Data Prep actions ═══ */
+
+export function selectPrepDataset(state, datasetId) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, selectedDatasetId: datasetId, datasetPoints: [], loading: true, error: null }
+  };
+}
+
+export function loadPrepPoints(state, points) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, datasetPoints: points, loading: false, error: null }
+  };
+}
+
+export function setPrepError(state, message) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, loading: false, error: message }
+  };
+}
+
+export function setPrepSort(state, column) {
+  const dp = state.dataPrep;
+  const direction = dp.sortColumn === column && dp.sortDirection === 'asc' ? 'desc' : 'asc';
+  return {
+    ...state,
+    dataPrep: { ...dp, sortColumn: column, sortDirection: direction }
+  };
+}
+
+export function deletePrepDataset(state, datasetId) {
+  const datasets = state.datasets.filter(d => d.id !== datasetId);
+  const dp = state.dataPrep.selectedDatasetId === datasetId
+    ? { ...state.dataPrep, selectedDatasetId: null, datasetPoints: [], error: null }
+    : state.dataPrep;
+  const activeDatasetId = state.activeDatasetId === datasetId ? null : state.activeDatasetId;
+  return { ...state, datasets, dataPrep: dp, activeDatasetId };
+}
+
+/* ═══ Column Config + Analysis Params actions ═══ */
+
+export function setColumns(state, columns) {
+  return {
+    ...state,
+    columnConfig: { ...state.columnConfig, columns, loading: false },
+  };
+}
+
+export function setColumnsLoading(state) {
+  return {
+    ...state,
+    columnConfig: { ...state.columnConfig, loading: true },
+  };
+}
+
+export function setChartParams(state, id, params) {
+  return updateSlot(state, id, { params: { ...state.charts[id].params, ...params } });
+}
+
+export function setActiveChipEditor(state, chipId) {
+  return {
+    ...state,
+    activeChipEditor: state.activeChipEditor === chipId ? null : chipId,
+  };
+}
+
 export function selectPoint(state, index) {
-  const next = cloneState(state);
-  next.selectedPointIndex = clamp(index, 0, next.points.length - 1);
-  next.ui.contextMenu = null;
-  return next;
+  return {
+    ...state,
+    selectedPointIndex: clamp(index, 0, Math.max(0, state.points.length - 1)),
+    ui: { ...state.ui, contextMenu: null }
+  };
 }
 
 export function moveSelection(state, delta) {
@@ -266,135 +453,173 @@ export function moveSelection(state, delta) {
 }
 
 export function toggleChartOption(state, option) {
-  const next = cloneState(state);
-  next.chartToggles[option] = !next.chartToggles[option];
-  return next;
+  return {
+    ...state,
+    chartToggles: { ...state.chartToggles, [option]: !state.chartToggles[option] }
+  };
 }
 
 export function togglePointExclusion(state, index) {
-  const next = cloneState(state);
-  const point = next.points[index];
+  const point = state.points[index];
+  if (!point) return state;
 
-  if (!point) {
-    return next;
-  }
-
-  point.excluded = !point.excluded;
-  next.pipeline.status = "ready";
-  next.pipeline.rescueMode = "none";
-  next.auditLog.unshift(
-    `${point.lot} ${point.excluded ? "excluded" : "restored"} while remaining visible on the chart.`
+  const newExcluded = !point.excluded;
+  const newPoints = state.points.map((p, i) =>
+    i === index ? { ...p, excluded: newExcluded } : p
   );
-  next.ui.notice = {
-    tone: "info",
-    title: point.excluded ? "Point excluded" : "Point restored",
-    body: `${point.lot} remains visible so the exclusion is auditable.`
-  };
 
-  return next;
+  return {
+    ...state,
+    points: newPoints,
+    pipeline: { ...state.pipeline, status: "ready", rescueMode: "none" },
+    auditLog: [
+      `${point.label} ${newExcluded ? "excluded" : "restored"} while remaining visible on the chart.`,
+      ...state.auditLog
+    ],
+    ui: {
+      ...state.ui,
+      notice: {
+        tone: "info",
+        title: newExcluded ? "Point excluded" : "Point restored",
+        body: `${point.label} remains visible so the exclusion is auditable.`
+      }
+    }
+  };
 }
 
 export function toggleTransform(state, stepId) {
-  const next = cloneState(state);
-  const step = next.transforms.find((candidate) => candidate.id === stepId);
+  const stepIndex = state.transforms.findIndex((c) => c.id === stepId);
+  const step = state.transforms[stepIndex];
+  if (!step || step.status === "failed") return state;
 
-  if (!step || step.status === "failed") {
-    return next;
-  }
+  const newActive = !step.active;
+  const newTransforms = state.transforms.map((s, i) =>
+    i === stepIndex ? { ...s, active: newActive, status: newActive ? "active" : "inactive" } : s
+  );
 
-  step.active = !step.active;
-  step.status = step.active ? "active" : "inactive";
-  next.auditLog.unshift(`${step.id} ${step.active ? "enabled" : "disabled"} from the reversible prep pipeline.`);
-  next.ui.notice = {
-    tone: "info",
-    title: step.active ? "Transform enabled" : "Transform disabled",
-    body: step.detail
+  return {
+    ...state,
+    transforms: newTransforms,
+    auditLog: [
+      `${step.id} ${newActive ? "enabled" : "disabled"} from the reversible prep pipeline.`,
+      ...state.auditLog
+    ],
+    ui: {
+      ...state.ui,
+      notice: {
+        tone: "info",
+        title: newActive ? "Transform enabled" : "Transform disabled",
+        body: step.detail
+      }
+    }
   };
-
-  return next;
 }
 
 export function failTransformStep(state, stepId) {
-  const next = cloneState(state);
-  const step = next.transforms.find((candidate) => candidate.id === stepId);
+  const stepIndex = state.transforms.findIndex((c) => c.id === stepId);
+  const step = state.transforms[stepIndex];
+  if (!step) return state;
 
-  if (!step) {
-    return next;
-  }
+  const newTransforms = state.transforms.map((s, i) =>
+    i === stepIndex ? { ...s, status: "failed", active: false } : s
+  );
 
-  step.status = "failed";
-  step.active = false;
-  next.pipeline.status = "partial";
-  next.pipeline.rescueMode = "retain-previous-compute";
-  next.auditLog.unshift(`${step.id} failed validation. Prior chart result retained and the step is marked partial.`);
-  next.ui.notice = {
-    tone: "warning",
-    title: "Transform failed",
-    body: `${step.title} failed validation. The previous chart result is still active while the step stays reversible.`
+  return {
+    ...state,
+    transforms: newTransforms,
+    pipeline: { ...state.pipeline, status: "partial", rescueMode: "retain-previous-compute" },
+    auditLog: [
+      `${step.id} failed validation. Prior chart result retained and the step is marked partial.`,
+      ...state.auditLog
+    ],
+    ui: {
+      ...state.ui,
+      notice: {
+        tone: "warning",
+        title: "Transform failed",
+        body: `${step.title} failed validation. The previous chart result is still active while the step stays reversible.`
+      }
+    }
   };
-
-  return next;
 }
 
 export function recoverTransformStep(state, stepId) {
-  const next = cloneState(state);
-  const step = next.transforms.find((candidate) => candidate.id === stepId);
+  const stepIndex = state.transforms.findIndex((c) => c.id === stepId);
+  const step = state.transforms[stepIndex];
+  if (!step) return state;
 
-  if (!step) {
-    return next;
-  }
+  const newTransforms = state.transforms.map((s, i) =>
+    i === stepIndex ? { ...s, status: "active", active: true } : s
+  );
+  const failedCount = newTransforms.filter((s) => s.status === "failed").length;
+  const newPipelineStatus = failedCount > 0 ? "partial" : "ready";
 
-  step.status = "active";
-  step.active = true;
-  next.pipeline.status = getFailedTransformCount(next) > 0 ? "partial" : "ready";
-  next.pipeline.rescueMode = next.pipeline.status === "ready" ? "none" : "retain-previous-compute";
-  next.auditLog.unshift(`${step.id} recovered and rejoined the active compute path.`);
-  next.ui.notice = {
-    tone: "positive",
-    title: "Transform recovered",
-    body: `${step.title} is active again and the pipeline has been revalidated.`
+  return {
+    ...state,
+    transforms: newTransforms,
+    pipeline: {
+      ...state.pipeline,
+      status: newPipelineStatus,
+      rescueMode: newPipelineStatus === "ready" ? "none" : "retain-previous-compute"
+    },
+    auditLog: [
+      `${step.id} recovered and rejoined the active compute path.`,
+      ...state.auditLog
+    ],
+    ui: {
+      ...state.ui,
+      notice: {
+        tone: "positive",
+        title: "Transform recovered",
+        body: `${step.title} is active again and the pipeline has been revalidated.`
+      }
+    }
   };
-
-  return next;
 }
 
 export function setChallengerStatus(state, status) {
-  const next = cloneState(state);
-  next.compare.challengerStatus = status;
-  next.auditLog.unshift(`Challenger method status changed to ${status}.`);
-  next.ui.notice = {
-    tone: status === "ready" ? "positive" : status === "partial" ? "warning" : "critical",
-    title: "Method lab updated",
-    body:
-      status === "ready"
-        ? "Primary and challenger methods are now fully comparable."
-        : status === "partial"
-          ? "Primary completed, challenger needs another run."
-          : "Challenger timed out. Primary remains authoritative."
+  // Manage chartOrder: "ready" includes challengers, other statuses remove them
+  const hasChallenger = state.chartOrder.length > 1;
+  let chartOrder = state.chartOrder;
+  if (status === "ready" && !hasChallenger) {
+    chartOrder = [...state.chartOrder, "challenger"];
+  } else if (status !== "ready" && hasChallenger) {
+    chartOrder = [state.chartOrder[0]];
+  }
+  return {
+    ...state,
+    chartOrder,
+    auditLog: [`Challenger method status changed to ${status}.`, ...state.auditLog],
+    ui: {
+      ...state.ui,
+      notice: {
+        tone: status === "ready" ? "positive" : status === "partial" ? "warning" : "critical",
+        title: "Method lab updated",
+        body:
+          status === "ready"
+            ? "Primary and challenger methods are now fully comparable."
+            : status === "partial"
+              ? "Primary completed, challenger needs another run."
+              : "Challenger timed out. Primary remains authoritative."
+      }
+    }
   };
-
-  return next;
 }
 
 export function selectFinding(state, findingId) {
-  const next = cloneState(state);
-  next.activeFindingId = findingId;
-  return next;
+  return { ...state, activeFindingId: findingId };
 }
 
 export function createFindingFromSelection(state) {
-  const next = cloneState(state);
-  const workspace = deriveWorkspace(next);
+  const workspace = deriveWorkspace(state);
   const point = workspace.selectedPoint;
 
-  if (!point) {
-    return next;
-  }
+  if (!point) return state;
 
   const newFinding = {
-    id: `finding-generated-${next.findings.length + 1}`,
-    title: `Workspace finding from ${point.lot}`,
-    severity: point.primaryValue >= next.limits.ucl ? "High" : "Medium",
+    id: `finding-generated-${state.findings.length + 1}`,
+    title: `Workspace finding from ${point.label}`,
+    severity: point.primaryValue >= getPrimary(state).limits.ucl ? "High" : "Medium",
     summary: workspace.signal.title,
     confidence: workspace.signal.confidence === "High" ? 0.84 : 0.66,
     status: "Draft",
@@ -406,149 +631,162 @@ export function createFindingFromSelection(state) {
     }))
   };
 
-  next.findings.unshift(newFinding);
-  next.activeFindingId = newFinding.id;
-  next.ui.notice = {
-    tone: "positive",
-    title: "Finding draft created",
-    body: `${newFinding.title} is linked to the current workspace evidence.`
+  return {
+    ...state,
+    findings: [newFinding, ...state.findings],
+    activeFindingId: newFinding.id,
+    auditLog: [`Finding draft created from workspace selection ${point.label}.`, ...state.auditLog],
+    ui: {
+      ...state.ui,
+      notice: {
+        tone: "positive",
+        title: "Finding draft created",
+        body: `${newFinding.title} is linked to the current workspace evidence.`
+      }
+    }
   };
-  next.auditLog.unshift(`Finding draft created from workspace selection ${point.lot}.`);
-
-  return next;
 }
 
 export function generateReportDraft(state) {
-  const next = cloneState(state);
-  const finding = next.findings.find((item) => item.id === next.activeFindingId);
-
-  if (!finding) {
-    return next;
-  }
+  const finding = state.findings.find((item) => item.id === state.activeFindingId);
+  if (!finding) return state;
 
   const eligibility = buildReportEligibility(finding);
-  next.reportDraft = {
-    id: `report-${finding.id}`,
-    title: next.reportTemplate.title,
-    findingTitle: finding.title,
-    generatedAt: "2026-03-25 11:45",
-    partial: !eligibility.canExport,
-    unresolved: eligibility.unresolved
-  };
-  next.reportExport.status = "drafted";
-  next.ui.notice = {
-    tone: eligibility.canExport ? "positive" : "warning",
-    title: "Report draft generated",
-    body: eligibility.canExport
-      ? "All citations are resolved. The report is ready for export."
-      : "The draft exists, but export is blocked until every citation resolves."
-  };
 
-  return next;
+  return {
+    ...state,
+    reportDraft: {
+      id: `report-${finding.id}`,
+      title: state.reportTemplate.title,
+      findingTitle: finding.title,
+      generatedAt: new Date().toISOString(),
+      partial: !eligibility.canExport,
+      unresolved: eligibility.unresolved
+    },
+    reportExport: { ...state.reportExport, status: "drafted" },
+    ui: {
+      ...state.ui,
+      notice: {
+        tone: eligibility.canExport ? "positive" : "warning",
+        title: "Report draft generated",
+        body: eligibility.canExport
+          ? "All citations are resolved. The report is ready for export."
+          : "The draft exists, but export is blocked until every citation resolves."
+      }
+    }
+  };
 }
 
 export function toggleReportFailureMode(state) {
-  const next = cloneState(state);
-  next.reportExport.failNext = !next.reportExport.failNext;
-  next.ui.notice = {
-    tone: next.reportExport.failNext ? "warning" : "info",
-    title: next.reportExport.failNext ? "Next export will fail" : "Export failure cleared",
-    body: next.reportExport.failNext
-      ? "Use this to verify the retry path without losing the draft."
-      : "The next export attempt will use the normal success path."
+  const newFailNext = !state.reportExport.failNext;
+  return {
+    ...state,
+    reportExport: { ...state.reportExport, failNext: newFailNext },
+    ui: {
+      ...state.ui,
+      notice: {
+        tone: newFailNext ? "warning" : "info",
+        title: newFailNext ? "Next export will fail" : "Export failure cleared",
+        body: newFailNext
+          ? "Use this to verify the retry path without losing the draft."
+          : "The next export attempt will use the normal success path."
+      }
+    }
   };
-  return next;
 }
 
 export function exportReport(state) {
-  const next = cloneState(state);
-  const finding = next.findings.find((item) => item.id === next.activeFindingId);
-
-  if (!finding) {
-    return next;
-  }
+  const finding = state.findings.find((item) => item.id === state.activeFindingId);
+  if (!finding) return state;
 
   const eligibility = buildReportEligibility(finding);
 
   if (!eligibility.canExport) {
-    next.reportExport.status = "blocked";
-    next.ui.notice = {
-      tone: "critical",
-      title: "Export blocked",
-      body: `Resolve ${eligibility.unresolved.length} citation gap${eligibility.unresolved.length === 1 ? "" : "s"} before export.`
+    return {
+      ...state,
+      reportExport: { ...state.reportExport, status: "blocked" },
+      ui: {
+        ...state.ui,
+        notice: {
+          tone: "critical",
+          title: "Export blocked",
+          body: `Resolve ${eligibility.unresolved.length} citation gap${eligibility.unresolved.length === 1 ? "" : "s"} before export.`
+        }
+      }
     };
-    return next;
   }
 
-  if (next.reportExport.failNext) {
-    next.reportExport.status = "failed";
-    next.reportExport.failNext = false;
-    next.ui.notice = {
-      tone: "critical",
-      title: "Renderer failed",
-      body: "The draft is preserved and can be retried without data loss."
+  if (state.reportExport.failNext) {
+    return {
+      ...state,
+      reportExport: { ...state.reportExport, status: "failed", failNext: false },
+      ui: {
+        ...state.ui,
+        notice: {
+          tone: "critical",
+          title: "Renderer failed",
+          body: "The draft is preserved and can be retried without data loss."
+        }
+      }
     };
-    return next;
   }
 
-  next.reportExport.status = "exported";
-  next.reportExport.lastArtifactId = `artifact-${finding.id}`;
-  next.ui.notice = {
-    tone: "positive",
-    title: "Report exported",
-    body: `${next.reportTemplate.title} is ready for handoff.`
+  return {
+    ...state,
+    reportExport: { ...state.reportExport, status: "exported", lastArtifactId: `artifact-${finding.id}` },
+    auditLog: [`Report exported for ${finding.id}.`, ...state.auditLog],
+    ui: {
+      ...state.ui,
+      notice: {
+        tone: "positive",
+        title: "Report exported",
+        body: `${state.reportTemplate.title} is ready for handoff.`
+      }
+    }
   };
-  next.auditLog.unshift(`Report exported for ${finding.id}.`);
-
-  return next;
 }
 
 export function clearNotice(state) {
-  const next = cloneState(state);
-  next.ui.notice = null;
-  return next;
+  return { ...state, ui: { ...state.ui, notice: null } };
 }
 
-export function openContextMenu(state, x, y, axisInfo) {
-  const next = cloneState(state);
-  next.ui.contextMenu = { x, y, axis: axisInfo?.axis ?? null };
-  return next;
+export function toggleLayers(state) {
+  return { ...state, ui: { ...state.ui, layersExpanded: !state.ui.layersExpanded } };
+}
+
+export function openContextMenu(state, x, y, info) {
+  return {
+    ...state,
+    ui: { ...state.ui, contextMenu: { x, y, axis: info?.axis ?? null, target: info?.target ?? 'canvas', role: info?.role ?? 'primary' } }
+  };
 }
 
 export function closeContextMenu(state) {
-  const next = cloneState(state);
-  next.ui.contextMenu = null;
-  return next;
+  return { ...state, ui: { ...state.ui, contextMenu: null } };
 }
 
 export function setChartLayout(state, arrangement, primaryPosition, splitRatio) {
-  const next = cloneState(state);
-  next.chartLayout = {
-    arrangement,
-    primaryPosition,
-    splitRatio: splitRatio != null ? splitRatio : (arrangement.includes("wide") || arrangement.includes("tall") ? 0.67 : 0.5),
+  return {
+    ...state,
+    chartLayout: {
+      arrangement,
+      primaryPosition,
+      splitRatio: splitRatio != null ? splitRatio : (arrangement.includes("wide") || arrangement.includes("tall") ? 0.67 : 0.5),
+    }
   };
-  return next;
 }
 
-export function setXDomainOverride(state, min, max) {
-  const next = cloneState(state);
-  next.chartToggles.xDomainOverride = { min, max };
-  return next;
+export function setXDomainOverride(state, min, max, id = "primary") {
+  return updateSlot(state, id, { overrides: { ...state.charts[id].overrides, x: { min, max } } });
 }
 
-export function setYDomainOverride(state, yMin, yMax) {
-  const next = cloneState(state);
-  next.chartToggles.yDomainOverride = { yMin, yMax };
-  return next;
+export function setYDomainOverride(state, yMin, yMax, id = "primary") {
+  return updateSlot(state, id, { overrides: { ...state.charts[id].overrides, y: { yMin, yMax } } });
 }
 
-export function resetAxis(state, axis) {
-  const next = cloneState(state);
-  if (axis === 'x') {
-    next.chartToggles.xDomainOverride = null;
-  } else if (axis === 'y') {
-    next.chartToggles.yDomainOverride = null;
-  }
-  return next;
+export function resetAxis(state, axis, id = "primary") {
+  const overrides = state.charts[id].overrides;
+  if (axis === 'x') return updateSlot(state, id, { overrides: { ...overrides, x: null } });
+  if (axis === 'y') return updateSlot(state, id, { overrides: { ...overrides, y: null } });
+  return state;
 }

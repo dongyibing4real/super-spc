@@ -97,9 +97,12 @@ export function createScales(data, config, seriesKey = 'primaryValue') {
   const targetTickCount = Math.max(3, Math.min(12, Math.floor(plotHeight / tickPixelInterval) + 1));
   const yTicks = computeYTicks(yMin, yMax, targetTickCount);
 
+  // Inset x range by half a point spacing so edge points don't sit on the padding border
+  const plotWidth = width - padding.left - padding.right;
+  const pointInset = n > 1 ? Math.min(plotWidth * 0.02, 8) : 0;
   const x = scaleLinear()
     .domain([xMin, xMax])
-    .range([padding.left, width - padding.right]);
+    .range([padding.left + pointInset, width - padding.right - pointInset]);
 
   const y = scaleLinear()
     .domain([yMin, yMax])

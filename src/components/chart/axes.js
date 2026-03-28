@@ -48,18 +48,19 @@ export function renderAxes(layer, scales, data, config) {
   const pointSpacing = visibleCount > 1 ? plotWidth / (domainMax - domainMin) : plotWidth;
 
   // ── 2. Estimate label dimensions ──────────────────────────────────
-  const sampleLabel = data.points[visibleMin]?.lot?.replace('LOT-', '') ?? '';
-  const CHAR_WIDTH = 6.5;  // px per char at 10px IBM Plex Mono
-  const CHAR_WIDTH_SM = 5;  // px per char at 8px
-  const labelWidth = sampleLabel.length * CHAR_WIDTH;
+  const sampleLabel = data.points[visibleMin]?.label?.replace('LOT-', '') ?? '';
+  const MONO_RATIO = 0.6; // char width / font size for IBM Plex Mono
+  const baseFontSize = sampleLabel.length > 10 ? 8 : sampleLabel.length > 6 ? 9 : 10;
+  const baseCharW = baseFontSize * MONO_RATIO;
+  const labelWidth = sampleLabel.length * baseCharW;
 
   // ── 3. Determine rotation from RAW density (before stride) ────────
   //    If labels at stride=1 would overlap, rotation is needed
   const rotate45 = pointSpacing < labelWidth * 0.8;
   const rotate90 = pointSpacing < labelWidth * 0.2;
   const smallFont = rotate45 && pointSpacing < labelWidth * 0.35;
-  const fontSize = smallFont ? 8 : 10;
-  const effectiveCharW = smallFont ? CHAR_WIDTH_SM : CHAR_WIDTH;
+  const fontSize = smallFont ? Math.max(7, baseFontSize - 2) : baseFontSize;
+  const effectiveCharW = fontSize * MONO_RATIO;
 
   // ── 4. Effective horizontal footprint per label ───────────────────
   //    Conservative estimates that guarantee no visual overlap AND readability.
@@ -100,7 +101,7 @@ export function renderAxes(layer, scales, data, config) {
     const p = data.points[i];
     if (!p) continue;
 
-    const label = p.lot.replace('LOT-', '');
+    const label = p.label.replace('LOT-', '');
     const isSelected = i === data.selectedIndex;
     const relIdx = i - visibleMin;
 

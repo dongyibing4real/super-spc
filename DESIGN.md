@@ -197,12 +197,14 @@ The control chart is the single most important element in the product. Everythin
 ### Control Panel (Recipe Rail — JMP-Inspired)
 This is the JMP "control panel alongside chart" concept: a vertical panel that shows all current chart configuration.
 
-- **Organized in sections:** Variables (prominent chips), Config (compact chips for sigma/tests/compare), Layers (minimal toggle rows for chart layer visibility — limits, grid, phases, events, exclusions, confidence band; challenger overlay is NOT here, it's controlled by method selection)
-- **Each parameter is a "chip"** showing: eyebrow label, current value, and optional detail text
-- **Active chip** has a left-border highlight (`--blue`, 2px)
-- **Clicking a chip** opens an inline inspector/editor — never a full modal
-- **Collapsible** to a 40px icon strip showing section icons only
-- **This is the ONLY place for overlay toggles.** Do not duplicate toggles in both the toolbar and the panel. One location, one source of truth.
+- **Organized in three sections:** Dataset chip (top), Primary method chips, Challenger method chips. Each section separated by a `recipe-divider`.
+- **Dataset chip** at top shows active dataset name with inline dropdown to switch datasets.
+- **Primary section** contains all chart configuration chips: Metric, Subgroup, Phase, Chart type, Sigma method, Nelson tests. These are the analysis parameters for the primary chart.
+- **Challenger section** mirrors Primary with its own independent set of chips, allowing a different method/sigma/test configuration for side-by-side comparison.
+- **Each parameter is a "chip"** showing: eyebrow label and current value. Clicking opens an inline dropdown or checkbox editor — never a full modal.
+- **Active chip** (being edited) has a `chip-editing` class. Active method chips (Metric, Chart) may use `active-chip` with left-border highlight (`--blue`, 2px).
+- **Collapsible** to a 40px icon strip showing section icons only.
+- **Layer toggles** are NOT in the recipe rail. They live in the chart toolbar or are accessible via context menu. The recipe rail is exclusively for analysis parameter configuration.
 
 ### Evidence Rail
 The right rail is language-led, not widget-led. It explains, cites, and recommends.
@@ -216,38 +218,38 @@ The right rail is language-led, not widget-led. It explains, cites, and recommen
 
 ### Toolbar (Chart-Local)
 - **Belongs to the chart card**, not the app shell
-- **Contains:** chart title (metric — chart type), data window label
-- **Does NOT contain** overlay toggles (those live in the control panel) or capability indices (those live in method cards)
+- **Contains:** chart title (metric — chart type), data window label, data table toggle, layout controls (when challenger active)
+- **Does NOT contain** analysis parameter controls (those live in the recipe rail)
 - **Light background** (`--chart-surface`) to match the chart island
-- **Right-click context menus** on chart points may include point-specific actions (exclude, create finding) but must NOT duplicate layer/overlay toggles. Context menus are for point-level operations, not chart configuration.
+- **Right-click context menus** on chart points may include point-specific actions (exclude, create finding). Context menus are for point-level operations, not chart configuration.
 
-### Method Comparison Bar
-The method comparison is the intellectual heart of SPC — it must be explicit, not hidden as a toggle.
+### Compare Strip
+Below the chart, a horizontal strip of summary cards shows key analysis metrics at a glance.
 
-```
-┌─────────────────────────────────────────────┐
-│ ┌──────────────────┐  vs  ┌──────────────┐ │
-│ │● Primary         │      │● Challenger   │ │
-│ │  EWMA-1.0        │      │  Robust RA-2  │ │
-│ │  Cpk 1.24  Ppk…  │      │  Cpk 1.31  …  │ │
-│ └──────────────────┘      └──────────────┘ │
-└─────────────────────────────────────────────┘
-```
+- **Current cards:** OOC points (count), Rules triggered (count), Method (name), Limits scope
+- **Each card** is a `compare-card` with tone-based coloring (critical for OOC, neutral for method)
+- **Compact layout:** horizontal flex strip with equal-width cards
 
-- **Two method cards** side by side with "vs" separator
-- Each card shows: colored dot (blue=primary, teal=challenger), role label, method name, per-method capability indices (Cpk, Ppk)
-- **Primary card** always present; **Challenger card** shows "None — Select in Method Lab" when no challenger is configured
-- **Clicking a method card** navigates to Method Lab for method selection (future)
-- **Challenger overlay visibility** is automatic — the teal dashed line appears when a challenger method is ready, disappears when none is selected. There is NO manual toggle for overlay visibility.
-- **Light background** (`--chart-surface`), sits between toolbar and chart SVG
+### Lineage Strip
+Below the compare strip, a secondary info bar shows data provenance.
 
-### Data Readout Bar
-- **Bottom of the chart card**, light background
-- **Shows both methods' values** for the selected point, separated by vertical dividers
-- **Layout:** `Lot | ● Primary: 8.10 nm OK | ● Challenger: 8.08 nm OK | Rules`
-- **Colored dots** match the method card dots (blue/teal) for visual continuity
-- **Status labels** (OK/OOC/Excl) in uppercase monospace, colored semantically
-- **Keyboard hint:** `← → navigate · Shift+F10 actions`
+- **Fields:** Data timestamp, Limits version, Transform count, Excluded count, Pipeline status
+- **Purpose:** Audit trail — every chart result is traceable to its inputs
+
+### Data Readout Bar (planned)
+Selected-point detail with per-method values. Not yet implemented — currently, selected-point information is shown in the Evidence Rail signal section.
+
+### Capability Indices
+- **Location:** Chart pane titlebar, inline with method name
+- **Shows:** Cpk and Ppk values when capability analysis is available
+- **Color-coded:** Green (≥1.33), amber (1.0-1.33), red (<1.0) via `capClass()` utility
+- **Visibility:** Only appears when `capability` is computed for the dataset; the titlebar gracefully omits these when no capability data exists
+
+### Challenger Overlay
+- **Challenger visibility** is automatic — the teal dashed line appears when a challenger method is marked "ready" via Method Lab, disappears when none is selected
+- There is NO manual toggle for overlay visibility — it follows method selection state
+- **Dual-pane layout:** When challenger is ready, the chart arena splits into primary + challenger panes with configurable arrangement (horizontal, vertical, primary-wide, primary-tall, single)
+- **Layout controls** appear in the chart toolbar only when a challenger is active
 
 ### Navigation Sidebar
 - **140px text sidebar** with full labels, dark background (`--bg-0`)
@@ -361,7 +363,7 @@ Detailed feature specs have been extracted from this file into individual docume
 
 | Area | File | Summary |
 |------|------|---------|
-| **Chart Types** | [.claude/design/chart-type-system-v1.md](.claude/design/chart-type-system-v1.md) | 20+ chart types across 5 categories, auto-detection logic, paired layout, multi-chart workspace |
+| **Chart Types** | [.claude/design/chart-type-system-v1.md](.claude/design/chart-type-system-v1.md) | 24 chart types across 5 categories, auto-detection logic, paired layout, multi-chart workspace |
 | **Data Import** | [.claude/design/data-import-management-v1.md](.claude/design/data-import-management-v1.md) | CSV import UX, data table viewer, column properties |
 | **Variable Config** | [.claude/design/variable-config-v1.md](.claude/design/variable-config-v1.md) | JMP-style drag-and-drop zones (Y, Subgroup, Phase, Label, Part, By, n Trials) |
 | **Sigma Config** | [.claude/design/sigma-config-v1.md](.claude/design/sigma-config-v1.md) | Statistic selector, sigma method selector (9 methods), K-sigma multiplier |
@@ -377,11 +379,12 @@ Detailed feature specs have been extracted from this file into individual docume
 | **States** | [.claude/design/empty-error-loading-v1.md](.claude/design/empty-error-loading-v1.md) | Empty, error, and loading states for all surfaces |
 | **Accessibility** | [.claude/design/accessibility-v1.md](.claude/design/accessibility-v1.md) | Keyboard nav, screen readers, WCAG AA, touch targets |
 | **Axis Spec** | [.claude/spec/src-chart/axis-interaction-spec-v1.md](.claude/spec/src-chart/axis-interaction-spec-v1.md) | Unified axis pan/scale/tick system (JMP-style) |
-| **Algo Spec** | [.claude/spec/algo/control-charts-spec-v1.md](.claude/spec/algo/control-charts-spec-v1.md) | Algorithm package design for 16 chart types |
+| **Algo Spec** | [.claude/spec/algo/control-charts-spec-v1.md](.claude/spec/algo/control-charts-spec-v1.md) | Algorithm package design for 24 chart types |
 | **Algo Plan** | [.claude/plan/algo/control-charts-plan-v1.md](.claude/plan/algo/control-charts-plan-v1.md) | 32-task implementation plan for algo package |
 | **API Spec** | [.claude/spec/api/backend-architecture-v1.md](.claude/spec/api/backend-architecture-v1.md) | FastAPI + SQLite architecture, schema, API surface |
 | **API Plan** | [.claude/plan/api/backend-implementation-v1.md](.claude/plan/api/backend-implementation-v1.md) | 4-phase backend implementation plan |
 | **Roadmap** | [.claude/roadmap/](.claude/roadmap/) | Tier 1-4 feature priorities |
+| **SPC Formulas** | [.claude/skills/spc-formulas/SKILL.md](.claude/skills/spc-formulas/SKILL.md) | All 25 chart type formulas, JMP conventions, sigma estimation, rules, capability |
 
 ---
 
@@ -393,51 +396,54 @@ Detailed feature specs have been extracted from this file into individual docume
 - [ ] Full Process Capability Report (below chart, expandable)
 - [ ] Sigma Report (overall, within, stability index)
 - [ ] Rule violation markers directly on chart points
-- [ ] All 8 Nelson rules (independently toggleable)
-- [ ] Westgard rules (for Levey-Jennings charts)
-- [ ] Custom test designer (modify rule parameters)
+- [x] All 8 Nelson rules (independently toggleable) — algo: implemented
+- [x] Westgard rules (6 rules, for Levey-Jennings charts) — algo: implemented
+- [ ] Custom test designer (modify rule parameters) — algo: RuleConfig supports custom_params
 - [ ] Histogram sidebar docked to Y-axis
 - [ ] Phase-specific limit recalculation with visual before/after
 - [ ] Method comparison overlay (challenger vs. primary)
 - [ ] Exclusion lineage — every excluded point traceable to a reason
 - [ ] Confidence bands for modern/robust methods
 - [ ] Box-and-whisker per subgroup (optional layer)
-- [ ] Run-chart mode (no limits, just sequence)
+- [x] Run-chart mode (no limits, just sequence) — algo: implemented with runs test
 - [ ] Alarm Report (OOC summary per chart)
 
-### Chart Types — Shewhart Variables
-- [ ] XBar-R (subgroup mean + range)
-- [ ] XBar-S (subgroup mean + std dev)
-- [ ] IMR (individual + moving range)
-- [ ] Run Chart (no limits)
-- [ ] Levey-Jennings (long-term sigma)
-- [ ] Presummarize (repeated measures)
-- [ ] Three Way (between + within)
+### Chart Types — Shewhart Variables (algo: ✅ complete)
+- [x] XBar-R (subgroup mean + range)
+- [x] XBar-S (subgroup mean + std dev)
+- [x] IMR (individual + moving range)
+- [x] R chart (standalone range)
+- [x] S chart (standalone std dev)
+- [x] MR chart (standalone moving range)
+- [x] Run Chart (no limits, runs test)
+- [x] Levey-Jennings (long-term sigma)
+- [x] Presummarize (repeated measures, known parameters)
+- [x] Three Way (between + within)
 
-### Chart Types — Shewhart Attributes
-- [ ] P chart (proportion defective)
-- [ ] NP chart (count defective)
-- [ ] C chart (count of defects)
-- [ ] U chart (defects per unit)
-- [ ] Laney P' (overdispersion-adjusted proportion)
-- [ ] Laney U' (overdispersion-adjusted rate)
+### Chart Types — Shewhart Attributes (algo: ✅ complete)
+- [x] P chart (proportion defective)
+- [x] NP chart (count defective)
+- [x] C chart (count of defects)
+- [x] U chart (defects per unit)
+- [x] Laney P' (overdispersion-adjusted proportion)
+- [x] Laney U' (overdispersion-adjusted rate)
 
-### Chart Types — Short Run
-- [ ] Short Run Difference (centered)
-- [ ] Short Run Z (standardized)
-- [ ] Short Run MR (centered and standardized)
-- [ ] Short Run XBar variants
+### Chart Types — Short Run (algo: ✅ complete)
+- [x] Short Run Difference (centered)
+- [x] Short Run Z (standardized)
+- [x] Short Run MR (centered and standardized)
+- [x] Short Run XBar variants
 
-### Chart Types — Rare Event
-- [ ] G chart (counts between events)
-- [ ] T chart (time between events)
+### Chart Types — Rare Event (algo: ✅ complete)
+- [x] G chart (counts between events)
+- [x] T chart (time between events)
 
-### Chart Types — Advanced Platforms
-- [ ] CUSUM Tabular (with ARL profiler)
-- [ ] CUSUM V-Mask
-- [ ] EWMA (with residuals, forecast, ARL)
-- [ ] Multivariate T² (Hotelling)
-- [ ] MEWMA
+### Chart Types — Advanced Platforms (algo: ✅ complete)
+- [x] CUSUM Tabular (with ARL profiler)
+- [x] CUSUM V-Mask
+- [x] EWMA (with residuals, forecast, ARL)
+- [x] Multivariate T² (Hotelling, Phase I + II, contributions decomposition)
+- [x] MEWMA (exact + asymptotic covariance)
 
 ### Data Management
 - [ ] CSV import with column mapping
@@ -459,8 +465,6 @@ Detailed feature specs have been extracted from this file into individual docume
 - [ ] K-sigma multiplier (default 3, configurable 1-5)
 - [ ] Spec limits entry/edit/save/load
 - [ ] Control limits manual override/save/load
-- [ ] Paired location + dispersion chart layout
-- [ ] Dispersion chart type selector (R vs S)
 - [ ] Show/hide individual points within subgroups
 - [ ] Show/hide box plots
 
@@ -500,3 +504,5 @@ Detailed feature specs have been extracted from this file into individual docume
 | 2026-03-26 | **Complete feature design expansion** | Gap analysis against JMP Control Chart Builder revealed DESIGN.md was strong on aesthetic system (7/10) but missing feature design specs. Added: full chart type inventory (20+ types across 5 categories), paired chart layout, drag-drop variable zones, statistic/sigma/K-sigma configuration, all 8 Nelson + 6 Westgard rules, CUSUM/EWMA/multivariate platform designs, data import flow, spec/control limits management, capability report layout, alarm system, save/export operations, empty/error/loading states, accessibility spec, keyboard shortcuts. Informed by JMP Quality and Process Methods reference documentation. |
 | 2026-03-26 | **Chart panel redesign: Method Comparison Bar** | "Robust overlay" toggle was hiding the core SPC concept — primary vs challenger method comparison — as a visual layer. Promoted to explicit method cards in chart toolbar with per-method capability indices and dual readout bar. Challenger overlay visibility now tied to method selection state, not a manual toggle. Removes overlay from Layers toggles. |
 | 2026-03-26 | **Navigation sidebar: full text labels** | 2-letter abbreviations (WK, DP, ML) were cryptic. Redesigned to 140px text sidebar with full labels, brand block, and pipeline status. Responsive collapse to 48px at <1200px. |
+| 2026-03-27 | **Algo package: 24 chart types implemented** | Full `algo/` Python package with 24 chart types (up from 16 planned), 8 Nelson tests, 6 Westgard rules, CUSUM ARL profiler, 7 sigma estimators, constants tables n=2..50. Added standalone R/S/MR charts, Run Chart with runs test, Presummarize, CUSUM V-Mask, Hotelling T² (Phase I+II with contributions decomposition), MEWMA (exact + asymptotic). 1076 tests (pytest + hypothesis property-based). Pure numpy/scipy, attrs models, no higher-level dependencies. |
+| 2026-03-28 | **DESIGN.md alignment with product** | Recipe rail restructured from Variables/Config/Layers to Dataset + Primary + Challenger sections — dual-config approach enables side-by-side method comparison directly in the rail. Method Comparison Bar replaced with Compare Strip (horizontal stat cards) + Lineage Strip. Layer toggles removed from recipe rail. Capability indices live in chart pane titlebar. Data Readout Bar deferred (selected-point info in Evidence Rail for now). |

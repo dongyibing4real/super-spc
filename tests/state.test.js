@@ -2,32 +2,189 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  clearNotice,
   createFindingFromSelection,
   createInitialState,
   deriveWorkspace,
   exportReport,
   failTransformStep,
   generateReportDraft,
+  loadDataset,
+  navigate,
   recoverTransformStep,
   resetAxis,
+  selectFinding,
   selectPoint,
+  setChartLayout,
   setChallengerStatus,
+  setDatasets,
+  setError,
+  setLoadingState,
   setXDomainOverride,
   setYDomainOverride,
-  togglePointExclusion
+  toggleChartOption,
+  togglePointExclusion,
+  toggleTransform,
 } from "../src/core/state.js";
 
+/* ═══ Test fixture — builds a populated state like the old mock ═══ */
+
+function createPopulatedState() {
+  const base = createInitialState();
+  const points = Array.from({ length: 28 }, (_, i) => ({
+    id: `pt-${i}`,
+    label: `L-${2840 + i}`,
+    subgroupLabel: `Hour ${i + 1}`,
+    phaseId: i < 9 ? "P1" : i < 18 ? "P2" : "P3",
+    primaryValue: 8.042 + i * 0.004,
+    challengerValue: 8.041 + i * 0.004,
+    excluded: [13, 17, 20, 23].includes(i),
+    annotation: i === 18 ? "M-204 chamber clean" : null,
+    raw: {},
+  }));
+
+  const primaryLimits = {
+    center: 8.078, ucl: 8.145, lcl: 8.011, usl: 8.165, lsl: 8.025,
+    version: "limits-v12.4", scope: "Phase-specific",
+  };
+  const challengerLimits = {
+    center: 8.074, ucl: 8.138, lcl: 8.018, usl: null, lsl: null,
+    version: "ra-2.1-cal-7", scope: "Dataset",
+  };
+
+  return {
+    ...base,
+    loading: false,
+    charts: {
+      primary: {
+        ...base.charts.primary,
+        context: {
+          ...base.charts.primary.context,
+          title: "Etch Rate Stability",
+          metric: { id: "thickness", label: "Thickness", unit: "nm" },
+          subgroup: { id: "hour", label: "Hour / n=5", detail: "5 wafers per lot" },
+        },
+        limits: primaryLimits,
+        violations: [],
+        sigma: { sigma_hat: 0.042, method: "moving_range", n_used: 27 },
+        zones: { zone_a_upper: 8.162, zone_b_upper: 8.12, cl: 8.078, zone_b_lower: 8.036, zone_a_lower: 7.994 },
+      },
+      challenger: {
+        ...base.charts.challenger,
+        limits: challengerLimits,
+        violations: [],
+        sigma: null,
+      },
+    },
+    chartOrder: ["primary", "challenger"],
+    phases: [
+      { id: "P1", label: "Pre-clean baseline", start: 0, end: 8 },
+      { id: "P2", label: "Ramp and cavity split", start: 9, end: 17 },
+      { id: "P3", label: "Post-maintenance shift", start: 18, end: 27 },
+    ],
+    points,
+    transforms: [
+      { id: "ingest", title: "CSV ingest", status: "complete", active: true, detail: "Validated.", rescue: "" },
+      { id: "winsorize", title: "Winsorize", status: "active", active: true, detail: "Discount spikes.", rescue: "" },
+      { id: "normalize", title: "Normalize", status: "active", active: true, detail: "Target norm.", rescue: "" },
+      { id: "phase-tag", title: "Phase tag", status: "active", active: true, detail: "Boundaries.", rescue: "" },
+    ],
+    findings: [
+      {
+        id: "finding-thickness-drift",
+        title: "Thickness drift",
+        severity: "High",
+        summary: "Sustained upward drift.",
+        confidence: 0.84,
+        status: "Draft ready",
+        owner: "Etch Process Eng.",
+        citations: [
+          { label: "Lots", value: "L-2861 to L-2867", resolved: true },
+          { label: "Limits set", value: "limits-v12.4", resolved: true },
+        ],
+      },
+    ],
+    selectedPointIndex: 24,
+    activeFindingId: "finding-thickness-drift",
+  };
+}
+
+// ── New API integration actions ─────────────────────────────
+
+test("createInitialState returns loading empty state", () => {
+  const s = createInitialState();
+  assert.equal(s.loading, true);
+  assert.equal(s.error, null);
+  assert.deepEqual(s.datasets, []);
+  assert.deepEqual(s.points, []);
+  assert.equal(s.activeDatasetId, null);
+});
+
+test("setDatasets stores dataset list", () => {
+  const s = createInitialState();
+  const datasets = [{ id: "d1", name: "Test" }, { id: "d2", name: "Test2" }];
+  const next = setDatasets(s, datasets);
+  assert.deepEqual(next.datasets, datasets);
+  assert.equal(next.loading, true); // loading unchanged
+});
+
+test("loadDataset populates state and clears loading", () => {
+  const s = createInitialState();
+  const points = [
+    { id: "pt-0", lot: "pt-0", primaryValue: 10, excluded: false, phaseId: "P1" },
+    { id: "pt-1", lot: "pt-1", primaryValue: 12, excluded: false, phaseId: "P1" },
+  ];
+  const limits = { center: 11, ucl: 15, lcl: 7, usl: null, lsl: null, version: "v1", scope: "Dataset" };
+  const next = loadDataset(s, { points, slots: { primary: { limits } }, datasetId: "d1" });
+
+  assert.equal(next.loading, false);
+  assert.equal(next.error, null);
+  assert.equal(next.activeDatasetId, "d1");
+  assert.equal(next.points.length, 2);
+  assert.equal(next.charts.primary.limits.center, 11);
+  assert.equal(next.selectedPointIndex, 1); // last point
+  assert.equal(next.charts.primary.overrides.x, null); // reset
+});
+
+test("loadDataset preserves chartToggles and resets overrides", () => {
+  let s = createInitialState();
+  s = toggleChartOption(s, "grid"); // turn off grid
+  const points = [{ id: "pt-0", lot: "pt-0", primaryValue: 10, excluded: false, phaseId: "P1" }];
+  const next = loadDataset(s, { points, slots: {}, datasetId: "d1" });
+
+  assert.equal(next.chartToggles.grid, false); // preserved
+  assert.equal(next.charts.primary.overrides.x, null); // reset
+});
+
+test("setLoadingState toggles loading flag", () => {
+  const s = createInitialState();
+  const loaded = setLoadingState(s, false);
+  assert.equal(loaded.loading, false);
+  const loading = setLoadingState(loaded, true);
+  assert.equal(loading.loading, true);
+  assert.equal(loading.error, null); // cleared when loading
+});
+
+test("setError sets error and clears loading", () => {
+  const s = createInitialState();
+  const errored = setError(s, "Backend unavailable");
+  assert.equal(errored.loading, false);
+  assert.equal(errored.error, "Backend unavailable");
+});
+
+// ── Existing actions with populated state ───────────────────
+
 test("selecting a point updates the evidence ledger to the selected lot", () => {
-  const initial = createInitialState();
+  const initial = createPopulatedState();
   const next = selectPoint(initial, 26);
   const workspace = deriveWorkspace(next);
 
-  assert.equal(workspace.selectedPoint.lot, "L-2866");
+  assert.equal(workspace.selectedPoint.label, "L-2866");
   assert.match(workspace.evidence[0].value, /L-2866/);
 });
 
 test("excluding a point keeps it visible and updates exclusion count", () => {
-  const initial = createInitialState();
+  const initial = createPopulatedState();
   const next = togglePointExclusion(initial, 10);
   const workspace = deriveWorkspace(next);
 
@@ -37,7 +194,7 @@ test("excluding a point keeps it visible and updates exclusion count", () => {
 });
 
 test("failed transform keeps the prior chart result while marking pipeline partial", () => {
-  const initial = createInitialState();
+  const initial = createPopulatedState();
   const before = deriveWorkspace(initial).signal.title;
   const next = failTransformStep(initial, "normalize");
   const after = deriveWorkspace(next).signal.title;
@@ -48,7 +205,7 @@ test("failed transform keeps the prior chart result while marking pipeline parti
 });
 
 test("finding created from partial workspace carries unresolved citations and blocks export", () => {
-  const initial = createInitialState();
+  const initial = createPopulatedState();
   const failed = failTransformStep(initial, "phase-tag");
   const findingState = createFindingFromSelection(failed);
   const draftState = generateReportDraft(findingState);
@@ -59,7 +216,7 @@ test("finding created from partial workspace carries unresolved citations and bl
 });
 
 test("report export succeeds after recovery and challenger completion", () => {
-  const initial = createInitialState();
+  const initial = createPopulatedState();
   const failed = failTransformStep(initial, "phase-tag");
   const recovered = recoverTransformStep(failed, "phase-tag");
   const ready = setChallengerStatus(recovered, "ready");
@@ -72,42 +229,99 @@ test("report export succeeds after recovery and challenger completion", () => {
   assert.match(exported.reportExport.lastArtifactId, /artifact-/);
 });
 
-// ── Axis interaction state tests ──────────────────────────────────
+// ── Axis interaction state tests ────────────────────────────
 
 test("setXDomainOverride stores custom x-axis range", () => {
   const initial = createInitialState();
   const next = setXDomainOverride(initial, 5, 20);
-
-  assert.deepEqual(next.chartToggles.xDomainOverride, { min: 5, max: 20 });
+  assert.deepEqual(next.charts.primary.overrides.x, { min: 5, max: 20 });
 });
 
 test("setYDomainOverride stores custom y-axis range", () => {
   const initial = createInitialState();
   const next = setYDomainOverride(initial, 10, 50);
-
-  assert.deepEqual(next.chartToggles.yDomainOverride, { yMin: 10, yMax: 50 });
+  assert.deepEqual(next.charts.primary.overrides.y, { yMin: 10, yMax: 50 });
 });
 
 test("resetAxis('x') clears xDomainOverride", () => {
   const initial = createInitialState();
   const panned = setXDomainOverride(initial, 3, 15);
   const reset = resetAxis(panned, "x");
-
-  assert.equal(reset.chartToggles.xDomainOverride, null);
+  assert.equal(reset.charts.primary.overrides.x, null);
 });
 
 test("resetAxis('y') clears yDomainOverride", () => {
   const initial = createInitialState();
   const scaled = setYDomainOverride(initial, 5, 100);
   const reset = resetAxis(scaled, "y");
-
-  assert.equal(reset.chartToggles.yDomainOverride, null);
+  assert.equal(reset.charts.primary.overrides.y, null);
 });
 
 test("setXDomainOverride does not mutate original state", () => {
   const initial = createInitialState();
   const next = setXDomainOverride(initial, 2, 18);
-
-  assert.equal(initial.chartToggles.xDomainOverride, null);
+  assert.equal(initial.charts.primary.overrides.x, null);
   assert.notEqual(initial, next);
+});
+
+// ── Immutability tests (selective cloning) ──────────────────
+
+test("selectPoint does not mutate original state", () => {
+  const initial = createPopulatedState();
+  const next = selectPoint(initial, 5);
+  assert.equal(initial.selectedPointIndex, 24);
+  assert.equal(next.selectedPointIndex, 5);
+});
+
+test("togglePointExclusion does not mutate original points array", () => {
+  const initial = createPopulatedState();
+  const next = togglePointExclusion(initial, 5);
+  assert.equal(initial.points[5].excluded, false);
+  assert.equal(next.points[5].excluded, true);
+  assert.notEqual(initial.points, next.points);
+});
+
+test("navigate does not mutate original state", () => {
+  const initial = createPopulatedState();
+  const next = navigate(initial, "dataprep");
+  assert.equal(initial.route, "workspace");
+  assert.equal(next.route, "dataprep");
+});
+
+test("toggleChartOption does not mutate original chartToggles", () => {
+  const initial = createPopulatedState();
+  const next = toggleChartOption(initial, "grid");
+  assert.equal(initial.chartToggles.grid, true);
+  assert.equal(next.chartToggles.grid, false);
+  assert.notEqual(initial.chartToggles, next.chartToggles);
+});
+
+test("toggleTransform does not mutate original transforms", () => {
+  const initial = createPopulatedState();
+  const next = toggleTransform(initial, "winsorize");
+  assert.equal(initial.transforms[1].active, true);
+  assert.equal(next.transforms[1].active, false);
+  assert.notEqual(initial.transforms, next.transforms);
+});
+
+test("clearNotice clears the notice", () => {
+  let s = createPopulatedState();
+  s = togglePointExclusion(s, 5); // sets a notice
+  assert.notEqual(s.ui.notice, null);
+  const cleared = clearNotice(s);
+  assert.equal(cleared.ui.notice, null);
+});
+
+test("selectFinding updates activeFindingId", () => {
+  const s = createPopulatedState();
+  const next = selectFinding(s, "some-other-id");
+  assert.equal(next.activeFindingId, "some-other-id");
+});
+
+test("setChartLayout sets arrangement and ratio", () => {
+  const s = createInitialState();
+  const next = setChartLayout(s, "vertical", "top", 0.6);
+  assert.equal(next.chartLayout.arrangement, "vertical");
+  assert.equal(next.chartLayout.primaryPosition, "top");
+  assert.equal(next.chartLayout.splitRatio, 0.6);
 });

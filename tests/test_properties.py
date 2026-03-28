@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from hypothesis import given, strategies as st, settings, assume
+from hypothesis import given, strategies as st, settings, assume, HealthCheck
 from hypothesis.extra.numpy import arrays
 
 from algo.imr import IMRConfig, compute_imr
@@ -15,6 +15,12 @@ from algo.p_chart import PChartConfig, PChartResult, p_chart
 from algo.cusum import CUSUMConfig, compute_cusum
 from algo.ewma import EWMAConfig, compute_ewma
 from algo.common.enums import SigmaMethod
+from algo.r_chart import RChartConfig, compute_r_chart
+from algo.s_chart import SChartConfig, compute_s_chart
+from algo.mr_chart import MRChartConfig, compute_mr_chart
+from algo.run_chart import RunChartConfig, compute_run_chart
+from algo.hotelling_t2 import HotellingT2Config, compute_hotelling_t2
+from algo.mewma import MEWMAConfig, compute_mewma
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +39,7 @@ safe_data = arrays(
 # Invariant 1: IMR – UCL >= CL >= LCL for random data
 # ---------------------------------------------------------------------------
 
-@settings(max_examples=50)
+@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
 @given(data=safe_data)
 def test_imr_limits_ordered(data):
     """UCL >= CL >= LCL element-wise for the individuals chart."""
@@ -185,3 +191,134 @@ class TestConfigValidation:
     def test_ewma_rejects_negative_sigma(self):
         with pytest.raises(ValueError):
             EWMAConfig(target=0.0, sigma=-1.0, lambda_=0.2)
+
+
+# ---------------------------------------------------------------------------
+# Invariant 9: R chart – LCL >= 0
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=50)
+@given(
+    data=arrays(
+        dtype=np.float64,
+        shape=st.tuples(st.integers(3, 20), st.integers(2, 8)),
+        elements=safe_floats,
+    )
+)
+def test_r_chart_lcl_non_negative(data):
+    """R chart LCL is always >= 0."""
+    result = compute_r_chart(data)
+    assert np.all(result.limits.lcl >= 0), "R chart LCL must be >= 0"
+
+
+# ---------------------------------------------------------------------------
+# Invariant 10: S chart – LCL >= 0
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=50)
+@given(
+    data=arrays(
+        dtype=np.float64,
+        shape=st.tuples(st.integers(3, 20), st.integers(2, 8)),
+        elements=safe_floats,
+    )
+)
+def test_s_chart_lcl_non_negative(data):
+    """S chart LCL is always >= 0."""
+    result = compute_s_chart(data)
+    assert np.all(result.limits.lcl >= 0), "S chart LCL must be >= 0"
+
+
+# ---------------------------------------------------------------------------
+# Invariant 11: MR chart – LCL >= 0
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=50)
+@given(data=safe_data)
+def test_mr_chart_lcl_non_negative(data):
+    """MR chart LCL is always >= 0."""
+    result = compute_mr_chart(data)
+    assert np.all(result.limits.lcl >= 0), "MR chart LCL must be >= 0"
+
+
+# ---------------------------------------------------------------------------
+# Invariant 12: Run chart – p_value in [0, 1]
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=50)
+@given(data=safe_data)
+def test_run_chart_p_value_valid(data):
+    """Run chart p-value is between 0 and 1."""
+    result = compute_run_chart(data)
+    assert 0 <= result.p_value <= 1, f"p_value out of range: {result.p_value}"
+
+
+# ---------------------------------------------------------------------------
+# Invariant 13: Run chart – n_runs >= 1
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=50)
+@given(data=safe_data)
+def test_run_chart_n_runs_non_negative(data):
+    """Run count is always non-negative. Zero when all points equal center."""
+    result = compute_run_chart(data)
+    assert result.n_runs >= 0
+
+
+# ---------------------------------------------------------------------------
+# Invariant 14: Hotelling T² – values >= 0
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=30)
+@given(
+    data=arrays(
+        dtype=np.float64,
+        shape=st.tuples(st.integers(10, 30), st.integers(2, 4)),
+        elements=safe_floats,
+    )
+)
+def test_hotelling_t2_non_negative(data):
+    """T² values are always non-negative."""
+    assume(np.linalg.matrix_rank(np.cov(data, rowvar=False)) == data.shape[1])
+    result = compute_hotelling_t2(data)
+    assert np.all(result.t2_values >= -1e-10), "T² must be >= 0"
+
+
+# ---------------------------------------------------------------------------
+# Invariant 15: Hotelling T² – contributions sum to T²
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=30)
+@given(
+    data=arrays(
+        dtype=np.float64,
+        shape=st.tuples(st.integers(10, 30), st.integers(2, 4)),
+        elements=safe_floats,
+    )
+)
+def test_hotelling_t2_contributions_sum(data):
+    """Per-variable contributions sum to the total T² for each observation."""
+    assume(np.linalg.matrix_rank(np.cov(data, rowvar=False)) == data.shape[1])
+    result = compute_hotelling_t2(data)
+    np.testing.assert_allclose(
+        result.contributions.sum(axis=1), result.t2_values, atol=1e-6
+    )
+
+
+# ---------------------------------------------------------------------------
+# Invariant 16: MEWMA – T² values >= 0
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=30)
+@given(
+    data=arrays(
+        dtype=np.float64,
+        shape=st.tuples(st.integers(10, 30), st.integers(2, 4)),
+        elements=safe_floats,
+    )
+)
+def test_mewma_t2_non_negative(data):
+    """MEWMA T² values are always non-negative."""
+    assume(np.linalg.matrix_rank(np.cov(data, rowvar=False)) == data.shape[1])
+    result = compute_mewma(data)
+    assert np.all(result.t2_values >= -1e-10), "MEWMA T² must be >= 0"

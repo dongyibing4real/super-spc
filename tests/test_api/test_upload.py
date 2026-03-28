@@ -19,12 +19,17 @@ def test_upload_csv(client):
         "/api/datasets/upload",
         files={"file": ("test_data.csv", csv_content, "text/csv")},
     )
-    assert resp.status_code == 201
+    assert resp.status_code == 201, f"Upload failed: {resp.text}"
     data = resp.json()
     assert data["name"] == "test_data"
     assert data["point_count"] == 4
     assert data["metadata"]["value_column"] == "Value"
     assert data["metadata"]["subgroup_column"] == "Hour"
+    # Verify columns are returned
+    assert "columns" in data
+    col_names = [c["name"] for c in data["columns"]]
+    assert "Value" in col_names
+    assert "Hour" in col_names
 
 
 def test_upload_real_csv(client):
@@ -142,9 +147,10 @@ def test_export_csv(client):
     reader = csv.DictReader(io.StringIO(resp2.text))
     rows = list(reader)
     assert len(rows) == 3
-    assert "value" in reader.fieldnames
-    assert "subgroup" in reader.fieldnames
-    assert float(rows[0]["value"]) == 10.5
+    # New format preserves original column names
+    assert "Value" in reader.fieldnames
+    assert "Hour" in reader.fieldnames
+    assert float(rows[0]["Value"]) == 10.5
 
 
 def test_export_not_found(client):

@@ -14,6 +14,7 @@ from ..schemas import (
     AnalysisResult,
     CapabilityOut,
     LimitsOut,
+    RuleViolationOut,
     SigmaOut,
     ZonesOut,
 )

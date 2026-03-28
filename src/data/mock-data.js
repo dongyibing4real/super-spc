@@ -29,9 +29,8 @@ function formatLot(index) {
 function buildPoints() {
   return pointValues.map((value, index) => ({
     id: `pt-${index}`,
-    lot: formatLot(index),
+    label: formatLot(index),
     subgroupLabel: `Hour ${index + 1}`,
-    cavity: "Cavity 1",
     phaseId: phaseForIndex(index)?.id || "P3",
     primaryValue: value,
     challengerValue: robustValues[index],

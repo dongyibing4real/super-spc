@@ -177,6 +177,8 @@ class TestThreeWayConfig:
         with pytest.raises(ValueError):
             compute_three_way([])
 
+    @pytest.mark.filterwarnings("ignore:Mean of empty slice:RuntimeWarning")
+    @pytest.mark.filterwarnings("ignore:invalid value encountered:RuntimeWarning")
     def test_single_subgroup_no_raise(self):
         """Single subgroup: MR of means is undefined; result should still be returned."""
         # With a single subgroup the MR-based sigma_between is undefined (nan or 0).

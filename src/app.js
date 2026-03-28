@@ -1,692 +1,115 @@
+/**
+ * app.js — Application orchestrator.
+ *
+ * Owns: global state, render cycle, D3 chart lifecycle, event delegation, data loading.
+ * Delegates rendering to views/ and components/ modules.
+ */
 import {
   clearNotice,
   closeContextMenu,
   createFindingFromSelection,
   createInitialState,
-  deriveWorkspace,
+  deletePrepDataset,
   exportReport,
   failTransformStep,
   generateReportDraft,
+  loadDataset,
+  loadPrepPoints,
   moveSelection,
   navigate,
   openContextMenu,
   recoverTransformStep,
   selectFinding,
   selectPoint,
+  selectPrepDataset,
+  setPrepError,
+  setPrepSort,
   resetAxis,
   setChartLayout,
   setChallengerStatus,
+  setDatasets,
+  setError,
+  setLoadingState,
+  toggleDataTable,
   setXDomainOverride,
   setYDomainOverride,
   toggleChartOption,
   togglePointExclusion,
   toggleReportFailureMode,
-  toggleTransform
+  toggleTransform,
+  setColumns,
+  setChartParams,
+  setActiveChipEditor,
+  getPrimary,
 } from "./core/state.js";
-import { createChart } from "./chart/index.js";
-import { fmt } from "./chart/utils.js";
+import { createChart } from "./components/chart/index.js";
+import {
+  deleteDataset, fetchColumns, fetchDatasets, fetchPoints,
+  runAnalysis, updateColumnRoles, uploadCsv
+} from "./data/api.js";
+import { transformPoints, transformAnalysis, buildDefaultContext } from "./data/transforms.js";
 
+import { getCapability, capClass, detectRuleViolations, applyParamsToContext } from "./helpers.js";
+import { deriveWorkspace } from "./core/state.js";
+import { renderSidebar } from "./components/sidebar.js";
+
+import { renderNotice, renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
+import { renderRecipeRail } from "./components/recipe-rail.js";
+import { renderContextMenu } from "./components/context-menu.js";
+import { CHART_MOUNT_PRIMARY, CHART_MOUNT_CHALLENGER, renderChartArena } from "./components/chart-arena.js";
+import { renderWorkspace, renderEvidenceRail } from "./views/workspace.js";
+import { renderDataPrep } from "./views/dataprep.js";
+import { renderMethodLab } from "./views/methodlab.js";
+import { renderFindings } from "./views/findings.js";
+import { renderReports } from "./views/reports.js";
+
+/* ═══ Global state ═══ */
 const root = document.getElementById("app");
 let state = createInitialState();
-let charts = { primary: null, challenger: null }; // D3 chart instances
+let charts = { primary: null, challenger: null };
 
-function toneClass(tone) {
-  return { critical: "critical", info: "info", neutral: "neutral", positive: "positive", warning: "warning" }[tone] || "neutral";
-}
-
-/* pointToSvg and buildPath removed — D3 scales and d3.line() handle this now */
-
-/* ═══ Capability index computation ═══ */
-function computeCapability() {
-  const vals = state.points.filter(p => !p.excluded).map(p => p.primaryValue);
-  const n = vals.length;
-  if (n < 2) return { cpk: null, ppk: null };
-  const mean = vals.reduce((a, b) => a + b, 0) / n;
-  const stddev = Math.sqrt(vals.reduce((a, v) => a + (v - mean) ** 2, 0) / (n - 1));
-  if (stddev === 0) return { cpk: null, ppk: null };
-  const usl = state.limits.usl;
-  const lsl = state.limits.lsl;
-  const cpu = (usl - mean) / (3 * stddev);
-  const cpl = (mean - lsl) / (3 * stddev);
-  const cpk = Math.min(cpu, cpl);
-  const pp = (usl - lsl) / (6 * stddev);
-  const ppu = (usl - mean) / (3 * stddev);
-  const ppl = (mean - lsl) / (3 * stddev);
-  const ppk = Math.min(ppu, ppl);
-  return { cpk: cpk.toFixed(2), ppk: ppk.toFixed(2), cp: pp.toFixed(2) };
-}
-
-function capClass(val) {
-  const v = parseFloat(val);
-  if (v >= 1.33) return "good";
-  if (v >= 1.0) return "marginal";
-  return "poor";
-}
-
-/* ═══ Challenger capability computation ═══ */
-function computeChallengerCapability() {
-  if (!state.challengerLimits) return { cpk: null, ppk: null };
-  const vals = state.points.filter(p => !p.excluded).map(p => p.challengerValue);
-  const n = vals.length;
-  if (n < 2) return { cpk: null, ppk: null };
-  const mean = vals.reduce((a, b) => a + b, 0) / n;
-  const stddev = Math.sqrt(vals.reduce((a, v) => a + (v - mean) ** 2, 0) / (n - 1));
-  if (stddev === 0) return { cpk: null, ppk: null };
-  const ucl = state.challengerLimits.ucl;
-  const lcl = state.challengerLimits.lcl;
-  const cpu = (ucl - mean) / (3 * stddev);
-  const cpl = (mean - lcl) / (3 * stddev);
-  const cpk = Math.min(cpu, cpl);
-  const pp = (ucl - lcl) / (6 * stddev);
-  return { cpk: cpk.toFixed(2), ppk: pp.toFixed(2), cp: pp.toFixed(2) };
-}
-
-/* ═══ Rule violation detection ═══ */
-function detectRuleViolations() {
-  const violations = new Map(); // index -> [rule names]
-  const pts = state.points;
-  const ucl = state.limits.ucl;
-  const lcl = state.limits.lcl;
-  const cl = state.limits.center;
-
-  pts.forEach((p, i) => {
-    if (p.excluded) return;
-    const rules = [];
-
-    // Rule 1: Point beyond 3σ (UCL/LCL)
-    if (p.primaryValue > ucl || p.primaryValue < lcl) {
-      rules.push("R1");
-    }
-
-    // Rule 2: 8+ consecutive points on same side of CL
-    if (i >= 7) {
-      const slice = pts.slice(i - 7, i + 1).filter(q => !q.excluded);
-      if (slice.length === 8) {
-        const allAbove = slice.every(q => q.primaryValue > cl);
-        const allBelow = slice.every(q => q.primaryValue < cl);
-        if (allAbove || allBelow) rules.push("R2");
-      }
-    }
-
-    // Rule 5: 6+ consecutive increasing or decreasing
-    if (i >= 5) {
-      const slice = pts.slice(i - 5, i + 1).filter(q => !q.excluded);
-      if (slice.length === 6) {
-        let inc = true, dec = true;
-        for (let k = 1; k < slice.length; k++) {
-          if (slice[k].primaryValue <= slice[k - 1].primaryValue) inc = false;
-          if (slice[k].primaryValue >= slice[k - 1].primaryValue) dec = false;
-        }
-        if (inc || dec) rules.push("R5");
-      }
-    }
-
-    if (rules.length > 0) violations.set(i, rules);
-  });
-
-  return violations;
-}
-
-/* ═══ NAV ICONS (abbreviated labels) ═══ */
-const NAV = [
-  ["workspace", "WK", "Workspace"],
-  ["dataprep", "DP", "Data Prep"],
-  ["methodlab", "ML", "Method Lab"],
-  ["findings", "FD", "Findings"],
-  ["reports", "RP", "Reports"]
-];
-
-/* ═══════════════════════════════════════════════════
-   SIDEBAR — Palantir icon rail
-   ═══════════════════════════════════════════════════ */
-function renderSidebar() {
-  return `
-    <aside class="sidebar">
-      <div class="brand-block">
-        <div class="logo">SP</div>
-        <div>
-          <h1>Super SPC</h1>
-          <span class="muted">v0.1.0</span>
-        </div>
-      </div>
-      <span class="nav-section-label">Views</span>
-      <nav class="nav-list">
-        ${NAV.map(([route, abbr, label]) => `
-          <button class="nav-item ${state.route === route ? "active" : ""}"
-            data-action="navigate" data-route="${route}" type="button">
-            <span class="nav-abbr">${abbr}</span><span class="nav-label">${label}</span>
-          </button>
-        `).join("")}
-      </nav>
-      <div class="sidebar-foot">
-        <span class="status-dot-live ${state.pipeline.status === "ready" ? "" : "offline"}"></span>
-        <span>Pipeline ${state.pipeline.status}</span>
-      </div>
-    </aside>
-  `;
-}
-
-/* ═══════════════════════════════════════════════════
-   HEADER — breadcrumb bar
-   ═══════════════════════════════════════════════════ */
-function renderHeader() {
-  return `
-    <header class="header-band">
-      <div>
-        <h2>${state.context.title}</h2>
-        <p class="header-context">
-          <span>${state.context.fab}</span>
-          <span>${state.context.tool}</span>
-          <span>${state.context.recipeFamily}</span>
-          <span>${state.context.window}</span>
-        </p>
-      </div>
-    </header>
-  `;
-}
-
-/* ═══════════════════════════════════════════════════
-   RECIPE RAIL — JMP-style control panel (vertical)
-   Single source of truth for ALL chart configuration
-   ═══════════════════════════════════════════════════ */
-function renderRecipeRail() {
-  const chips = [
-    ["Metric", state.context.metric.label, state.context.metric.unit, true],
-    ["Subgroup", state.context.subgroup.label, state.context.subgroup.detail],
-    ["Phase", state.context.phase.label, state.context.phase.detail],
-    ["Chart", state.context.chartType.label, state.context.chartType.detail, true],
-  ];
-  const chips2 = [
-    ["Sigma", state.context.sigma.label, state.context.sigma.detail],
-    ["Tests", state.context.tests.label, state.context.tests.detail],
-    ["Compare", state.context.compare.label, state.context.compare.detail],
-  ];
-
-  return `
-    <div class="recipe-rail">
-      <div class="recipe-rail-title">Variables</div>
-      ${chips.map(([label, value, detail, active]) => `
-        <button class="recipe-chip ${active ? "active-chip" : ""}" type="button">
-          <span class="chip-label">${label}</span>
-          <strong>${value}</strong>
-          <span class="chip-detail">${detail}</span>
-        </button>
-      `).join("")}
-      <div class="recipe-divider"></div>
-      <div class="recipe-rail-title">Config</div>
-      ${chips2.map(([label, value, detail]) => `
-        <button class="recipe-chip compact" type="button">
-          <span class="chip-label">${label}</span>
-          <strong>${value}</strong>
-          <span class="chip-detail">${detail}</span>
-        </button>
-      `).join("")}
-      <div class="recipe-divider"></div>
-      <div class="recipe-rail-title">Layers</div>
-      <div class="overlay-toggles">
-        ${[["specLimits","Limits & zones"],["grid","Grid"],["phaseTags","Phases"],["events","Events"],["excludedMarkers","Exclusions"],["confidenceBand","Conf. band"]]
-          .map(([k,l]) => `
-            <button class="overlay-toggle ${state.chartToggles[k] ? "is-on" : ""}"
-              data-action="toggle-chart" data-option="${k}" type="button">
-              <span>${l}</span>
-              <span class="toggle-dot"></span>
-            </button>
-          `).join("")}
-      </div>
-    </div>
-  `;
-}
-
-/* ═══════════════════════════════════════════════════
-   CONTEXT MENU
-   ═══════════════════════════════════════════════════ */
-function renderContextMenu() {
-  const { x, y } = state.ui.contextMenu;
-  const sp = state.points[state.selectedPointIndex];
-  return `
-    <div class="context-menu" style="left:${x}px;top:${y}px;" role="menu">
-      <button data-action="exclude-point" data-index="${state.selectedPointIndex}" role="menuitem" type="button">${sp?.excluded ? "Restore point" : "Exclude point"}</button>
-      <button data-action="create-finding" role="menuitem" type="button">Create finding from selection</button>
-      <button data-action="navigate" data-route="methodlab" role="menuitem" type="button">Open in Method Lab</button>
-    </div>
-  `;
-}
-
-function renderAxisContextMenu() {
-  const { x, y, axis } = state.ui.contextMenu;
-  const label = axis === 'x' ? 'X-Axis' : 'Y-Axis';
-  return `
-    <div class="context-menu axis-context-menu" style="left:${x}px;top:${y}px;" role="menu">
-      <div class="context-menu-header">${label}</div>
-      <button data-action="reset-axis" data-axis="${axis}" role="menuitem" type="button">Reset axis</button>
-    </div>
-  `;
-}
-
-/* ═══════════════════════════════════════════════════
-   CHART — D3-powered light canvas island
-   SVG rendering handled by src/chart/ modules
-   ═══════════════════════════════════════════════════ */
-function renderChartPane(role, method, caps, sp, limits, seriesKey) {
-  const val = sp[seriesKey];
-  const ooc = val >= limits.ucl || val <= limits.lcl;
-  const violations = detectRuleViolations();
-
-  return `
-    <div class="chart-pane" data-role="${role}" data-series-key="${seriesKey}">
-      <div class="chart-pane-titlebar" data-drag-handle="${role}">
-        <span class="grip-icon">⠿</span>
-        <span class="method-dot ${role}"></span>
-        <span class="pane-role">${role === "primary" ? "Primary" : "Challenger"}</span>
-        <strong class="pane-method">${method}</strong>
-        ${caps.cpk ? `
-          <div class="pane-caps">
-            <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(caps.cpk)}">${caps.cpk}</span></span>
-            <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(caps.ppk)}">${caps.ppk}</span></span>
-          </div>
-        ` : ""}
-      </div>
-      <div class="chart-stage" id="chart-mount-${role}" tabindex="0" data-chart-focus="true" aria-label="${role} control chart">
-        ${role === "primary" && state.ui.contextMenu ? renderContextMenu() : ""}
-      </div>
-      <div class="chart-readout" data-readout="${role}">
-        <div class="readout-group"><span class="readout-label">Lot</span><span class="readout-value">${sp.lot}</span></div>
-        <div class="readout-sep"></div>
-        <div class="readout-group"><span class="readout-label">Value</span><span class="readout-value">${fmt(val)} ${state.context.metric.unit}</span></div>
-        <span class="readout-status" style="color:${sp.excluded ? "var(--amber)" : ooc ? "var(--red)" : "var(--chart-text-2)"}">${sp.excluded ? "Excl" : ooc ? "OOC" : "OK"}</span>
-        ${violations.has(state.selectedPointIndex) && role === "primary" ? `
-          <div class="readout-sep"></div>
-          <div class="readout-group"><span class="readout-label">Rules</span><span class="readout-value" style="color:var(--red)">${violations.get(state.selectedPointIndex).join(", ")}</span></div>
-        ` : ""}
-      </div>
-    </div>
-  `;
-}
-
-function renderChartArena() {
-  const sp = state.points[state.selectedPointIndex];
-  const primaryCap = computeCapability();
-  const challengerCap = computeChallengerCapability();
-  const hasChallenger = state.compare.challengerStatus === "ready";
-  const layout = state.chartLayout;
-  const arrangement = hasChallenger ? layout.arrangement : "single";
-
-  // Determine pane order based on primaryPosition
-  const primaryFirst = layout.primaryPosition === "left" || layout.primaryPosition === "top";
-
-  const primaryPane = renderChartPane("primary", state.compare.primaryMethod, primaryCap, sp, state.limits, "primaryValue");
-  const showChallenger = hasChallenger && arrangement !== "single";
-  const challengerPane = showChallenger
-    ? renderChartPane("challenger", `${state.compare.challengerMethod} ${state.compare.challengerVersion}`, challengerCap, sp, state.challengerLimits, "challengerValue")
-    : "";
-
-  // Build inline grid template from splitRatio
-  const ratio = layout.splitRatio ?? 0.5;
-  const isHoriz = arrangement === "horizontal" || arrangement === "primary-wide" || arrangement === "challenger-wide";
-  const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
-  let gridStyle = "";
-  if (showChallenger && isHoriz) {
-    gridStyle = `grid-template-columns: ${ratio}fr auto ${1 - ratio}fr; grid-template-rows: 1fr;`;
-  } else if (showChallenger && isVert) {
-    gridStyle = `grid-template-columns: 1fr; grid-template-rows: ${ratio}fr auto ${1 - ratio}fr;`;
-  }
-
-  const divider = showChallenger ? `<div class="chart-divider" data-divider="${isHoriz ? "horizontal" : "vertical"}"></div>` : "";
-
-  const firstPane = primaryFirst ? primaryPane : challengerPane;
-  const secondPane = primaryFirst ? challengerPane : primaryPane;
-
-  return `
-    <section class="chart-card">
-      <div class="chart-toolbar">
-        <div class="toolbar-title">
-          <h3>${state.context.metric.label} — ${state.context.chartType.label}</h3>
-          <span class="toolbar-window">${state.context.window}</span>
-        </div>
-        ${hasChallenger ? `
-          <div class="layout-controls">
-            <button class="layout-btn ${arrangement === "horizontal" ? "active" : ""}" data-action="set-layout" data-arrangement="horizontal" title="Side by side (50/50)">◫</button>
-            <button class="layout-btn ${arrangement === "vertical" ? "active" : ""}" data-action="set-layout" data-arrangement="vertical" title="Stacked (50/50)">◩</button>
-            <button class="layout-btn ${arrangement === "primary-wide" ? "active" : ""}" data-action="set-layout" data-arrangement="primary-wide" title="Primary wide (2/3)">◧</button>
-            <button class="layout-btn ${arrangement === "primary-tall" ? "active" : ""}" data-action="set-layout" data-arrangement="primary-tall" title="Primary tall (2/3)">⬒</button>
-            <button class="layout-btn ${arrangement === "single" ? "active" : ""}" data-action="set-layout" data-arrangement="single" title="Primary only">▣</button>
-          </div>
-        ` : ""}
-      </div>
-      <div class="chart-arena" data-layout="${arrangement}" style="${gridStyle}">
-        ${firstPane}${divider}${secondPane}
-      </div>
-      <div class="chart-footer">
-        <button class="footer-action" data-action="exclude-point" data-index="${state.selectedPointIndex}" type="button">${sp.excluded ? "Restore" : "Exclude"}</button>
-        <button class="footer-action" data-action="create-finding" type="button">Finding</button>
-        <button class="footer-action" data-action="navigate" data-route="methodlab" type="button">Method lab</button>
-        <span class="chart-a11y">← → navigate · Shift+F10 actions</span>
-      </div>
-    </section>
-  `;
-}
-
-/* ═══════════════════════════════════════════════════
-   WORKSPACE — 3-column: control panel | chart | evidence
-   ═══════════════════════════════════════════════════ */
-function renderWorkspace() {
-  const workspace = deriveWorkspace(state);
-
-  return `
-    <div class="workspace-layout">
-      ${renderRecipeRail()}
-      <div class="workspace-main">
-        ${renderChartArena()}
-        <div class="compare-strip">
-          ${workspace.compareCards.map(item => `
-            <div class="compare-card ${toneClass(item.tone)}">
-              <p>${item.label}</p>
-              <strong>${item.value}</strong>
-            </div>
-          `).join("")}
-        </div>
-        <div class="lineage-strip">
-          <div><span>Data</span><strong>2026-03-25 11:12</strong></div>
-          <div><span>Limits</span><strong>${state.limits.version}</strong></div>
-          <div><span>Transforms</span><strong>${workspace.lineageCount}</strong></div>
-          <div><span>Excluded</span><strong>${workspace.excludedCount}</strong></div>
-          <div><span>Pipeline</span><strong>${state.pipeline.status}</strong></div>
-        </div>
-      </div>
-      <aside class="evidence-rail">
-        <div class="rail-section signal-hero">
-          <p class="eyebrow">Signal</p>
-          <h3>${workspace.signal.title}</h3>
-          <span class="status-chip ${toneClass(workspace.signal.statusTone)}" style="margin-top:4px"><span class="sdot"></span> ${workspace.signal.confidence}</span>
-        </div>
-        <div class="rail-section">
-          <p class="eyebrow">Why it triggered</p>
-          <ul class="rail-list">
-            ${workspace.whyTriggered.map(item => `<li>${item}</li>`).join("")}
-          </ul>
-        </div>
-        <div class="rail-section">
-          <p class="eyebrow">Evidence ledger</p>
-          <ul class="evidence-list">
-            ${workspace.evidence.map(item => `
-              <li class="${item.resolved ? "" : "unresolved"}">
-                <span>${item.label}</span>
-                <strong>${item.value}</strong>
-              </li>
-            `).join("")}
-          </ul>
-        </div>
-        <div class="rail-section">
-          <p class="eyebrow">Checks</p>
-          <ul class="rail-list">
-            ${workspace.recommendations.map(item => `<li>${item}</li>`).join("")}
-          </ul>
-        </div>
-        <div class="rail-section">
-          <p class="eyebrow">Finding</p>
-          <h3>${workspace.activeFinding?.title || "No draft"}</h3>
-          <p>${workspace.activeFinding?.summary || "Create from signal."}</p>
-          <div class="rail-actions">
-            <button data-action="create-finding" type="button">Create</button>
-            <button data-action="navigate" data-route="findings" type="button">View all</button>
-          </div>
-        </div>
-      </aside>
-    </div>
-  `;
-}
-
-/* ═══════════════════════════════════════════════════
-   DATA PREP
-   ═══════════════════════════════════════════════════ */
-function renderDataPrep() {
-  return `
-    <section class="route-panel">
-      <div class="route-header">
-        <div>
-          <h3>Data Prep</h3>
-          <p class="muted">Reversible transform pipeline</p>
-        </div>
-        <span class="status-chip ${state.pipeline.status === "ready" ? "success" : "warning"}">
-          <span class="sdot"></span> ${state.pipeline.status === "ready" ? "All valid" : "Partial"}
-        </span>
-      </div>
-      <div class="prep-grid">
-        <div class="panel-card">
-          <h4>Pipeline Steps</h4>
-          <div class="step-list">
-            ${state.transforms.map(step => `
-              <article class="step-card ${step.status}">
-                <div class="step-head">
-                  <div>
-                    <p class="eyebrow">${step.id}</p>
-                    <h5>${step.title}</h5>
-                  </div>
-                  <span class="status-chip ${step.status === "failed" ? "danger" : step.active ? "info" : "neutral"}">
-                    <span class="sdot"></span> ${step.status}
-                  </span>
-                </div>
-                <p class="muted">${step.detail}</p>
-                <p class="rescue-note">${step.rescue}</p>
-                <div class="step-actions">
-                  <button data-action="toggle-transform" data-step-id="${step.id}" type="button" ${step.status === "failed" ? "disabled" : ""}>${step.active ? "Disable" : "Enable"}</button>
-                  <button data-action="fail-transform" data-step-id="${step.id}" type="button">Fail</button>
-                  <button data-action="recover-transform" data-step-id="${step.id}" type="button">Recover</button>
-                </div>
-              </article>
-            `).join("")}
-          </div>
-        </div>
-        <div class="panel-card dark">
-          <h4>Failure & Rescue</h4>
-          <ul class="rail-list light">
-            <li>Schema mismatch blocks ingest before compute.</li>
-            <li>Invalid config retains prior chart result.</li>
-            <li>Missing boundaries fall back to unphased mode.</li>
-            <li>Every transform remains reversible.</li>
-          </ul>
-          <div class="meta-grid">
-            <div><span>Pipeline</span><strong>${state.pipeline.status}</strong></div>
-            <div><span>Rescue</span><strong>${state.pipeline.rescueMode}</strong></div>
-            <div><span>Last OK</span><strong>${state.pipeline.lastSuccessfulAt}</strong></div>
-          </div>
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-/* ═══════════════════════════════════════════════════
-   METHOD LAB
-   ═══════════════════════════════════════════════════ */
-function renderMethodLab() {
-  const workspace = deriveWorkspace(state);
-  return `
-    <section class="route-panel">
-      <div class="route-header">
-        <div>
-          <h3>Method Lab</h3>
-          <p class="muted">Primary vs challenger comparison</p>
-        </div>
-        <div class="segmented">
-          ${["ready","partial","timeout"].map(s => `
-            <button data-action="set-challenger-status" data-status="${s}" type="button" class="${state.compare.challengerStatus === s ? "active" : ""}">${s === "timeout" ? "Timeout" : s.charAt(0).toUpperCase() + s.slice(1)}</button>
-          `).join("")}
-        </div>
-      </div>
-      <div class="method-grid">
-        <article class="panel-card">
-          <p class="eyebrow">Primary</p>
-          <h4>${state.compare.primaryMethod}</h4>
-          <ul class="metric-stack">
-            <li><span>Detection</span><strong>Classical EWMA</strong></li>
-            <li><span>Conclusion</span><strong>Shift confirmed</strong></li>
-            <li><span>Rule pressure</span><strong>Rule 1 + run</strong></li>
-          </ul>
-        </article>
-        <article class="panel-card dark">
-          <p class="eyebrow">Challenger</p>
-          <h4>${state.compare.challengerMethod} ${state.compare.challengerVersion}</h4>
-          <ul class="metric-stack">
-            <li><span>Status</span><strong>${state.compare.challengerStatus}</strong></li>
-            <li><span>Detection</span><strong>${workspace.compareCards[1].value}</strong></li>
-            <li><span>False alarms</span><strong>${workspace.compareCards[0].value}</strong></li>
-          </ul>
-        </article>
-        <article class="panel-card span-two">
-          <h4>Decision Posture</h4>
-          <p class="muted">Challenger never silently replaces primary. Review deltas and keep disagreement visible.</p>
-          <div class="comparison-lanes">
-            ${workspace.compareCards.map(item => `
-              <div class="lane-card ${toneClass(item.tone)}"><span>${item.label}</span><strong>${item.value}</strong></div>
-            `).join("")}
-          </div>
-        </article>
-      </div>
-    </section>
-  `;
-}
-
-/* ═══════════════════════════════════════════════════
-   FINDINGS
-   ═══════════════════════════════════════════════════ */
-function renderFindings() {
-  const af = state.findings.find(f => f.id === state.activeFindingId) || state.findings[0];
-  return `
-    <section class="route-panel">
-      <div class="route-header">
-        <div><h3>Findings</h3><p class="muted">Evidence-backed decision drafts</p></div>
-        <button class="primary-action" data-action="create-finding" type="button">Create</button>
-      </div>
-      <div class="findings-grid">
-        <div class="finding-queue">
-          ${state.findings.map(f => `
-            <button class="finding-item ${f.id === af.id ? "active" : ""}"
-              data-action="select-finding" data-finding-id="${f.id}" type="button">
-              <p class="eyebrow">${f.status}</p>
-              <h4>${f.title}</h4>
-              <p>${f.summary}</p>
-            </button>
-          `).join("")}
-        </div>
-        <article class="finding-detail panel-card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-            <h4>${af.title}</h4>
-            <span class="status-chip ${af.severity === "High" ? "danger" : "warning"}"><span class="sdot"></span> ${af.severity}</span>
-          </div>
-          <p class="muted">${af.summary}</p>
-          <div class="meta-grid">
-            <div><span>Confidence</span><strong>${af.confidence}</strong></div>
-            <div><span>Owner</span><strong>${af.owner}</strong></div>
-            <div><span>Status</span><strong>${af.status}</strong></div>
-          </div>
-          <h5>Citations</h5>
-          <ul class="evidence-list light">
-            ${af.citations.map(c => `
-              <li class="${c.resolved ? "" : "unresolved"}"><span>${c.label}</span><strong>${c.value}</strong></li>
-            `).join("")}
-          </ul>
-        </article>
-      </div>
-    </section>
-  `;
-}
-
-/* ═══════════════════════════════════════════════════
-   REPORTS
-   ═══════════════════════════════════════════════════ */
-function renderReports() {
-  const af = state.findings.find(f => f.id === state.activeFindingId) || null;
-  return `
-    <section class="route-panel">
-      <div class="route-header">
-        <div><h3>Reports</h3><p class="muted">Audit-ready artifacts</p></div>
-        <div class="route-actions">
-          <button class="primary-action" data-action="generate-report" type="button">Generate</button>
-          <button class="btn" data-action="export-report" type="button">Export</button>
-          <button class="btn" data-action="toggle-export-failure" type="button">${state.reportExport.failNext ? "Fail queued" : "Queue fail"}</button>
-        </div>
-      </div>
-      <div class="reports-grid">
-        <article class="panel-card">
-          <h4>Report State</h4>
-          <div class="meta-grid">
-            <div><span>Finding</span><strong>${af ? af.title : "None"}</strong></div>
-            <div><span>Draft</span><strong>${state.reportDraft ? state.reportDraft.id : "\u2014"}</strong></div>
-            <div><span>Export</span><strong>${state.reportExport.status}</strong></div>
-          </div>
-          ${state.reportDraft ? `
-            <div class="report-preview">
-              <p class="eyebrow">Draft</p>
-              <h4>${state.reportDraft.title}</h4>
-              <p class="muted">${state.reportDraft.findingTitle}</p>
-              <p class="mono" style="color:var(--t-4);margin-top:2px">${state.reportDraft.generatedAt}</p>
-              ${state.reportDraft.partial
-                ? `<div class="warning-panel"><strong>Blocked</strong><p>${state.reportDraft.unresolved.length} gaps remain.</p></div>`
-                : `<div class="success-panel"><strong>Ready</strong><p>All citations resolved.</p></div>`}
-            </div>
-          ` : `<p class="muted" style="margin-top:6px">Generate from selected finding.</p>`}
-        </article>
-        <article class="panel-card dark">
-          <h4>Export Contract</h4>
-          <ul class="rail-list light">
-            <li>Blocked when citations unresolved.</li>
-            <li>Failure preserves draft, supports retry.</li>
-            <li>Artifacts carry full lineage.</li>
-            <li>Reports derive from workspace state.</li>
-          </ul>
-        </article>
-      </div>
-    </section>
-  `;
-}
-
-/* ═══════════════════════════════════════════════════
-   NOTICE & ROUTER
-   ═══════════════════════════════════════════════════ */
-function renderNotice() {
-  if (!state.ui.notice) return "";
-  return `
-    <div class="notice ${toneClass(state.ui.notice.tone)}">
-      <div><strong>${state.ui.notice.title}</strong> <span class="muted">${state.ui.notice.body}</span></div>
-      <button class="ghost-action" data-action="clear-notice" type="button">\u00d7</button>
-    </div>
-  `;
-}
-
+/* ═══ Router ═══ */
 function renderRoute() {
+  if (state.loading) return renderLoadingState();
+  if (state.error) return renderErrorState(state);
+  if (state.points.length === 0 && !state.activeDatasetId) return renderEmptyState();
+
   switch (state.route) {
-    case "dataprep": return renderDataPrep();
-    case "methodlab": return renderMethodLab();
-    case "findings": return renderFindings();
-    case "reports": return renderReports();
-    default: return renderWorkspace();
+    case "dataprep": return renderDataPrep(state);
+    case "methodlab": return renderMethodLab(state);
+    case "findings": return renderFindings(state);
+    case "reports": return renderReports(state);
+    default: return renderWorkspace(state);
   }
 }
 
-/** Helper: build update data for a chart pane */
-function buildChartData(role) {
-  const isPrimary = role === "primary";
-  const toggles = { ...state.chartToggles, overlay: false }; // No overlay in split view
+/* ═══ Chart data builder ═══ */
+function buildChartData(id) {
+  const slot = state.charts[id];
   return {
     points: state.points,
-    limits: isPrimary ? state.limits : state.challengerLimits,
+    limits: slot.limits,
     phases: state.phases,
-    toggles,
+    toggles: {
+      ...state.chartToggles,
+      overlay: false,
+      xDomainOverride: slot.overrides.x,
+      yDomainOverride: slot.overrides.y,
+    },
     selectedIndex: state.selectedPointIndex,
-    violations: isPrimary ? detectRuleViolations() : new Map(),
-    capability: isPrimary ? computeCapability() : computeChallengerCapability(),
-    metric: state.context.metric,
-    chartType: isPrimary ? state.context.chartType : { label: state.compare.challengerMethod },
-    seriesKey: isPrimary ? "primaryValue" : "challengerValue",
-    seriesType: role,
+    violations: detectRuleViolations(state, id),
+    capability: getCapability(state, id),
+    metric: slot.context.metric,
+    chartType: slot.context.chartType,
+    seriesKey: "primaryValue",
+    seriesType: id,
   };
 }
 
+/* ═══ Main render ═══ */
 function render() {
-  // Detach chart SVGs before innerHTML destroys them
   const savedSvgs = {};
-  for (const role of ["primary", "challenger"]) {
+  for (const role of state.chartOrder) {
     const svgNode = charts[role]?.svg?.node();
     if (svgNode?.parentNode) {
       savedSvgs[role] = svgNode;
@@ -696,129 +119,73 @@ function render() {
 
   root.innerHTML = `
     <div class="app-shell">
-      ${renderSidebar()}
+      ${renderSidebar(state)}
       <main class="main-shell">
-        ${renderHeader()}
-        ${renderNotice()}
+        ${renderNotice(state)}
         ${renderRoute()}
       </main>
     </div>
   `;
 
-  // Mount charts if workspace is active
   if (state.route === "workspace") {
-    const hasChallenger = state.compare.challengerStatus === "ready";
-    const roles = hasChallenger ? ["primary", "challenger"] : ["primary"];
+    const activeIds = state.chartOrder;
 
-    for (const role of roles) {
-      const mount = document.getElementById(`chart-mount-${role}`);
+    for (const id of activeIds) {
+      const mount = document.getElementById(id === "primary" ? CHART_MOUNT_PRIMARY : CHART_MOUNT_CHALLENGER);
       if (!mount) continue;
 
-      if (savedSvgs[role]) {
-        // Reattach preserved SVG to new mount element
-        mount.appendChild(savedSvgs[role]);
-        // Update container reference so ResizeObserver tracks the new element
-        charts[role].remount(mount);
+      if (savedSvgs[id]) {
+        mount.appendChild(savedSvgs[id]);
+        charts[id].remount(mount);
       } else {
-        // Destroy orphaned chart instance if it exists (e.g. after "single" mode hid the pane)
-        if (charts[role]) { charts[role].destroy(); charts[role] = null; }
-        // Create fresh chart instance
-        charts[role] = createChart(mount, {
+        if (charts[id]) { charts[id].destroy(); charts[id] = null; }
+        charts[id] = createChart(mount, {
           onSelectPoint: (index) => commitChart(selectPoint(state, index)),
-          onContextMenu: role === "primary"
-            ? (x, y, axisInfo) => commitContextMenu(openContextMenu(state, x, y, axisInfo))
-            : null,
-          onAxisDrag: role === "primary"
-            ? (info) => {
-                if (info.axis === 'x') commitChart(setXDomainOverride(state, info.min, info.max));
-                if (info.axis === 'y') commitChart(setYDomainOverride(state, info.yMin, info.yMax));
-              }
-            : null,
-          onAxisReset: role === "primary"
-            ? (axis) => commitChart(resetAxis(state, axis))
-            : null,
+          onContextMenu: (x, y, info) => commitContextMenu(openContextMenu(state, x, y, { ...info, role: id })),
+          onAxisDrag: (info) => {
+            if (info.axis === 'x') commitChart(setXDomainOverride(state, info.min, info.max, id));
+            if (info.axis === 'y') commitChart(setYDomainOverride(state, info.yMin, info.yMax, id));
+          },
+          onAxisReset: (axis) => commitChart(resetAxis(state, axis, id)),
         });
       }
-
-      // Update with current data
-      charts[role].update(buildChartData(role));
+      charts[id].update(buildChartData(id));
     }
 
-    // Deferred re-render: CSS Grid needs a full layout pass before containers have final size.
-    // Double rAF: first triggers layout, second reads the settled dimensions.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        for (const role of roles) {
-          if (charts[role]) charts[role].update(buildChartData(role));
+        for (const id of activeIds) {
+          if (charts[id]) charts[id].update(buildChartData(id));
         }
       });
     });
 
-    // Destroy challenger chart if no longer active
-    if (!hasChallenger && charts.challenger) {
-      charts.challenger.destroy();
-      charts.challenger = null;
+    // Destroy charts not in chartOrder
+    for (const id of Object.keys(charts)) {
+      if (!activeIds.includes(id) && charts[id]) {
+        charts[id].destroy();
+        charts[id] = null;
+      }
     }
   } else {
-    // Not on workspace — clean up all charts
-    for (const role of ["primary", "challenger"]) {
+    for (const role of state.chartOrder) {
       if (charts[role]) { charts[role].destroy(); charts[role] = null; }
     }
   }
 }
 
+/* ═══ Commit functions ═══ */
 function commit(next) { state = next; render(); }
 
-/**
- * Fast commit for chart-only state changes.
- * Updates the D3 chart + readout bar + footer without touching innerHTML.
- * The sidebar, header, recipe rail, and evidence rail stay untouched.
- */
 function commitChart(next) {
   state = next;
-  const hasChallenger = state.compare.challengerStatus === "ready";
-  const sp = state.points[state.selectedPointIndex];
-
-  // Update all chart instances in-place
-  for (const role of ["primary", "challenger"]) {
-    if (charts[role]) {
-      charts[role].update(buildChartData(role));
-    }
+  for (const id of state.chartOrder) {
+    if (charts[id]) charts[id].update(buildChartData(id));
   }
-
-  // Surgically update each pane's readout bar
-  for (const role of ["primary", "challenger"]) {
-    const readout = root.querySelector(`[data-readout="${role}"]`);
-    if (!readout) continue;
-    const seriesKey = role === "primary" ? "primaryValue" : "challengerValue";
-    const limits = role === "primary" ? state.limits : state.challengerLimits;
-    const val = sp[seriesKey];
-    const ooc = val >= limits.ucl || val <= limits.lcl;
-    const violations = detectRuleViolations();
-    readout.innerHTML = `
-      <div class="readout-group"><span class="readout-label">Lot</span><span class="readout-value">${sp.lot}</span></div>
-      <div class="readout-sep"></div>
-      <div class="readout-group"><span class="readout-label">Value</span><span class="readout-value">${fmt(val)} ${state.context.metric.unit}</span></div>
-      <span class="readout-status" style="color:${sp.excluded ? "var(--amber)" : ooc ? "var(--red)" : "var(--chart-text-2)"}">${sp.excluded ? "Excl" : ooc ? "OOC" : "OK"}</span>
-      ${violations.has(state.selectedPointIndex) && role === "primary" ? `
-        <div class="readout-sep"></div>
-        <div class="readout-group"><span class="readout-label">Rules</span><span class="readout-value" style="color:var(--red)">${violations.get(state.selectedPointIndex).join(", ")}</span></div>
-      ` : ""}
-    `;
-  }
-
-  // Surgically update footer exclude button label
-  const excludeBtn = root.querySelector('.footer-action[data-action="exclude-point"]');
-  if (excludeBtn) {
-    excludeBtn.textContent = sp?.excluded ? "Restore" : "Exclude";
-    excludeBtn.dataset.index = state.selectedPointIndex;
-  }
-
-  // Update pane title bar capability indices
-  for (const role of ["primary", "challenger"]) {
-    const paneCaps = root.querySelector(`.chart-pane[data-role="${role}"] .pane-caps`);
+  for (const id of state.chartOrder) {
+    const paneCaps = root.querySelector(`.chart-pane[data-role="${id}"] .pane-caps`);
     if (!paneCaps) continue;
-    const cap = role === "primary" ? computeCapability() : computeChallengerCapability();
+    const cap = getCapability(state, id);
     if (cap.cpk) {
       paneCaps.innerHTML = `
         <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
@@ -826,24 +193,14 @@ function commitChart(next) {
       `;
     }
   }
-
-  // Update toggle states in recipe rail
-  root.querySelectorAll(".overlay-toggle").forEach(btn => {
-    const key = btn.dataset.option;
-    if (key) btn.classList.toggle("is-on", !!state.chartToggles[key]);
-  });
 }
 
-/**
- * Surgical layout commit — updates grid, divider, pane visibility, and buttons
- * without touching innerHTML. No flash, no SVG detach/reattach.
- */
 function commitLayout(next) {
   state = next;
   const arena = root.querySelector(".chart-arena");
   if (!arena) return;
 
-  const hasChallenger = state.compare.challengerStatus === "ready";
+  const hasChallenger = state.chartOrder.length > 1;
   const layout = state.chartLayout;
   const arrangement = hasChallenger ? layout.arrangement : "single";
   const ratio = layout.splitRatio ?? 0.5;
@@ -851,7 +208,6 @@ function commitLayout(next) {
   const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
   const showChallenger = hasChallenger && arrangement !== "single";
 
-  // Update grid template
   if (showChallenger && isHoriz) {
     arena.style.gridTemplateColumns = `${ratio}fr auto ${1 - ratio}fr`;
     arena.style.gridTemplateRows = "1fr";
@@ -864,7 +220,6 @@ function commitLayout(next) {
   }
   arena.dataset.layout = arrangement;
 
-  // Update divider orientation
   const divider = arena.querySelector(".chart-divider");
   if (divider && showChallenger) {
     divider.style.display = "";
@@ -873,13 +228,9 @@ function commitLayout(next) {
     divider.style.display = "none";
   }
 
-  // Show/hide challenger pane
   const challengerPane = arena.querySelector('.chart-pane[data-role="challenger"]');
-  if (challengerPane) {
-    challengerPane.style.display = showChallenger ? "" : "none";
-  }
+  if (challengerPane) challengerPane.style.display = showChallenger ? "" : "none";
 
-  // Reorder panes if needed (primary first or second)
   const primaryFirst = layout.primaryPosition === "left" || layout.primaryPosition === "top";
   const primaryPane = arena.querySelector('.chart-pane[data-role="primary"]');
   if (primaryPane && challengerPane && divider) {
@@ -892,87 +243,294 @@ function commitLayout(next) {
     }
   }
 
-  // Update layout button active states
   root.querySelectorAll(".layout-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.arrangement === arrangement);
   });
 
-  // Let grid settle, then update chart sizing
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      for (const role of ["primary", "challenger"]) {
-        if (charts[role]) charts[role].update(buildChartData(role));
+      for (const id of state.chartOrder) {
+        if (charts[id]) charts[id].update(buildChartData(id));
       }
     });
   });
 }
 
-/**
- * Surgical context menu commit — injects or removes the context menu DOM node
- * without touching innerHTML. No flash, no SVG detach/reattach.
- *
- *   open  → state.ui.contextMenu = { x, y }
- *           injects renderContextMenu() HTML into #chart-mount-primary
- *           focuses first menu item
- *   close → state.ui.contextMenu = null
- *           removes existing .context-menu node, returns focus to chart stage
- */
 function commitContextMenu(next) {
   state = next;
-  const stage = root.querySelector("#chart-mount-primary");
+  const stage = root.querySelector(`#${CHART_MOUNT_PRIMARY}`);
   if (!stage) return;
-
-  // Remove any existing context menu
   stage.querySelector(".context-menu")?.remove();
 
   if (state.ui.contextMenu) {
     const div = document.createElement("div");
-    div.innerHTML = state.ui.contextMenu.axis
-      ? renderAxisContextMenu()
-      : renderContextMenu();
+    div.innerHTML = renderContextMenu(state);
     stage.appendChild(div.firstElementChild);
-    // Focus first item for keyboard nav
     stage.querySelector(".context-menu [role='menuitem']")?.focus();
   } else {
-    // Return focus to the chart stage
     stage.focus();
   }
 }
 
-/* ═══════════════════════════════════════════════════
-   EVENT HANDLERS
-   ═══════════════════════════════════════════════════ */
-root.addEventListener("click", (e) => {
+/* ═══ Targeted commit — recipe rail (chip editors, layer toggles) ═══ */
+function commitRecipeRail(next) {
+  state = next;
+  const rail = root.querySelector(".recipe-rail");
+  if (!rail) return;
+  rail.outerHTML = renderRecipeRail(state);
+}
+
+/* ═══ Targeted commit — notice bar ═══ */
+function commitNotice(next) {
+  state = next;
+  const existing = root.querySelector(".notice");
+  if (existing) existing.remove();
+  if (state.ui.notice) {
+    const main = root.querySelector(".main-shell");
+    if (main) main.insertAdjacentHTML("afterbegin", renderNotice(state));
+  }
+}
+
+/* ═══ Targeted commit — data table toggle ═══ */
+function commitDataTable(next) {
+  state = next;
+  const card = root.querySelector(".chart-card");
+  if (!card) return;
+
+  // Detach SVGs before replacing HTML
+  const savedSvgs = {};
+  for (const role of state.chartOrder) {
+    const svgNode = charts[role]?.svg?.node();
+    if (svgNode?.parentNode) {
+      savedSvgs[role] = svgNode;
+      svgNode.remove();
+    }
+  }
+
+  // Replace chart card HTML (outerHTML replaces the node itself)
+  const wrapper = card.parentNode;
+  const placeholder = document.createElement("div");
+  card.replaceWith(placeholder);
+  placeholder.outerHTML = renderChartArena(state);
+
+  // Re-mount charts if switching back from data table
+  if (!state.showDataTable) {
+    for (const role of state.chartOrder) {
+      const mount = document.getElementById(role === "primary" ? CHART_MOUNT_PRIMARY : CHART_MOUNT_CHALLENGER);
+      if (!mount) continue;
+      if (savedSvgs[role]) {
+        mount.appendChild(savedSvgs[role]);
+        charts[role].remount(mount);
+        charts[role].update(buildChartData(role));
+      }
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        for (const role of state.chartOrder) {
+          if (charts[role]) charts[role].update(buildChartData(role));
+        }
+      });
+    });
+  }
+}
+
+/* ═══ Targeted commit — full workspace (recipe rail + chart arena + chart data) ═══ */
+function commitWorkspace(next) {
+  state = next;
+
+  // 1. Recipe rail
+  const rail = root.querySelector(".recipe-rail");
+  if (rail) rail.outerHTML = renderRecipeRail(state);
+
+  // 2. Chart toolbar title
+  const primary = getPrimary(state);
+  const title = root.querySelector(".toolbar-title h3");
+  if (title) title.textContent = `${primary.context.metric.label} \u2014 ${primary.context.chartType.label}`;
+  const windowEl = root.querySelector(".toolbar-window");
+  if (windowEl) windowEl.textContent = primary.context.window;
+
+  // 3. Pane method labels + capability badges
+  for (const id of state.chartOrder) {
+    const paneMethod = root.querySelector(`.chart-pane[data-role="${id}"] .pane-method`);
+    if (paneMethod) paneMethod.textContent = state.charts[id].context.chartType?.label || "";
+    const paneCaps = root.querySelector(`.chart-pane[data-role="${id}"] .pane-caps`);
+    const cap = getCapability(state, id);
+    if (paneCaps && cap.cpk) {
+      paneCaps.innerHTML = `
+        <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
+        <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>
+      `;
+    }
+  }
+
+  // 4. Update D3 charts
+  for (const id of state.chartOrder) {
+    if (charts[id]) charts[id].update(buildChartData(id));
+  }
+
+  // 5. Evidence rail
+  const evidenceRail = root.querySelector(".evidence-rail");
+  if (evidenceRail) {
+    const workspace = deriveWorkspace(state);
+    evidenceRail.outerHTML = renderEvidenceRail(state, workspace);
+  }
+}
+
+/* ═══ Targeted commit — evidence rail ═══ */
+function commitEvidenceRail(next) {
+  state = next;
+  const rail = root.querySelector(".evidence-rail");
+  if (!rail) return;
+  const workspace = deriveWorkspace(state);
+  rail.outerHTML = renderEvidenceRail(state, workspace);
+}
+
+/* ═══ Data loading ═══ */
+async function loadDatasetById(datasetId) {
+  state = setLoadingState(state, true);
+  render();
+  try {
+    const [points, columns, ...analyses] = await Promise.all([
+      fetchPoints(datasetId),
+      fetchColumns(datasetId).catch(() => []),
+      ...state.chartOrder.map(id => runAnalysis(datasetId, state.charts[id].params)),
+    ]);
+    state = setColumns(state, columns);
+    const ds = state.datasets.find((d) => d.id === datasetId);
+    const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
+    const slots = {};
+    state.chartOrder.forEach((id, i) => {
+      const t = transformAnalysis(analyses[i]);
+      slots[id] = {
+        context: applyParamsToContext(baseContext, state.charts[id].params),
+        limits: t.limits, capability: t.capability, violations: t.violations,
+        sigma: t.sigma, zones: t.zones,
+      };
+    });
+    state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId, phases: analyses[0]?.phases });
+    render();
+  } catch (err) {
+    state = setError(state, err.message);
+    render();
+  }
+}
+
+async function reanalyze() {
+  if (!state.activeDatasetId) return;
+  try {
+    const dsId = state.activeDatasetId;
+    const [points, ...analyses] = await Promise.all([
+      fetchPoints(dsId),
+      ...state.chartOrder.map(id => runAnalysis(dsId, state.charts[id].params)),
+    ]);
+    const columns = state.columnConfig.columns;
+    const ds = state.datasets.find((d) => d.id === dsId);
+    const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
+    const slots = {};
+    state.chartOrder.forEach((id, i) => {
+      const t = transformAnalysis(analyses[i]);
+      slots[id] = {
+        context: applyParamsToContext(baseContext, state.charts[id].params),
+        limits: t.limits, capability: t.capability, violations: t.violations,
+        sigma: t.sigma, zones: t.zones,
+      };
+    });
+    state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId: dsId });
+    commitWorkspace(state);
+  } catch (err) {
+    state = setError(state, err.message);
+    commitNotice(state);
+  }
+}
+
+/* ═══ Event handlers ═══ */
+root.addEventListener("click", async (e) => {
   const t = e.target.closest("[data-action]");
-  if (!t) { if (state.ui.contextMenu) commitContextMenu(closeContextMenu(state)); return; }
+  if (!t) {
+    if (state.activeChipEditor) commitRecipeRail(setActiveChipEditor(state, state.activeChipEditor));
+    if (state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
+    return;
+  }
   const a = t.dataset.action;
   switch (a) {
-    case "navigate":           commit(navigate(state, t.dataset.route)); break;
+    case "navigate": {
+      commit(navigate(state, t.dataset.route));
+      if (t.dataset.route === "dataprep" && state.dataPrep.selectedDatasetId && state.dataPrep.datasetPoints.length === 0) {
+        try {
+          const pts = await fetchPoints(state.dataPrep.selectedDatasetId);
+          commit(loadPrepPoints(state, pts));
+        } catch (err) { commit(setPrepError(state, err.message)); }
+      }
+      break;
+    }
     case "select-point":       commitChart(selectPoint(state, Number(t.dataset.index))); break;
-    case "toggle-chart":       commitChart(toggleChartOption(state, t.dataset.option)); break;
+    case "toggle-chart": {
+      const next = toggleChartOption(state, t.dataset.option);
+      commitChart(next);
+      if (state.ui.contextMenu) commitContextMenu(next);
+      break;
+    }
     case "exclude-point":      commitChart(togglePointExclusion(state, Number(t.dataset.index))); commitContextMenu(closeContextMenu(state)); break;
-    case "toggle-transform":   commit(toggleTransform(state, t.dataset.stepId)); break;
-    case "fail-transform":     commit(failTransformStep(state, t.dataset.stepId)); break;
-    case "recover-transform":  commit(recoverTransformStep(state, t.dataset.stepId)); break;
+    case "toggle-transform":   commitEvidenceRail(toggleTransform(state, t.dataset.stepId)); break;
+    case "fail-transform":     commitEvidenceRail(failTransformStep(state, t.dataset.stepId)); break;
+    case "recover-transform":  commitEvidenceRail(recoverTransformStep(state, t.dataset.stepId)); break;
     case "set-challenger-status": commit(setChallengerStatus(state, t.dataset.status)); break;
     case "select-finding":     commit(selectFinding(state, t.dataset.findingId)); break;
-    case "create-finding":     commit(createFindingFromSelection(state)); commitContextMenu(closeContextMenu(state)); break;
+    case "create-finding":     commitEvidenceRail(createFindingFromSelection(state)); commitContextMenu(closeContextMenu(state)); break;
     case "generate-report":    commit(generateReportDraft(state)); break;
     case "export-report":      commit(exportReport(state)); break;
     case "toggle-export-failure": commit(toggleReportFailureMode(state)); break;
-    case "clear-notice":       commit(clearNotice(state)); break;
+    case "clear-notice":       commitNotice(clearNotice(state)); break;
+    case "toggle-data-table":  commit(toggleDataTable(state)); break;
     case "set-layout": {
       const arr = t.dataset.arrangement;
       const posMap = { horizontal: "left", vertical: "top", "primary-wide": "left", "primary-tall": "top", single: "left" };
       commitLayout(setChartLayout(state, arr, posMap[arr] || "left"));
       break;
     }
-    case "reset-axis": commitChart(resetAxis(state, t.dataset.axis)); commitContextMenu(closeContextMenu(state)); break;
+    case "reset-axis": { const axisRole = state.ui.contextMenu?.role || "primary"; commitChart(resetAxis(state, t.dataset.axis, axisRole)); commitContextMenu(closeContextMenu(state)); break; }
+    case "toggle-chip-editor": {
+      commitRecipeRail(setActiveChipEditor(state, t.dataset.chip));
+      break;
+    }
+    case "select-prep-dataset": {
+      const dsId = t.dataset.datasetId;
+      commit(selectPrepDataset(state, dsId));
+      try {
+        const [pts, cols] = await Promise.all([
+          fetchPoints(dsId),
+          fetchColumns(dsId).catch(() => []),
+        ]);
+        state = setColumns(state, cols);
+        commit(loadPrepPoints(state, pts));
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "delete-dataset": {
+      const dsId = t.dataset.datasetId;
+      if (!confirm("Delete this dataset? This cannot be undone.")) break;
+      try {
+        await deleteDataset(dsId);
+        const datasets = await fetchDatasets();
+        commit(deletePrepDataset(setDatasets(state, datasets), dsId));
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "load-prep-to-chart": {
+      if (state.dataPrep.selectedDatasetId) {
+        await loadDatasetById(state.dataPrep.selectedDatasetId);
+        commit(navigate(state, "workspace"));
+      }
+      break;
+    }
+    case "sort-prep": {
+      commit(setPrepSort(state, t.dataset.column));
+      break;
+    }
   }
 });
 
 root.addEventListener("keydown", (e) => {
-  // Arrow key navigation within an open context menu
   if (state.ui.contextMenu && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
     e.preventDefault();
     const menu = root.querySelector(".context-menu");
@@ -1009,23 +567,19 @@ root.addEventListener("pointerdown", (e) => {
   const role = handle.dataset.dragHandle;
   const rect = arena.getBoundingClientRect();
 
-  // Create ghost
   const ghost = pane.cloneNode(true);
   ghost.classList.add("drag-ghost");
   ghost.style.width = pane.offsetWidth + "px";
   ghost.style.height = pane.offsetHeight + "px";
   document.body.appendChild(ghost);
-
   pane.classList.add("dragging");
 
-  // Create drop zone overlays
   const zones = ["left", "right", "top", "bottom"].map(pos => {
     const zone = document.createElement("div");
     zone.classList.add("drop-zone");
     zone.dataset.dropPosition = pos;
     arena.style.position = "relative";
     arena.appendChild(zone);
-    // Position based on direction
     Object.assign(zone.style, {
       position: "absolute", zIndex: "100",
       ...(pos === "left"   ? { left: 0, top: 0, width: "50%", height: "100%" } : {}),
@@ -1042,12 +596,9 @@ root.addEventListener("pointerdown", (e) => {
 root.addEventListener("pointermove", (e) => {
   if (!dragState) return;
   const { ghost, zones, arenaRect } = dragState;
-
-  // Move ghost
   ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + "px";
   ghost.style.top = (e.clientY - 20) + "px";
 
-  // Detect which zone cursor is over
   const x = e.clientX - arenaRect.left;
   const y = e.clientY - arenaRect.top;
   const w = arenaRect.width;
@@ -1066,32 +617,28 @@ root.addEventListener("pointermove", (e) => {
 function endDrag() {
   if (!dragState) return;
   const { pane, ghost, zones, activePos, role } = dragState;
-
   pane.classList.remove("dragging");
   ghost.remove();
   zones.forEach(z => z.remove());
 
   if (activePos) {
     const arrangement = (activePos === "left" || activePos === "right") ? "horizontal" : "vertical";
-    // If dragged role goes to right/bottom, primary position is the opposite
     let primaryPosition;
     if (role === "primary") {
       primaryPosition = activePos;
     } else {
-      // Challenger dragged to X → primary goes to opposite
       const opposites = { left: "right", right: "left", top: "bottom", bottom: "top" };
       primaryPosition = opposites[activePos];
     }
     commitLayout(setChartLayout(state, arrangement, primaryPosition));
   }
-
   dragState = null;
 }
 
 root.addEventListener("pointerup", endDrag);
 root.addEventListener("pointercancel", endDrag);
 
-/* ═══ Resize divider between chart panes ═══ */
+/* ═══ Resize divider ═══ */
 let dividerDrag = null;
 
 root.addEventListener("pointerdown", (e) => {
@@ -1099,22 +646,18 @@ root.addEventListener("pointerdown", (e) => {
   if (!divider) return;
   e.preventDefault();
   divider.setPointerCapture(e.pointerId);
-
   const arena = divider.closest(".chart-arena");
   if (!arena) return;
   const rect = arena.getBoundingClientRect();
   const isHoriz = divider.dataset.divider === "horizontal";
-
   divider.classList.add("active");
   document.body.style.cursor = isHoriz ? "col-resize" : "row-resize";
-
   dividerDrag = { divider, arena, rect, isHoriz, pointerId: e.pointerId };
 });
 
 root.addEventListener("pointermove", (e) => {
   if (!dividerDrag) return;
   const { rect, isHoriz, arena } = dividerDrag;
-
   let ratio;
   if (isHoriz) {
     ratio = Math.max(0.2, Math.min(0.8, (e.clientX - rect.left) / rect.width));
@@ -1126,22 +669,18 @@ root.addEventListener("pointermove", (e) => {
   dividerDrag.lastRatio = ratio;
 });
 
-function endDividerDrag(e) {
+function endDividerDrag() {
   if (!dividerDrag) return;
   const { divider, lastRatio } = dividerDrag;
   divider.classList.remove("active");
   document.body.style.cursor = "";
-
-  // Persist the ratio to state so it survives re-renders
   if (lastRatio != null) {
     state = setChartLayout(state, state.chartLayout.arrangement, state.chartLayout.primaryPosition, lastRatio);
   }
   dividerDrag = null;
-
-  // Trigger chart resize after the grid settles
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      for (const role of ["primary", "challenger"]) {
+      for (const role of state.chartOrder) {
         if (charts[role]) charts[role].update(buildChartData(role));
       }
     });
@@ -1152,15 +691,127 @@ root.addEventListener("pointerup", endDividerDrag);
 root.addEventListener("pointercancel", endDividerDrag);
 
 root.addEventListener("contextmenu", (e) => {
-  // SVG-level handler in chart/index.js handles right-clicks inside the chart SVG
-  // (including axis hit regions). This fallback catches right-clicks on .chart-stage
-  // elements outside the SVG (e.g. titlebar, readout bar).
   if (e.defaultPrevented) return;
   const ch = e.target.closest(".chart-stage");
   if (!ch) return;
   e.preventDefault();
   const r = root.getBoundingClientRect();
-  commitContextMenu(openContextMenu(state, e.clientX - r.left, e.clientY - r.top));
+  commitContextMenu(openContextMenu(state, e.clientX - r.left, e.clientY - r.top, { target: 'canvas' }));
 });
 
+/* ═══ Change handlers ═══ */
+root.addEventListener("change", async (e) => {
+  if (e.target.matches('[data-action="upload-csv"]')) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    state = setLoadingState(state, true);
+    render();
+    try {
+      const newDs = await uploadCsv(file);
+      const datasets = await fetchDatasets();
+      state = setDatasets(state, datasets);
+      await loadDatasetById(newDs.id);
+    } catch (err) {
+      state = setError(state, err.message);
+      render();
+    }
+    return;
+  }
+
+  if (e.target.matches('[data-action="switch-dataset"]')) {
+    loadDatasetById(e.target.value);
+    return;
+  }
+
+  const action = e.target.dataset?.action;
+  if (!action || !state.activeDatasetId) return;
+  const dsId = state.activeDatasetId;
+  const cols = state.columnConfig.columns;
+
+  // Determine which chart this action targets by prefix
+  const isPrimary = action.startsWith("primary-");
+  const isChallenger = action.startsWith("challenger-");
+  const chartId = isPrimary ? "primary" : isChallenger ? "challenger" : null;
+  const baseAction = isPrimary ? action.slice(8) : isChallenger ? action.slice(11) : action;
+
+  if (chartId && baseAction === "set-metric-column") {
+    const newValue = e.target.value;
+    const updates = cols.map((c) => ({ name: c.name, role: c.name === newValue ? "value" : (c.role === "value" ? null : c.role) }));
+    try { const updated = await updateColumnRoles(dsId, updates); state = setColumns(state, updated); state = setActiveChipEditor(state, null); await reanalyze(); }
+    catch (err) { state = setError(state, err.message); render(); }
+    return;
+  }
+  if (chartId && baseAction === "set-subgroup-column") {
+    const newSg = e.target.value;
+    const updates = cols.map((c) => ({ name: c.name, role: c.name === newSg ? "subgroup" : (c.role === "subgroup" ? null : c.role) }));
+    try { const updated = await updateColumnRoles(dsId, updates); state = setColumns(state, updated); state = setActiveChipEditor(state, null); await reanalyze(); }
+    catch (err) { state = setError(state, err.message); render(); }
+    return;
+  }
+  if (chartId && baseAction === "set-phase-column") {
+    const newPh = e.target.value;
+    const updates = cols.map((c) => ({ name: c.name, role: c.name === newPh ? "phase" : (c.role === "phase" ? null : c.role) }));
+    try { const updated = await updateColumnRoles(dsId, updates); state = setColumns(state, updated); state = setActiveChipEditor(state, null); await reanalyze(); }
+    catch (err) { state = setError(state, err.message); render(); }
+    return;
+  }
+  if (chartId && baseAction === "set-chart-type") {
+    state = setChartParams(state, chartId, { chart_type: e.target.value });
+    state = setActiveChipEditor(state, null);
+    await reanalyze();
+    return;
+  }
+  if (chartId && baseAction === "set-sigma-method") {
+    state = setChartParams(state, chartId, { sigma_method: e.target.value });
+    state = setActiveChipEditor(state, null);
+    await reanalyze();
+    return;
+  }
+  if (chartId && baseAction === "toggle-nelson") {
+    const ruleId = Number(e.target.dataset.value);
+    const current = state.charts[chartId].params.nelson_tests || [];
+    const next = e.target.checked ? [...current, ruleId] : current.filter((r) => r !== ruleId);
+    state = setChartParams(state, chartId, { nelson_tests: next });
+    await reanalyze();
+    return;
+  }
+  if (action === "set-k-sigma") {
+    const k = parseFloat(e.target.value);
+    if (k > 0 && k <= 6) { state = setChartParams(state, "primary", { k_sigma: k }); await reanalyze(); }
+    return;
+  }
+  if (action === "set-column-role") {
+    const colName = e.target.dataset.column;
+    const newRole = e.target.value || null;
+    const updates = cols.map((c) => ({ name: c.name, role: c.name === colName ? newRole : (c.role === newRole && newRole ? null : c.role) }));
+    try { const updated = await updateColumnRoles(dsId, updates); state = setColumns(state, updated); if (state.route === "workspace" || state.activeDatasetId === dsId) await reanalyze(); }
+    catch (err) { state = setError(state, err.message); render(); }
+    return;
+  }
+});
+
+/* ═══ Retry handler ═══ */
+root.addEventListener("click", (e) => {
+  const t = e.target.closest('[data-action="retry-load"]');
+  if (!t) return;
+  main();
+});
+
+/* ═══ Boot ═══ */
 render();
+
+async function main() {
+  try {
+    const datasets = await fetchDatasets();
+    state = setDatasets(state, datasets);
+    const id = datasets[0]?.id;
+    if (!id) { state = setLoadingState(state, false); render(); return; }
+    await loadDatasetById(id);
+  } catch (err) {
+    state = setError(state, err.message);
+    render();
+  }
+}
+
+main();

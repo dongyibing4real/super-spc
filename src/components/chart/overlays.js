@@ -20,13 +20,16 @@ export function renderGrid(layer, labelLayer, scales, config) {
   lines.exit().remove();
 
   // Grid labels (unclipped layer — positioned left of clip area)
+  const fontSize = config.yLabelFontSize || 10;
   const labels = labelLayer.selectAll('text.grid-label').data(yTicks);
   labels.enter()
     .append('text')
     .attr('class', 'grid-label')
     .merge(labels)
-    .attr('x', 6)
+    .attr('x', L - 4)
     .attr('y', d => y(d) + 3)
+    .attr('text-anchor', 'end')
+    .style('font-size', `${fontSize}px`)
     .text(d => fmt(d));
   labels.exit().remove();
 }

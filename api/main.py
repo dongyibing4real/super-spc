@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 
 from .database import close_db, get_session_factory, init_db
-from .models import Dataset, Measurement
+from .models import Dataset, DatasetColumn, Measurement
 from .routes.analyze import router as analyze_router
 from .routes.datasets import router as datasets_router
 
@@ -38,12 +38,32 @@ async def _seed_if_empty() -> None:
             metadata_json=json.dumps({
                 "source": "seed",
                 "file": "Socket Thickness.csv",
-                "columns": ["Thickness", "Hour", "Cycle", "Cavity", "Hour Cycle", "Hour Cavity"],
+                "value_column": "Thickness",
+                "subgroup_column": "Hour",
             }),
         )
 
         with open(CSV_PATH, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
+            headers = reader.fieldnames or []
+
+            # Create column metadata
+            for ordinal, name in enumerate(headers):
+                role = None
+                dtype = "text"
+                if name == "Thickness":
+                    role = "value"
+                    dtype = "numeric"
+                elif name == "Hour":
+                    role = "subgroup"
+                    dtype = "text"
+                else:
+                    # Detect numeric columns
+                    dtype = "text"
+                dataset.columns.append(
+                    DatasetColumn(name=name, ordinal=ordinal, dtype=dtype, role=role)
+                )
+
             for idx, row in enumerate(reader):
                 value = float(row["Thickness"])
                 subgroup = row.get("Hour")
@@ -57,6 +77,7 @@ async def _seed_if_empty() -> None:
                         subgroup=subgroup,
                         sequence_index=idx,
                         metadata_json=json.dumps(metadata) if metadata else None,
+                        raw_json=json.dumps(dict(row)),
                     )
                 )
 

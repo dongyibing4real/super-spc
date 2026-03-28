@@ -1,15 +1,32 @@
-"""CSV parsing service — convention-based column detection."""
+"""CSV parsing service — column detection with role suggestions."""
 from __future__ import annotations
 
 import csv
 import io
 from dataclasses import dataclass, field
+from datetime import datetime
 
 
 VALUE_COLUMN_NAMES = {"thickness", "value", "measurement", "result", "reading"}
 SUBGROUP_COLUMN_NAMES = {"hour", "subgroup", "batch", "sample", "group"}
 
 
+@dataclass
+class ColumnInfo:
+    name: str
+    ordinal: int
+    dtype: str  # "numeric" | "text" | "datetime"
+    suggested_role: str | None = None  # "value" | "subgroup" | None
+
+
+@dataclass
+class ParsedCSV:
+    columns: list[ColumnInfo] = field(default_factory=list)
+    rows: list[dict] = field(default_factory=list)
+    skipped_rows: int = 0
+
+
+# Keep backward-compatible aliases
 @dataclass
 class MeasurementRow:
     value: float
@@ -18,50 +35,58 @@ class MeasurementRow:
     metadata: dict
 
 
-@dataclass
-class ParsedCSV:
-    value_column: str
-    subgroup_column: str | None
-    measurements: list[MeasurementRow] = field(default_factory=list)
-    skipped_rows: int = 0
+def _detect_dtype(values: list[str]) -> str:
+    """Detect column dtype by sampling values."""
+    numeric_count = 0
+    datetime_count = 0
+    total = 0
 
-
-def _detect_value_column(headers: list[str]) -> str | None:
-    """Find the value column by convention name match."""
-    for h in headers:
-        if h.strip().lower() in VALUE_COLUMN_NAMES:
-            return h
-    return None
-
-
-def _detect_subgroup_column(headers: list[str]) -> str | None:
-    """Find the subgroup column by convention name match."""
-    for h in headers:
-        if h.strip().lower() in SUBGROUP_COLUMN_NAMES:
-            return h
-    return None
-
-
-def _find_first_numeric_column(headers: list[str], sample_row: dict) -> str | None:
-    """Fallback: find the first column whose sample value is numeric."""
-    for h in headers:
-        try:
-            float(sample_row.get(h, ""))
-            return h
-        except (ValueError, TypeError):
+    for v in values[:50]:  # sample first 50 rows
+        v = v.strip()
+        if not v:
             continue
+        total += 1
+        try:
+            float(v)
+            numeric_count += 1
+            continue
+        except (ValueError, TypeError):
+            pass
+        # Try common datetime formats
+        for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y-%m-%d %H:%M:%S", "%m/%d/%Y %H:%M"):
+            try:
+                datetime.strptime(v, fmt)
+                datetime_count += 1
+                break
+            except ValueError:
+                continue
+
+    if total == 0:
+        return "text"
+    if numeric_count / total > 0.8:
+        return "numeric"
+    if datetime_count / total > 0.8:
+        return "datetime"
+    return "text"
+
+
+def _suggest_role(name: str, dtype: str) -> str | None:
+    """Suggest a column role based on name convention."""
+    lower = name.strip().lower()
+    if lower in VALUE_COLUMN_NAMES:
+        return "value"
+    if lower in SUBGROUP_COLUMN_NAMES:
+        return "subgroup"
     return None
 
 
 def parse_csv(content: str | bytes) -> ParsedCSV:
-    """Parse CSV content into structured measurements.
+    """Parse CSV content into columns metadata and raw rows.
 
-    Column detection is convention-based:
-    1. Value column: matches known names (Thickness, Value, etc.)
-       or falls back to the first numeric column.
-    2. Subgroup column: matches known names (Hour, Subgroup, etc.)
+    Column detection suggests roles but does not enforce them.
+    All columns and all data are preserved.
 
-    Raises ValueError if no value column can be detected or the CSV is empty.
+    Raises ValueError if the CSV is empty or has no headers.
     """
     if isinstance(content, bytes):
         content = content.decode("utf-8-sig")  # handle BOM
@@ -75,50 +100,46 @@ def parse_csv(content: str | bytes) -> ParsedCSV:
     if not rows:
         raise ValueError("CSV has no data rows")
 
-    # Detect columns
-    value_col = _detect_value_column(headers)
-    if value_col is None:
-        value_col = _find_first_numeric_column(headers, rows[0])
-    if value_col is None:
-        raise ValueError(
-            f"Cannot detect a value column. Headers: {headers}. "
-            f"Expected one of: {', '.join(sorted(VALUE_COLUMN_NAMES))} "
-            "or a column with numeric values."
-        )
+    # Detect column dtypes and suggest roles
+    columns: list[ColumnInfo] = []
+    value_suggested = False
 
-    subgroup_col = _detect_subgroup_column(headers)
-    extra_columns = [h for h in headers if h != value_col and h != subgroup_col]
+    for ordinal, name in enumerate(headers):
+        col_values = [row.get(name, "") for row in rows]
+        dtype = _detect_dtype(col_values)
+        suggested = _suggest_role(name, dtype)
 
-    measurements: list[MeasurementRow] = []
-    skipped = 0
+        # Only suggest one value column
+        if suggested == "value":
+            if value_suggested:
+                suggested = None
+            else:
+                value_suggested = True
 
-    for idx, row in enumerate(rows):
-        raw_value = row.get(value_col, "").strip()
-        try:
-            value = float(raw_value)
-        except (ValueError, TypeError):
-            skipped += 1
-            continue
-
-        subgroup = row.get(subgroup_col, "").strip() if subgroup_col else None
-        if subgroup == "":
-            subgroup = None
-
-        metadata = {col: row.get(col, "") for col in extra_columns}
-
-        measurements.append(MeasurementRow(
-            value=value,
-            subgroup=subgroup,
-            sequence_index=len(measurements),
-            metadata=metadata,
+        columns.append(ColumnInfo(
+            name=name,
+            ordinal=ordinal,
+            dtype=dtype,
+            suggested_role=suggested,
         ))
 
-    if not measurements:
-        raise ValueError("No valid numeric rows found in the value column")
+    # If no value column was suggested by name, suggest first numeric column
+    if not value_suggested:
+        for col in columns:
+            if col.dtype == "numeric":
+                col.suggested_role = "value"
+                break
+
+    # Verify at least one value column exists
+    has_value = any(c.suggested_role == "value" for c in columns)
+    if not has_value:
+        raise ValueError(
+            f"Cannot detect a numeric value column. Headers: {headers}. "
+            "Upload a CSV with at least one numeric column."
+        )
 
     return ParsedCSV(
-        value_column=value_col,
-        subgroup_column=subgroup_col,
-        measurements=measurements,
-        skipped_rows=skipped,
+        columns=columns,
+        rows=rows,
+        skipped_rows=0,
     )
