@@ -4,23 +4,51 @@ import { renderRecipeRail } from "../components/recipe-rail.js";
 import { renderChartArena } from "../components/chart-arena.js";
 
 export function renderEvidenceRail(state, workspace) {
+  const { signal, selectedPoint, rulesAtPoint, whyTriggered, evidence, activeFinding } = workspace;
+  const tone = toneClass(signal.statusTone);
+  const chartEvidence = evidence.filter(e => e.category === "chart");
+  const primarySlot = state.charts[state.chartOrder[0]];
+  const chartLabel = primarySlot?.context?.chartType?.label || "—";
+
   return `
     <aside class="evidence-rail">
-      <div class="rail-section signal-hero">
-        <p class="eyebrow">Signal</p>
-        <h3>${workspace.signal.title}</h3>
-        <span class="status-chip ${toneClass(workspace.signal.statusTone)}" style="margin-top:4px"><span class="sdot"></span> ${workspace.signal.confidence}</span>
+
+      <!-- ── POINT TIER ───────────────────────────── -->
+      <div class="rail-tier-label">
+        <span class="eyebrow">Point</span>
+        ${selectedPoint ? `<span class="rail-tier-badge">${selectedPoint.label}</span>` : ""}
       </div>
+
+      <div class="rail-section signal-hero ${tone}">
+        <p class="eyebrow">Signal</p>
+        <h3>${signal.title}</h3>
+        <div class="signal-meta">
+          <span class="status-chip ${tone}"><span class="sdot"></span>${signal.confidence}</span>
+          ${rulesAtPoint.length > 0
+            ? `<div class="rule-tags">${rulesAtPoint.map(r =>
+                `<span class="rule-tag" title="${r.description}">R${r.testId}</span>`
+              ).join("")}</div>`
+            : ""}
+        </div>
+      </div>
+
+      <!-- ── CHART TIER ────────────────────────────── -->
+      <div class="rail-tier-label">
+        <span class="eyebrow">Chart</span>
+        <span class="rail-tier-badge">${chartLabel}</span>
+      </div>
+
       <div class="rail-section">
-        <p class="eyebrow">Why it triggered</p>
+        <p class="eyebrow">Violations</p>
         <ul class="rail-list">
-          ${workspace.whyTriggered.map(item => `<li>${item}</li>`).join("")}
+          ${whyTriggered.map(item => `<li>${item}</li>`).join("")}
         </ul>
       </div>
+
       <div class="rail-section">
-        <p class="eyebrow">Evidence ledger</p>
+        <p class="eyebrow">Method</p>
         <ul class="evidence-list">
-          ${workspace.evidence.map(item => `
+          ${chartEvidence.map(item => `
             <li class="${item.resolved ? "" : "unresolved"}">
               <span>${item.label}</span>
               <strong>${item.value}</strong>
@@ -28,21 +56,18 @@ export function renderEvidenceRail(state, workspace) {
           `).join("")}
         </ul>
       </div>
-      <div class="rail-section">
-        <p class="eyebrow">Checks</p>
-        <ul class="rail-list">
-          ${workspace.recommendations.map(item => `<li>${item}</li>`).join("")}
-        </ul>
-      </div>
+
+      <!-- ── FINDING ───────────────────────────────── -->
       <div class="rail-section">
         <p class="eyebrow">Finding</p>
-        <h3>${workspace.activeFinding?.title || "No draft"}</h3>
-        <p>${workspace.activeFinding?.summary || "Create from signal."}</p>
+        <h3>${activeFinding?.title || "No draft"}</h3>
+        <p>${activeFinding?.summary || "Create from signal."}</p>
         <div class="rail-actions">
           <button data-action="create-finding" type="button">Create</button>
           <button data-action="navigate" data-route="findings" type="button">View all</button>
         </div>
       </div>
+
     </aside>
   `;
 }

@@ -63,52 +63,81 @@ function buildWhyTriggered(state, point) {
     return ["No rule violations detected in this dataset."];
   }
 
-  return violations.map(v => {
-    const count = v.indices.length;
-    return `${v.description} — ${count} point${count !== 1 ? "s" : ""} flagged.`;
-  });
+  // Group by rule: violations fire once per phase, so deduplicate by testId
+  // and sum the flagged point counts across all phases.
+  const byRule = new Map();
+  for (const v of violations) {
+    if (!byRule.has(v.testId)) {
+      byRule.set(v.testId, { description: v.description, count: 0 });
+    }
+    byRule.get(v.testId).count += v.indices.length;
+  }
+  return [...byRule.values()].map(r =>
+    `${r.description} — ${r.count} point${r.count !== 1 ? "s" : ""} flagged.`
+  );
+}
+
+/** Rules (deduplicated by testId) that fired at a specific point index. */
+function buildRulesAtPoint(state, idx) {
+  if (idx == null) return [];
+  const violations = getPrimary(state).violations || [];
+  const seen = new Set();
+  const result = [];
+  for (const v of violations) {
+    if (v.indices.includes(Number(idx)) && !seen.has(v.testId)) {
+      seen.add(v.testId);
+      result.push({ testId: v.testId, description: v.description });
+    }
+  }
+  return result;
 }
 
 function buildEvidence(state, point) {
   const primary = getPrimary(state);
   const sigma = primary.sigma;
+
+  // Deduplicate violations by rule before counting
+  const uniqueRules = new Set((primary.violations || []).map(v => v.testId));
   const violationCount = (primary.violations || []).reduce((sum, v) => sum + v.indices.length, 0);
 
   return [
+    // ── Point-level items (change with the selected point) ──
     {
-      label: "Selected point",
-      value: point ? `${point.label} (${point.primaryValue.toFixed(4)})` : "None",
+      label: "Value",
+      value: point ? point.primaryValue.toFixed(4) : "—",
       resolved: Boolean(point),
+      category: "point",
+    },
+    // ── Chart-level items (stable, describe the analysis) ──
+    {
+      label: "UCL / CL / LCL",
+      value: `${primary.limits.ucl.toFixed(4)} / ${primary.limits.center.toFixed(4)} / ${primary.limits.lcl.toFixed(4)}`,
+      resolved: true,
+      category: "chart",
     },
     {
-      label: "Sigma estimate",
-      value: sigma ? `${sigma.sigma_hat.toFixed(6)} (${sigma.method})` : "Not computed",
+      label: "Sigma",
+      value: sigma ? `${sigma.sigma_hat.toFixed(4)} (${sigma.method})` : "Not computed",
       resolved: Boolean(sigma),
+      category: "chart",
     },
     {
-      label: "Control limits",
-      value: `UCL ${primary.limits.ucl.toFixed(4)} / CL ${primary.limits.center.toFixed(4)} / LCL ${primary.limits.lcl.toFixed(4)}`,
+      label: "Violations",
+      value: uniqueRules.size > 0 ? `${uniqueRules.size} rule${uniqueRules.size !== 1 ? "s" : ""} · ${violationCount} pts` : "None",
+      resolved: uniqueRules.size === 0,
+      category: "chart",
+    },
+    {
+      label: "Points",
+      value: `${state.points.length} · ${state.points.filter(p => p.excluded).length} excl`,
       resolved: true,
+      category: "chart",
     },
     {
-      label: "Rule violations",
-      value: violationCount > 0 ? `${violationCount} points flagged` : "None",
-      resolved: violationCount === 0,
-    },
-    {
-      label: "Excluded points",
-      value: `${state.points.filter(p => p.excluded).length} of ${state.points.length}`,
-      resolved: true,
-    },
-    {
-      label: "Transform pipeline",
-      value: state.pipeline.status === "ready" ? "All steps valid" : "Pipeline partial — some steps failed",
+      label: "Pipeline",
+      value: state.pipeline.status === "ready" ? "Ready" : "Partial",
       resolved: state.pipeline.status === "ready",
-    },
-    {
-      label: "Limits version",
-      value: primary.limits.version || "—",
-      resolved: true,
+      category: "chart",
     },
   ];
 }
@@ -352,6 +381,7 @@ export function deriveWorkspace(state) {
     selectedPoint: point,
     signal,
     whyTriggered: buildWhyTriggered(state, point),
+    rulesAtPoint: buildRulesAtPoint(state, state.selectedPointIndex),
     evidence,
     recommendations: buildRecommendations(state, point),
     compareCards: buildComparisonStrip(state),

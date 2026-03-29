@@ -182,8 +182,11 @@ test("selecting a point updates the evidence ledger to the selected lot", () => 
   const next = selectPoint(initial, 26);
   const workspace = deriveWorkspace(next);
 
+  // selectedPoint carries the label
   assert.equal(workspace.selectedPoint.label, "L-2866");
-  assert.match(workspace.evidence[0].value, /L-2866/);
+  // evidence[0] is the point-category "Value" item — numeric value of the selected point
+  assert.equal(workspace.evidence[0].category, "point");
+  assert.match(workspace.evidence[0].value, /\d+\.\d+/);
 });
 
 test("excluding a point keeps it visible and updates exclusion count", () => {

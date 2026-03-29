@@ -1196,6 +1196,26 @@ h1, h2, h3, h4, h5, h6 {
   margin: 3px 0 0;
 }
 
+/* ── Rail tier labels: thin dividers between Point / Chart tiers ── */
+.rail-tier-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0 4px;
+  margin-top: 2px;
+}
+.rail-tier-label .eyebrow {
+  color: var(--t-4);
+}
+.rail-tier-badge {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--t-4);
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* signal hero — first section gets elevated treatment */
 .rail-section.signal-hero {
   padding: 10px 8px 10px 10px;
@@ -1203,8 +1223,40 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--bg-3);
   border-radius: var(--r-md);
   border-bottom: none;
-  margin-bottom: 6px;
-  border-left: 3px solid var(--amber);
+  margin-bottom: 4px;
+  border-left: 3px solid var(--border-2);
+}
+/* Tone-specific accent colors */
+.rail-section.signal-hero.critical { border-left-color: var(--red); }
+.rail-section.signal-hero.warning  { border-left-color: var(--amber); }
+.rail-section.signal-hero.info     { border-left-color: var(--blue-bright); }
+.rail-section.signal-hero.positive { border-left-color: var(--green); }
+
+/* Signal meta row: chip + rule tags side by side */
+.signal-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.rule-tags {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.rule-tag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: var(--r-xs);
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid rgba(205,66,70,0.3);
+  font-family: "IBM Plex Mono", monospace;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: default;
 }
 
 .rail-section.signal-hero .eyebrow {
