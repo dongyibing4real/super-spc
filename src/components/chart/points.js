@@ -42,7 +42,14 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
     const val = d[seriesKey];
     const cx = x(i);
     const cy = y(val);
-    const ooc = val >= data.limits.ucl || val <= data.limits.lcl;
+    // Use phase-specific limits when phases are defined; each phase can have
+    // distinct UCL/LCL, so checking against the dataset-level limits is wrong
+    // for points that fall in a later phase.
+    const activePhase = data.phases && data.phases.length > 0
+      ? data.phases.find(p => i >= p.start && i <= p.end)
+      : null;
+    const effectiveLimits = activePhase ? activePhase.limits : data.limits;
+    const ooc = val >= effectiveLimits.ucl || val <= effectiveLimits.lcl;
     const rules = violations.get(i);
     const hasViolation = rules && rules.length > 0;
 

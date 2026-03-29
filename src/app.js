@@ -111,7 +111,7 @@ function buildChartData(id) {
       xDomainOverride: slot.overrides.x,
       yDomainOverride: slot.overrides.y,
     },
-    selectedIndex: hasChartValues ? Math.min(state.selectedPointIndex, points.length - 1) : state.selectedPointIndex,
+    selectedIndex: hasChartValues ? (slot.selectedPointIndex ?? -1) : state.selectedPointIndex,
     violations: detectRuleViolations(state, id),
     capability: getCapability(state, id),
     metric: slot.context.metric,
@@ -156,7 +156,7 @@ function render() {
       } else {
         if (charts[id]) { charts[id].destroy(); charts[id] = null; }
         charts[id] = createChart(mount, {
-          onSelectPoint: (index) => commitChart(selectPoint(state, index)),
+          onSelectPoint: (index) => commitChart(selectPoint(state, index, id)),
           onContextMenu: (x, y, info) => commitContextMenu(openContextMenu(state, x, y, { ...info, role: id })),
           onAxisDrag: (info) => {
             if (info.axis === 'x') commitChart(setXDomainOverride(state, info.min, info.max, id));

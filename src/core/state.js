@@ -211,6 +211,7 @@ export function createSlot(overrides = {}) {
     chartValues: [],
     chartLabels: [],
     phases: [],
+    selectedPointIndex: null,
     ...overrides,
   };
 }
@@ -444,7 +445,24 @@ export function setActiveChipEditor(state, chipId) {
   };
 }
 
-export function selectPoint(state, index) {
+export function selectPoint(state, index, id = null) {
+  // Subgroup-based charts (X-Bar R, CUSUM, etc.) have their own point space —
+  // chartValues indices don't map to raw state.points indices.  Store selection
+  // per-slot so clicks in one chart don't highlight semantically-unrelated
+  // points in a chart that uses a different granularity.
+  if (id && state.charts[id]) {
+    const slot = state.charts[id];
+    const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
+    if (hasChartValues) {
+      const clamped = clamp(index, 0, Math.max(0, slot.chartValues.length - 1));
+      return {
+        ...state,
+        charts: { ...state.charts, [id]: { ...slot, selectedPointIndex: clamped } },
+        ui: { ...state.ui, contextMenu: null },
+      };
+    }
+  }
+  // Raw-point charts (IMR, etc.) use the global index into state.points
   return {
     ...state,
     selectedPointIndex: clamp(index, 0, Math.max(0, state.points.length - 1)),
