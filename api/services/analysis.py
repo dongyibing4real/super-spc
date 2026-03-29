@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from typing import NamedTuple
 
 import numpy as np
 from sqlalchemy import select
@@ -222,16 +223,46 @@ def _limits_to_lists(ctrl_limits: ControlLimits) -> tuple[list[float], list[floa
     )
 
 
+class DispatchResult(NamedTuple):
+    """Standard return type for all chart dispatch functions."""
+    chart_values: np.ndarray
+    ucl: list[float]
+    cl: list[float]
+    lcl: list[float]
+    k_sigma: float
+    sigma: SigmaOut
+    zones: ZoneBreakdown
+
+
+def _flatten_subgroups(
+    measurements: list[Measurement],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Group measurements by subgroup and flatten into (data_array, sizes_array)."""
+    ordered_keys, groups = _group_by_subgroup(measurements)
+    flat_data: list[float] = []
+    subgroup_sizes: list[int] = []
+    for key in ordered_keys:
+        flat_data.extend(groups[key])
+        subgroup_sizes.append(len(groups[key]))
+    return np.array(flat_data), np.array(subgroup_sizes, dtype=int)
+
+
+def _sigma_to_out(sigma_result) -> SigmaOut:
+    """Convert an algo SigmaResult to an API SigmaOut."""
+    return SigmaOut(
+        sigma_hat=sigma_result.sigma_hat,
+        method=sigma_result.method.value,
+        n_used=sigma_result.n_used,
+    )
+
+
 _IMR_COMPATIBLE_METHODS = {"moving_range", "median_moving_range"}
 
 
 def _dispatch_imr(
     values: np.ndarray, request: AnalysisRequest,
     measurements: list[Measurement] | None = None,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """IMR chart dispatch. Returns (chart_values, ucl, cl, lcl, k_sigma, sigma_out, zones).
 
     For IMR-compatible sigma methods (moving_range, median_moving_range), delegates
@@ -251,13 +282,8 @@ def _dispatch_imr(
         result = compute_imr(values, IMRConfig(k_sigma=request.k_sigma, sigma_method=sigma_method))
 
         ucl, cl, lcl = _limits_to_lists(result.i_limits)
-        sigma_out = SigmaOut(
-            sigma_hat=result.sigma.sigma_hat,
-            method=result.sigma.method.value,
-            n_used=result.sigma.n_used,
-        )
-        return (result.individuals, ucl, cl, lcl, result.i_limits.k_sigma,
-                sigma_out, result.zones)
+        return DispatchResult(result.individuals, ucl, cl, lcl,
+                              result.i_limits.k_sigma, _sigma_to_out(result.sigma), result.zones)
     else:
         # Non-IMR sigma methods: manual sigma + limits (backward compat path)
         chart_values = values
@@ -303,95 +329,45 @@ def _dispatch_imr(
             n_used=sigma_result.n_used,
         )
 
-        return (chart_values, ucl_arr, cl_arr, lcl_arr, request.k_sigma,
-                sigma_out, zone_breakdown)
+        return DispatchResult(chart_values, ucl_arr, cl_arr, lcl_arr,
+                              request.k_sigma, sigma_out, zone_breakdown)
 
 
 def _dispatch_xbar_r(
     measurements: list[Measurement], request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """XBar-R chart dispatch."""
-    ordered_keys, groups = _group_by_subgroup(measurements)
-    # Build flat data array and subgroup_sizes for the algo
-    flat_data = []
-    subgroup_sizes = []
-    for key in ordered_keys:
-        flat_data.extend(groups[key])
-        subgroup_sizes.append(len(groups[key]))
-
-    result = compute_xbar_r(
-        np.array(flat_data),
-        np.array(subgroup_sizes, dtype=int),
-        XBarRConfig(k_sigma=request.k_sigma),
-    )
-
+    flat_data, subgroup_sizes = _flatten_subgroups(measurements)
+    result = compute_xbar_r(flat_data, subgroup_sizes, XBarRConfig(k_sigma=request.k_sigma))
     ucl, cl, lcl = _limits_to_lists(result.xbar_limits)
-    sigma_out = SigmaOut(
-        sigma_hat=result.sigma.sigma_hat,
-        method=result.sigma.method.value,
-        n_used=result.sigma.n_used,
-    )
-    return (result.subgroup_means, ucl, cl, lcl, result.xbar_limits.k_sigma,
-            sigma_out, result.zones)
+    return DispatchResult(result.subgroup_means, ucl, cl, lcl,
+                          result.xbar_limits.k_sigma, _sigma_to_out(result.sigma), result.zones)
 
 
 def _dispatch_xbar_s(
     measurements: list[Measurement], request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """XBar-S chart dispatch."""
-    ordered_keys, groups = _group_by_subgroup(measurements)
-    flat_data = []
-    subgroup_sizes = []
-    for key in ordered_keys:
-        flat_data.extend(groups[key])
-        subgroup_sizes.append(len(groups[key]))
-
-    result = compute_xbar_s(
-        np.array(flat_data),
-        np.array(subgroup_sizes, dtype=int),
-        XBarSConfig(k_sigma=request.k_sigma),
-    )
-
+    flat_data, subgroup_sizes = _flatten_subgroups(measurements)
+    result = compute_xbar_s(flat_data, subgroup_sizes, XBarSConfig(k_sigma=request.k_sigma))
     ucl, cl, lcl = _limits_to_lists(result.xbar_limits)
-    sigma_out = SigmaOut(
-        sigma_hat=result.sigma.sigma_hat,
-        method=result.sigma.method.value,
-        n_used=result.sigma.n_used,
-    )
-    return (result.subgroup_means, ucl, cl, lcl, result.xbar_limits.k_sigma,
-            sigma_out, result.zones)
+    return DispatchResult(result.subgroup_means, ucl, cl, lcl,
+                          result.xbar_limits.k_sigma, _sigma_to_out(result.sigma), result.zones)
 
 
 def _dispatch_levey_jennings(
     values: np.ndarray, request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """Levey-Jennings chart dispatch."""
     result = compute_levey_jennings(values, LeveyJenningsConfig(k_sigma=request.k_sigma))
     ucl, cl, lcl = _limits_to_lists(result.limits)
-    sigma_out = SigmaOut(
-        sigma_hat=result.sigma.sigma_hat,
-        method=result.sigma.method.value,
-        n_used=result.sigma.n_used,
-    )
-    return (result.values, ucl, cl, lcl, result.limits.k_sigma,
-            sigma_out, result.zones)
+    return DispatchResult(result.values, ucl, cl, lcl,
+                          result.limits.k_sigma, _sigma_to_out(result.sigma), result.zones)
 
 
 def _dispatch_attribute_chart(
     chart_type: str, measurements: list[Measurement], request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """Dispatch for attribute charts (p, np, c, u, laney_p, laney_u)."""
     ordered_keys, groups = _group_by_subgroup(measurements)
 
@@ -440,17 +416,14 @@ def _dispatch_attribute_chart(
     avg_cl = float(np.mean(result.limits.cl))
     zone_breakdown = compute_zones(avg_cl, sigma_hat)
 
-    return (chart_values, ucl, cl, lcl, result.limits.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(chart_values, ucl, cl, lcl, result.limits.k_sigma,
+                          sigma_out, zone_breakdown)
 
 
 def _dispatch_ewma(
     values: np.ndarray, request: AnalysisRequest,
     measurements: list[Measurement] | None = None,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """EWMA chart dispatch.
 
     When measurements have subgroup labels, uses subgroup means as the charted
@@ -493,17 +466,14 @@ def _dispatch_ewma(
     avg_cl = float(np.mean(result.center))
     zone_breakdown = compute_zones(avg_cl, sigma_est.sigma_hat)
 
-    return (result.ewma, ucl, cl, lcl, request.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(result.ewma, ucl, cl, lcl, request.k_sigma,
+                          sigma_out, zone_breakdown)
 
 
 def _dispatch_cusum(
     values: np.ndarray, request: AnalysisRequest,
     measurements: list[Measurement] | None = None,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """CUSUM chart dispatch.
 
     When measurements have subgroup labels, charts subgroup means (JMP convention).
@@ -542,111 +512,55 @@ def _dispatch_cusum(
 
     zone_breakdown = compute_zones(0.0, sigma_est.sigma_hat)
 
-    return (result.c_plus, ucl, cl, lcl, request.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(result.c_plus, ucl, cl, lcl, request.k_sigma,
+                          sigma_out, zone_breakdown)
 
 
 def _dispatch_r_chart(
     measurements: list[Measurement], request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """R (Range) chart dispatch."""
-    ordered_keys, groups = _group_by_subgroup(measurements)
-    flat_data = []
-    subgroup_sizes = []
-    for key in ordered_keys:
-        flat_data.extend(groups[key])
-        subgroup_sizes.append(len(groups[key]))
-
-    result = compute_r_chart(
-        np.array(flat_data),
-        np.array(subgroup_sizes, dtype=int),
-        RChartConfig(k_sigma=request.k_sigma),
-    )
-
+    flat_data, subgroup_sizes = _flatten_subgroups(measurements)
+    result = compute_r_chart(flat_data, subgroup_sizes, RChartConfig(k_sigma=request.k_sigma))
     ucl, cl, lcl = _limits_to_lists(result.limits)
-    sigma_out = SigmaOut(
-        sigma_hat=result.sigma.sigma_hat,
-        method=result.sigma.method.value,
-        n_used=result.sigma.n_used,
-    )
-    return (result.subgroup_ranges, ucl, cl, lcl, result.limits.k_sigma,
-            sigma_out, result.zones)
+    return DispatchResult(result.subgroup_ranges, ucl, cl, lcl,
+                          result.limits.k_sigma, _sigma_to_out(result.sigma), result.zones)
 
 
 def _dispatch_s_chart(
     measurements: list[Measurement], request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """S (Standard Deviation) chart dispatch."""
-    ordered_keys, groups = _group_by_subgroup(measurements)
-    flat_data = []
-    subgroup_sizes = []
-    for key in ordered_keys:
-        flat_data.extend(groups[key])
-        subgroup_sizes.append(len(groups[key]))
-
-    result = compute_s_chart(
-        np.array(flat_data),
-        np.array(subgroup_sizes, dtype=int),
-        SChartConfig(k_sigma=request.k_sigma),
-    )
-
+    flat_data, subgroup_sizes = _flatten_subgroups(measurements)
+    result = compute_s_chart(flat_data, subgroup_sizes, SChartConfig(k_sigma=request.k_sigma))
     ucl, cl, lcl = _limits_to_lists(result.limits)
-    sigma_out = SigmaOut(
-        sigma_hat=result.sigma.sigma_hat,
-        method=result.sigma.method.value,
-        n_used=result.sigma.n_used,
-    )
-    return (result.subgroup_stddevs, ucl, cl, lcl, result.limits.k_sigma,
-            sigma_out, result.zones)
+    return DispatchResult(result.subgroup_stddevs, ucl, cl, lcl,
+                          result.limits.k_sigma, _sigma_to_out(result.sigma), result.zones)
 
 
 def _dispatch_mr_chart(
     values: np.ndarray, request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """MR (Moving Range) chart dispatch."""
     result = compute_mr_chart(values, MRChartConfig(k_sigma=request.k_sigma))
-
     ucl, cl, lcl = _limits_to_lists(result.limits)
-    sigma_out = SigmaOut(
-        sigma_hat=result.sigma.sigma_hat,
-        method=result.sigma.method.value,
-        n_used=result.sigma.n_used,
-    )
-    return (result.moving_ranges, ucl, cl, lcl, result.limits.k_sigma,
-            sigma_out, result.zones)
+    return DispatchResult(result.moving_ranges, ucl, cl, lcl,
+                          result.limits.k_sigma, _sigma_to_out(result.sigma), result.zones)
 
 
 def _dispatch_presummarize(
     measurements: list[Measurement], request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """Presummarize chart dispatch. Requires target and sigma in request."""
     if request.target is None or request.sigma is None:
         raise ValueError(
             "Presummarize chart requires 'target' and 'sigma' parameters."
         )
 
-    ordered_keys, groups = _group_by_subgroup(measurements)
-    flat_data = []
-    subgroup_sizes = []
-    for key in ordered_keys:
-        flat_data.extend(groups[key])
-        subgroup_sizes.append(len(groups[key]))
-
+    flat_data, subgroup_sizes = _flatten_subgroups(measurements)
     result = compute_presummarize(
-        np.array(flat_data),
-        subgroup_sizes,
+        flat_data,
+        subgroup_sizes.tolist(),
         PresummarizeConfig(
             target=request.target,
             sigma=request.sigma,
@@ -656,21 +570,13 @@ def _dispatch_presummarize(
     )
 
     ucl, cl, lcl = _limits_to_lists(result.limits)
-    sigma_out = SigmaOut(
-        sigma_hat=result.sigma.sigma_hat,
-        method=result.sigma.method.value,
-        n_used=result.sigma.n_used,
-    )
-    return (result.summary_values, ucl, cl, lcl, result.limits.k_sigma,
-            sigma_out, result.zones)
+    return DispatchResult(result.summary_values, ucl, cl, lcl,
+                          result.limits.k_sigma, _sigma_to_out(result.sigma), result.zones)
 
 
 def _dispatch_g_chart(
     values: np.ndarray, request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """G chart dispatch."""
     result = compute_g_chart(values, GChartConfig(k_sigma=request.k_sigma))
 
@@ -687,16 +593,13 @@ def _dispatch_g_chart(
     sigma_out = SigmaOut(sigma_hat=sigma_hat, method="g_chart", n_used=len(values))
     zone_breakdown = compute_zones(avg_cl, sigma_hat)
 
-    return (result.values, ucl, cl, lcl, result.limits.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(result.values, ucl, cl, lcl, result.limits.k_sigma,
+                          sigma_out, zone_breakdown)
 
 
 def _dispatch_t_chart(
     values: np.ndarray, request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """T chart dispatch."""
     result = compute_t_chart(values, TChartConfig(k_sigma=request.k_sigma))
 
@@ -711,16 +614,13 @@ def _dispatch_t_chart(
     sigma_out = SigmaOut(sigma_hat=sigma_hat, method="t_chart", n_used=len(values))
     zone_breakdown = compute_zones(avg_cl, sigma_hat)
 
-    return (result.values, ucl, cl, lcl, result.limits.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(result.values, ucl, cl, lcl, result.limits.k_sigma,
+                          sigma_out, zone_breakdown)
 
 
 def _dispatch_three_way(
     measurements: list[Measurement], request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """Three-Way chart dispatch. Returns between-subgroup chart as primary."""
     ordered_keys, groups = _group_by_subgroup(measurements)
     subgroups = [np.array(groups[k]) for k in ordered_keys]
@@ -744,16 +644,13 @@ def _dispatch_three_way(
     )
     zone_breakdown = compute_zones(float(np.mean(result.between_chart.cl)), result.sigma_bw)
 
-    return (result.subgroup_means, ucl, cl, lcl, result.between_chart.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(result.subgroup_means, ucl, cl, lcl,
+                          result.between_chart.k_sigma, sigma_out, zone_breakdown)
 
 
 def _dispatch_short_run(
     measurements: list[Measurement], request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """Short Run chart dispatch. Uses subgroup field as product ID."""
     values = np.array([m.value for m in measurements], dtype=float)
     product_ids = np.array([m.subgroup or DEFAULT_SUBGROUP_KEY for m in measurements])
@@ -774,16 +671,13 @@ def _dispatch_short_run(
     avg_cl = float(np.mean(result.limits.cl))
     zone_breakdown = compute_zones(avg_cl, sigma_hat)
 
-    return (result.transformed_values, ucl, cl, lcl, result.limits.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(result.transformed_values, ucl, cl, lcl,
+                          result.limits.k_sigma, sigma_out, zone_breakdown)
 
 
 def _dispatch_run_chart(
     values: np.ndarray, request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """Run chart dispatch. No control limits — returns flat center line."""
     center_method = request.center_method or "median"
     result = compute_run_chart(values, RunChartConfig(center_method=center_method))
@@ -800,17 +694,14 @@ def _dispatch_run_chart(
     sigma_out = SigmaOut(sigma_hat=sigma_hat, method="run_chart", n_used=n)
     zone_breakdown = compute_zones(result.center, sigma_hat)
 
-    return (result.values, ucl_arr, cl_arr, lcl_arr, request.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(result.values, ucl_arr, cl_arr, lcl_arr,
+                          request.k_sigma, sigma_out, zone_breakdown)
 
 
 def _dispatch_cusum_vmask(
     values: np.ndarray, request: AnalysisRequest,
     measurements: list[Measurement] | None = None,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """CUSUM V-Mask chart dispatch.
 
     When measurements have subgroup labels, charts subgroup means.
@@ -848,8 +739,8 @@ def _dispatch_cusum_vmask(
     )
     zone_breakdown = compute_zones(0.0, sigma_est.sigma_hat)
 
-    return (result.cumulative_sums, ucl, cl, lcl, request.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(result.cumulative_sums, ucl, cl, lcl,
+                          request.k_sigma, sigma_out, zone_breakdown)
 
 
 def _extract_multivariate(measurements: list[Measurement]) -> np.ndarray:
@@ -869,10 +760,7 @@ def _extract_multivariate(measurements: list[Measurement]) -> np.ndarray:
 
 def _dispatch_hotelling_t2(
     measurements: list[Measurement], request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """Hotelling T-squared chart dispatch."""
     data_2d = _extract_multivariate(measurements)
 
@@ -893,16 +781,13 @@ def _dispatch_hotelling_t2(
     sigma_out = SigmaOut(sigma_hat=sigma_hat, method="hotelling_t2", n_used=n)
     zone_breakdown = compute_zones(0.0, sigma_hat)
 
-    return (result.t2_values, ucl, cl, lcl, request.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(result.t2_values, ucl, cl, lcl,
+                          request.k_sigma, sigma_out, zone_breakdown)
 
 
 def _dispatch_mewma(
     measurements: list[Measurement], request: AnalysisRequest,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """MEWMA chart dispatch."""
     data_2d = _extract_multivariate(measurements)
 
@@ -923,8 +808,8 @@ def _dispatch_mewma(
     sigma_out = SigmaOut(sigma_hat=sigma_hat, method="mewma", n_used=n)
     zone_breakdown = compute_zones(0.0, sigma_hat)
 
-    return (result.t2_values, ucl, cl, lcl, request.k_sigma,
-            sigma_out, zone_breakdown)
+    return DispatchResult(result.t2_values, ucl, cl, lcl,
+                          request.k_sigma, sigma_out, zone_breakdown)
 
 
 _NO_CAPABILITY_TYPES = {"hotelling_t2", "mewma", "run"}
@@ -936,10 +821,7 @@ def _dispatch_chart(
     request: AnalysisRequest,
     value_column: str | None = None,
     subgroup_column: str | None = None,
-) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
-    SigmaOut, ZoneBreakdown,
-]:
+) -> DispatchResult:
     """Dispatch to the appropriate chart-type algorithm for one phase group.
 
     When value_column or subgroup_column is set, overrides m.value / m.subgroup
@@ -959,49 +841,48 @@ def _dispatch_chart(
                 m.subgroup = None
 
     values = np.array([m.value for m in phase_measurements], dtype=float)
+    ms = phase_measurements  # short alias
 
-    if chart_type == "imr":
-        return _dispatch_imr(values, request, phase_measurements)
-    elif chart_type == "xbar_r":
-        return _dispatch_xbar_r(phase_measurements, request)
-    elif chart_type == "xbar_s":
-        return _dispatch_xbar_s(phase_measurements, request)
-    elif chart_type == "levey_jennings":
-        return _dispatch_levey_jennings(values, request)
-    elif chart_type in ("p", "np", "c", "u", "laney_p", "laney_u"):
-        return _dispatch_attribute_chart(chart_type, phase_measurements, request)
-    elif chart_type == "ewma":
-        return _dispatch_ewma(values, request, measurements=phase_measurements)
-    elif chart_type == "cusum":
-        return _dispatch_cusum(values, request, measurements=phase_measurements)
-    elif chart_type == "r":
-        return _dispatch_r_chart(phase_measurements, request)
-    elif chart_type == "s":
-        return _dispatch_s_chart(phase_measurements, request)
-    elif chart_type == "mr":
-        return _dispatch_mr_chart(values, request)
-    elif chart_type == "presummarize":
-        return _dispatch_presummarize(phase_measurements, request)
-    elif chart_type == "g":
-        return _dispatch_g_chart(values, request)
-    elif chart_type == "t":
-        return _dispatch_t_chart(values, request)
-    elif chart_type == "three_way":
-        return _dispatch_three_way(phase_measurements, request)
-    elif chart_type == "short_run":
-        return _dispatch_short_run(phase_measurements, request)
-    elif chart_type == "run":
-        return _dispatch_run_chart(values, request)
-    elif chart_type == "cusum_vmask":
-        return _dispatch_cusum_vmask(values, request, measurements=phase_measurements)
-    elif chart_type == "hotelling_t2":
-        return _dispatch_hotelling_t2(phase_measurements, request)
-    elif chart_type == "mewma":
-        return _dispatch_mewma(phase_measurements, request)
-    else:
+    # Dispatch table: chart_type -> callable(values, ms, request) -> DispatchResult
+    # Uses 'v' for values-based, 'm' for measurements-based, 'vm' for both.
+    _DISPATCH_TABLE: dict[str, callable] = {
+        # Variable charts — individual
+        "imr":            lambda v, m, r: _dispatch_imr(v, r, m),
+        "levey_jennings": lambda v, m, r: _dispatch_levey_jennings(v, r),
+        "mr":             lambda v, m, r: _dispatch_mr_chart(v, r),
+        "run":            lambda v, m, r: _dispatch_run_chart(v, r),
+        "g":              lambda v, m, r: _dispatch_g_chart(v, r),
+        "t":              lambda v, m, r: _dispatch_t_chart(v, r),
+        # Variable charts — subgrouped
+        "xbar_r":         lambda v, m, r: _dispatch_xbar_r(m, r),
+        "xbar_s":         lambda v, m, r: _dispatch_xbar_s(m, r),
+        "r":              lambda v, m, r: _dispatch_r_chart(m, r),
+        "s":              lambda v, m, r: _dispatch_s_chart(m, r),
+        "three_way":      lambda v, m, r: _dispatch_three_way(m, r),
+        "short_run":      lambda v, m, r: _dispatch_short_run(m, r),
+        "presummarize":   lambda v, m, r: _dispatch_presummarize(m, r),
+        # Attribute charts
+        "p":              lambda v, m, r: _dispatch_attribute_chart("p", m, r),
+        "np":             lambda v, m, r: _dispatch_attribute_chart("np", m, r),
+        "c":              lambda v, m, r: _dispatch_attribute_chart("c", m, r),
+        "u":              lambda v, m, r: _dispatch_attribute_chart("u", m, r),
+        "laney_p":        lambda v, m, r: _dispatch_attribute_chart("laney_p", m, r),
+        "laney_u":        lambda v, m, r: _dispatch_attribute_chart("laney_u", m, r),
+        # Time-weighted charts
+        "ewma":           lambda v, m, r: _dispatch_ewma(v, r, measurements=m),
+        "cusum":          lambda v, m, r: _dispatch_cusum(v, r, measurements=m),
+        "cusum_vmask":    lambda v, m, r: _dispatch_cusum_vmask(v, r, measurements=m),
+        # Multivariate charts
+        "hotelling_t2":   lambda v, m, r: _dispatch_hotelling_t2(m, r),
+        "mewma":          lambda v, m, r: _dispatch_mewma(m, r),
+    }
+
+    dispatcher = _DISPATCH_TABLE.get(chart_type)
+    if dispatcher is None:
         raise ValueError(
             f"Chart type '{chart_type}' is recognized but not yet dispatched."
         )
+    return dispatcher(values, ms, request)
 
 
 # Chart types where each plotted point corresponds to a subgroup (not an individual measurement)
@@ -1058,28 +939,22 @@ def _analyze_one_phase(
     list[RuleViolationOut], CapabilityOut | None,
 ]:
     """Run dispatch + rules + capability for a single phase group."""
-    (chart_values, ucl_arr, cl_arr, lcl_arr, k_sigma,
-     sigma_out, zone_breakdown) = _dispatch_chart(chart_type, phase_measurements, request, value_column, subgroup_column)
+    dr = _dispatch_chart(chart_type, phase_measurements, request, value_column, subgroup_column)
 
-    # Derive x-axis labels from chart type and measurements
-    chart_labels = _derive_chart_labels(chart_type, phase_measurements, len(chart_values))
+    chart_labels = _derive_chart_labels(chart_type, phase_measurements, len(dr.chart_values))
 
-    # Evaluate rules
     ctrl_limits = ControlLimits(
-        ucl=np.array(ucl_arr),
-        cl=np.array(cl_arr),
-        lcl=np.array(lcl_arr),
-        k_sigma=k_sigma,
+        ucl=np.array(dr.ucl), cl=np.array(dr.cl), lcl=np.array(dr.lcl),
+        k_sigma=dr.k_sigma,
     )
-    violations = _run_rule_evaluation(chart_values, ctrl_limits, zone_breakdown, request)
+    violations = _run_rule_evaluation(dr.chart_values, ctrl_limits, dr.zones, request)
 
-    # Capability (optional)
     capability = None
     if (request.usl is not None and request.lsl is not None
             and chart_type not in _NO_CAPABILITY_TYPES):
         phase_values = np.array([m.value for m in phase_measurements], dtype=float)
         cap_result = compute_capability(
-            phase_values, sigma_out.sigma_hat, request.usl, request.lsl,
+            phase_values, dr.sigma.sigma_hat, request.usl, request.lsl,
         )
         if cap_result is not None:
             capability = CapabilityOut(
@@ -1087,8 +962,8 @@ def _analyze_one_phase(
                 pp=cap_result.pp, ppk=cap_result.ppk,
             )
 
-    return (chart_values, chart_labels, ucl_arr, cl_arr, lcl_arr, k_sigma,
-            sigma_out, zone_breakdown, violations, capability)
+    return (dr.chart_values, chart_labels, dr.ucl, dr.cl, dr.lcl, dr.k_sigma,
+            dr.sigma, dr.zones, violations, capability)
 
 
 async def run_analysis(
