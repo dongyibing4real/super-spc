@@ -104,15 +104,23 @@ SIGMA_DISPATCHERS = {
 
 def _group_by_subgroup(
     measurements: list[Measurement],
+    subgroup_column: str | None = None,
 ) -> tuple[list[str], dict[str, list[float]]]:
     """Group measurements by subgroup preserving order.
+
+    Resolves subgroup key from: (1) explicit subgroup_column in raw_json,
+    (2) Measurement.subgroup field, (3) DEFAULT_SUBGROUP_KEY fallback.
 
     Returns (ordered_keys, groups_dict) where groups_dict maps key -> list of values.
     """
     groups: dict[str, list[float]] = {}
     ordered_keys: list[str] = []
     for m in measurements:
-        key = m.subgroup or "default"
+        if subgroup_column:
+            raw = json.loads(m.raw_json) if m.raw_json else {}
+            key = str(raw.get(subgroup_column) or m.subgroup or DEFAULT_SUBGROUP_KEY)
+        else:
+            key = m.subgroup or DEFAULT_SUBGROUP_KEY
         if key not in groups:
             groups[key] = []
             ordered_keys.append(key)
@@ -147,37 +155,30 @@ def _split_by_phase(
     measurements: list[Measurement],
     phase_column: str | None,
 ) -> list[tuple[str, list[Measurement]]]:
-    """Split measurements into contiguous phase groups.
+    """Split measurements into phase groups by unique phase value.
 
-    JMP convention: when a Phase variable is assigned, separate control limits
-    are computed for each phase.  Groups are contiguous runs of the same phase
-    value (preserving time order).
+    When a Phase variable is assigned, all measurements sharing the same phase
+    value are grouped together (regardless of data ordering).  Each phase gets
+    independently computed control limits.
 
-    Returns list of (phase_id, measurements) tuples.
+    Returns list of (phase_id, measurements) tuples in encounter order.
     """
     if not phase_column:
         return [("all", measurements)]
 
-    groups: list[tuple[str, list[Measurement]]] = []
-    current_phase: str | None = None
-    current_group: list[Measurement] = []
+    groups: dict[str, list[Measurement]] = {}
+    ordered_keys: list[str] = []
 
     for m in measurements:
         raw = json.loads(m.raw_json) if m.raw_json else {}
-        phase_val = str(raw.get(phase_column, "unknown"))
+        phase_val = str(raw.get(phase_column) or DEFAULT_SUBGROUP_KEY)
 
-        if phase_val != current_phase:
-            if current_group:
-                groups.append((current_phase, current_group))  # type: ignore[arg-type]
-            current_phase = phase_val
-            current_group = [m]
-        else:
-            current_group.append(m)
+        if phase_val not in groups:
+            groups[phase_val] = []
+            ordered_keys.append(phase_val)
+        groups[phase_val].append(m)
 
-    if current_group:
-        groups.append((current_phase, current_group))  # type: ignore[arg-type]
-
-    return groups
+    return [(key, groups[key]) for key in ordered_keys]
 
 
 def _has_subgroups(measurements: list[Measurement]) -> bool:
@@ -755,7 +756,7 @@ def _dispatch_short_run(
 ]:
     """Short Run chart dispatch. Uses subgroup field as product ID."""
     values = np.array([m.value for m in measurements], dtype=float)
-    product_ids = np.array([m.subgroup or "default" for m in measurements])
+    product_ids = np.array([m.subgroup or DEFAULT_SUBGROUP_KEY for m in measurements])
 
     scaling = ScalingMethod.CENTERED
     if request.scaling and request.scaling.lower() == "standardized":
@@ -933,11 +934,30 @@ def _dispatch_chart(
     chart_type: str,
     phase_measurements: list[Measurement],
     request: AnalysisRequest,
+    value_column: str | None = None,
+    subgroup_column: str | None = None,
 ) -> tuple[
     np.ndarray, list[float], list[float], list[float], float,
     SigmaOut, ZoneBreakdown,
 ]:
-    """Dispatch to the appropriate chart-type algorithm for one phase group."""
+    """Dispatch to the appropriate chart-type algorithm for one phase group.
+
+    When value_column or subgroup_column is set, overrides m.value / m.subgroup
+    from raw_json before dispatching, so all downstream functions see the right data.
+    """
+    for m in phase_measurements:
+        raw = json.loads(m.raw_json) if m.raw_json else {}
+        if value_column:
+            val = raw.get(value_column)
+            if val is not None:
+                m.value = float(val)
+        if subgroup_column:
+            sg_val = raw.get(subgroup_column)
+            if sg_val is not None:
+                m.subgroup = str(sg_val)
+            elif not m.subgroup:
+                m.subgroup = None
+
     values = np.array([m.value for m in phase_measurements], dtype=float)
 
     if chart_type == "imr":
@@ -984,18 +1004,65 @@ def _dispatch_chart(
         )
 
 
+# Chart types where each plotted point corresponds to a subgroup (not an individual measurement)
+DEFAULT_SUBGROUP_KEY = "default"
+
+# Chart types where plotted points are subgroup statistics (one per subgroup)
+_SUBGROUPED_CHART_TYPES = {
+    "xbar_r", "xbar_s", "r", "s",
+    "p", "np", "c", "u", "laney_p", "laney_u",
+    "three_way", "presummarize",
+}
+
+
+def _derive_chart_labels(
+    chart_type: str,
+    phase_measurements: list[Measurement],
+    n_chart_values: int,
+) -> list[str]:
+    """Derive x-axis labels for chart values.
+
+    For subgrouped charts: labels are subgroup keys (one per subgroup).
+    For individual/derived charts: labels are sequential indices based on
+    the number of chart values (which may differ from measurement count,
+    e.g., MR chart has n-1 values for n measurements).
+    """
+    if chart_type in _SUBGROUPED_CHART_TYPES:
+        # Subgrouped: collect unique subgroup keys in encounter order
+        ordered_keys: list[str] = []
+        seen: set[str] = set()
+        for m in phase_measurements:
+            key = m.subgroup or DEFAULT_SUBGROUP_KEY
+            if key not in seen:
+                ordered_keys.append(key)
+                seen.add(key)
+        return ordered_keys[:n_chart_values]
+    else:
+        # Individual/derived: sequential labels matching chart_values count.
+        # Use measurement sequence indices when counts match, otherwise
+        # generate 1-based indices (safe for MR, CUSUM, EWMA, etc.)
+        if n_chart_values == len(phase_measurements):
+            return [str(m.sequence_index) for m in phase_measurements]
+        return [str(i + 1) for i in range(n_chart_values)]
+
+
 def _analyze_one_phase(
     chart_type: str,
     phase_measurements: list[Measurement],
     request: AnalysisRequest,
+    value_column: str | None = None,
+    subgroup_column: str | None = None,
 ) -> tuple[
-    np.ndarray, list[float], list[float], list[float], float,
+    np.ndarray, list[str], list[float], list[float], list[float], float,
     SigmaOut, ZoneBreakdown,
     list[RuleViolationOut], CapabilityOut | None,
 ]:
     """Run dispatch + rules + capability for a single phase group."""
     (chart_values, ucl_arr, cl_arr, lcl_arr, k_sigma,
-     sigma_out, zone_breakdown) = _dispatch_chart(chart_type, phase_measurements, request)
+     sigma_out, zone_breakdown) = _dispatch_chart(chart_type, phase_measurements, request, value_column, subgroup_column)
+
+    # Derive x-axis labels from chart type and measurements
+    chart_labels = _derive_chart_labels(chart_type, phase_measurements, len(chart_values))
 
     # Evaluate rules
     ctrl_limits = ControlLimits(
@@ -1020,7 +1087,7 @@ def _analyze_one_phase(
                 pp=cap_result.pp, ppk=cap_result.ppk,
             )
 
-    return (chart_values, ucl_arr, cl_arr, lcl_arr, k_sigma,
+    return (chart_values, chart_labels, ucl_arr, cl_arr, lcl_arr, k_sigma,
             sigma_out, zone_breakdown, violations, capability)
 
 
@@ -1057,19 +1124,29 @@ async def run_analysis(
     if not measurements:
         raise ValueError(f"No measurements found for dataset {dataset_id}")
 
-    # 2. Derive phase_column — explicit request param takes priority,
-    #    otherwise look for a column with role='phase'.
+    # 2. Derive column overrides — request params take priority over DB roles.
+    #    value_column: which column to use as Y (overrides Measurement.value)
+    #    subgroup_column: which column to group by (overrides Measurement.subgroup)
+    #    phase_column: which column for phase splitting
+    value_column = request.value_column
+    subgroup_column = request.subgroup_column
     phase_column = request.phase_column
-    if not phase_column:
+
+    # Fall back to DB column roles only when request params are not provided
+    if not value_column or not subgroup_column or not phase_column:
         col_stmt = (
-            select(DatasetColumn.name)
+            select(DatasetColumn.name, DatasetColumn.role)
             .where(DatasetColumn.dataset_id == dataset_id)
-            .where(DatasetColumn.role == "phase")
+            .where(DatasetColumn.role.in_(["value", "subgroup", "phase"]))
         )
         col_result = await session.execute(col_stmt)
-        phase_col_row = col_result.scalar_one_or_none()
-        if phase_col_row:
-            phase_column = phase_col_row
+        for name, role in col_result.all():
+            if role == "value" and not value_column:
+                value_column = name
+            elif role == "subgroup" and not subgroup_column:
+                subgroup_column = name
+            elif role == "phase" and not phase_column:
+                phase_column = name
 
     # 3. Split by phase
     phase_groups = _split_by_phase(measurements, phase_column)
@@ -1079,6 +1156,8 @@ async def run_analysis(
     all_cl: list[float] = []
     all_lcl: list[float] = []
     all_violations: list[RuleViolationOut] = []
+    all_chart_values: list[float] = []
+    all_chart_labels: list[str] = []
     phases: list[PhaseResult] = []
     running_offset = 0
 
@@ -1088,9 +1167,9 @@ async def run_analysis(
     first_capability: CapabilityOut | None = None
 
     for phase_id, phase_meas in phase_groups:
-        (chart_values, ucl_arr, cl_arr, lcl_arr, k_sigma,
+        (chart_values, chart_labels, ucl_arr, cl_arr, lcl_arr, k_sigma,
          sigma_out, zone_breakdown, violations, capability) = _analyze_one_phase(
-            chart_type, phase_meas, request,
+            chart_type, phase_meas, request, value_column, subgroup_column,
         )
 
         n_phase = len(chart_values)
@@ -1119,12 +1198,16 @@ async def run_analysis(
             ),
             capability=capability,
             violations=offset_violations,
+            chart_values=chart_values.tolist(),
+            chart_labels=chart_labels,
         ))
 
         all_ucl.extend(ucl_arr)
         all_cl.extend(cl_arr)
         all_lcl.extend(lcl_arr)
         all_violations.extend(offset_violations)
+        all_chart_values.extend(chart_values.tolist())
+        all_chart_labels.extend(chart_labels)
 
         if first_sigma_out is None:
             first_sigma_out = sigma_out
@@ -1185,5 +1268,7 @@ async def run_analysis(
         capability=first_capability,
         violations=all_violations,
         phases=phases if len(phases) > 1 else [],
+        chart_values=all_chart_values,
+        chart_labels=all_chart_labels,
         created_at=analysis.created_at.isoformat() if hasattr(analysis.created_at, "isoformat") else str(analysis.created_at),
     )

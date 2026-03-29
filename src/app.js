@@ -86,20 +86,36 @@ function renderRoute() {
 /* ═══ Chart data builder ═══ */
 function buildChartData(id) {
   const slot = state.charts[id];
+  const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
+
+  // When the API returns chart values (subgroup stats, CUSUM sums, etc.),
+  // use those as the plotted points instead of raw measurements.
+  const points = hasChartValues
+    ? slot.chartValues.map((v, i) => ({
+        primaryValue: v,
+        label: slot.chartLabels[i] || `pt-${i}`,
+        subgroupLabel: slot.chartLabels[i] || `pt-${i}`,
+        excluded: false,
+        annotation: null,
+        raw: {},
+      }))
+    : state.points;
+
   return {
-    points: state.points,
+    points,
     limits: slot.limits,
-    phases: state.phases,
+    phases: slot.phases || [],
     toggles: {
       ...state.chartToggles,
       overlay: false,
       xDomainOverride: slot.overrides.x,
       yDomainOverride: slot.overrides.y,
     },
-    selectedIndex: state.selectedPointIndex,
+    selectedIndex: hasChartValues ? Math.min(state.selectedPointIndex, points.length - 1) : state.selectedPointIndex,
     violations: detectRuleViolations(state, id),
     capability: getCapability(state, id),
     metric: slot.context.metric,
+    subgroup: slot.context.subgroup,
     chartType: slot.context.chartType,
     seriesKey: "primaryValue",
     seriesType: id,
@@ -385,29 +401,51 @@ function commitEvidenceRail(next) {
   rail.outerHTML = renderEvidenceRail(state, workspace);
 }
 
+/* ═══ Slot builder — shared by loadDatasetById and reanalyze ═══ */
+function buildSlots(analyses, baseContext) {
+  const slots = {};
+  state.chartOrder.forEach((id, i) => {
+    const t = transformAnalysis(analyses[i]);
+    slots[id] = {
+      context: applyParamsToContext(baseContext, state.charts[id].params),
+      limits: t.limits, capability: t.capability, violations: t.violations,
+      sigma: t.sigma, zones: t.zones, chartValues: t.chartValues,
+      chartLabels: t.chartLabels, phases: t.phases,
+    };
+  });
+  return slots;
+}
+
 /* ═══ Data loading ═══ */
 async function loadDatasetById(datasetId) {
   state = setLoadingState(state, true);
   render();
   try {
-    const [points, columns, ...analyses] = await Promise.all([
+    // 1. Fetch data and columns first
+    const [points, columns] = await Promise.all([
       fetchPoints(datasetId),
       fetchColumns(datasetId).catch(() => []),
-      ...state.chartOrder.map(id => runAnalysis(datasetId, state.charts[id].params)),
     ]);
     state = setColumns(state, columns);
+
+    // 2. Set initial column params from column roles (only if not already set)
+    const valueName = columns.find(c => c.role === "value")?.name || null;
+    const sgName = columns.find(c => c.role === "subgroup")?.name || null;
+    const phName = columns.find(c => c.role === "phase")?.name || null;
+    for (const id of state.chartOrder) {
+      if (!state.charts[id].params.value_column) {
+        state = setChartParams(state, id, { value_column: valueName, subgroup_column: sgName, phase_column: phName });
+      }
+    }
+
+    // 3. Run analysis per chart with per-chart params (includes column overrides)
+    const analyses = await Promise.all(
+      state.chartOrder.map(id => runAnalysis(datasetId, state.charts[id].params))
+    );
     const ds = state.datasets.find((d) => d.id === datasetId);
     const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
-    const slots = {};
-    state.chartOrder.forEach((id, i) => {
-      const t = transformAnalysis(analyses[i]);
-      slots[id] = {
-        context: applyParamsToContext(baseContext, state.charts[id].params),
-        limits: t.limits, capability: t.capability, violations: t.violations,
-        sigma: t.sigma, zones: t.zones,
-      };
-    });
-    state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId, phases: analyses[0]?.phases });
+    const slots = buildSlots(analyses, baseContext);
+    state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId });
     render();
   } catch (err) {
     state = setError(state, err.message);
@@ -426,15 +464,7 @@ async function reanalyze() {
     const columns = state.columnConfig.columns;
     const ds = state.datasets.find((d) => d.id === dsId);
     const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
-    const slots = {};
-    state.chartOrder.forEach((id, i) => {
-      const t = transformAnalysis(analyses[i]);
-      slots[id] = {
-        context: applyParamsToContext(baseContext, state.charts[id].params),
-        limits: t.limits, capability: t.capability, violations: t.violations,
-        sigma: t.sigma, zones: t.zones,
-      };
-    });
+    const slots = buildSlots(analyses, baseContext);
     state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId: dsId });
     commitWorkspace(state);
   } catch (err) {
@@ -736,24 +766,21 @@ root.addEventListener("change", async (e) => {
   const baseAction = isPrimary ? action.slice(8) : isChallenger ? action.slice(11) : action;
 
   if (chartId && baseAction === "set-metric-column") {
-    const newValue = e.target.value;
-    const updates = cols.map((c) => ({ name: c.name, role: c.name === newValue ? "value" : (c.role === "value" ? null : c.role) }));
-    try { const updated = await updateColumnRoles(dsId, updates); state = setColumns(state, updated); state = setActiveChipEditor(state, null); await reanalyze(); }
-    catch (err) { state = setError(state, err.message); render(); }
+    state = setChartParams(state, chartId, { value_column: e.target.value || null });
+    state = setActiveChipEditor(state, null);
+    await reanalyze();
     return;
   }
   if (chartId && baseAction === "set-subgroup-column") {
-    const newSg = e.target.value;
-    const updates = cols.map((c) => ({ name: c.name, role: c.name === newSg ? "subgroup" : (c.role === "subgroup" ? null : c.role) }));
-    try { const updated = await updateColumnRoles(dsId, updates); state = setColumns(state, updated); state = setActiveChipEditor(state, null); await reanalyze(); }
-    catch (err) { state = setError(state, err.message); render(); }
+    state = setChartParams(state, chartId, { subgroup_column: e.target.value || null });
+    state = setActiveChipEditor(state, null);
+    await reanalyze();
     return;
   }
   if (chartId && baseAction === "set-phase-column") {
-    const newPh = e.target.value;
-    const updates = cols.map((c) => ({ name: c.name, role: c.name === newPh ? "phase" : (c.role === "phase" ? null : c.role) }));
-    try { const updated = await updateColumnRoles(dsId, updates); state = setColumns(state, updated); state = setActiveChipEditor(state, null); await reanalyze(); }
-    catch (err) { state = setError(state, err.message); render(); }
+    state = setChartParams(state, chartId, { phase_column: e.target.value || null });
+    state = setActiveChipEditor(state, null);
+    await reanalyze();
     return;
   }
   if (chartId && baseAction === "set-chart-type") {
@@ -776,17 +803,12 @@ root.addEventListener("change", async (e) => {
     await reanalyze();
     return;
   }
-  if (action === "set-k-sigma") {
+  if (chartId && baseAction === "set-k-sigma") {
     const k = parseFloat(e.target.value);
-    if (k > 0 && k <= 6) { state = setChartParams(state, "primary", { k_sigma: k }); await reanalyze(); }
-    return;
-  }
-  if (action === "set-column-role") {
-    const colName = e.target.dataset.column;
-    const newRole = e.target.value || null;
-    const updates = cols.map((c) => ({ name: c.name, role: c.name === colName ? newRole : (c.role === newRole && newRole ? null : c.role) }));
-    try { const updated = await updateColumnRoles(dsId, updates); state = setColumns(state, updated); if (state.route === "workspace" || state.activeDatasetId === dsId) await reanalyze(); }
-    catch (err) { state = setError(state, err.message); render(); }
+    if (k > 0 && k <= 6) {
+      state = setChartParams(state, chartId, { k_sigma: k });
+      await reanalyze();
+    }
     return;
   }
 });

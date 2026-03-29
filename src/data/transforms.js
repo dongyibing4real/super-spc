@@ -110,7 +110,10 @@ export function transformAnalysis(analysisResult, usl = null, lsl = null) {
       }))
     : [];
 
-  return { limits, capability, sigma, zones, violations, phases };
+  const chartValues = Array.isArray(analysisResult.chart_values) ? analysisResult.chart_values : [];
+  const chartLabels = Array.isArray(analysisResult.chart_labels) ? analysisResult.chart_labels : [];
+
+  return { limits, capability, sigma, zones, violations, phases, chartValues, chartLabels };
 }
 
 /**

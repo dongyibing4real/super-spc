@@ -11,7 +11,8 @@ function getSelectedPoint(state) {
 }
 
 function getPhaseLabel(state, phaseId) {
-  return state.phases.find((phase) => phase.id === phaseId)?.label || phaseId;
+  const phases = getPrimary(state).phases || [];
+  return phases.find((phase) => phase.id === phaseId)?.label || phaseId;
 }
 
 function buildSignalNarrative(state, point) {
@@ -191,6 +192,8 @@ const DEFAULT_PARAMS = {
   sigma_method: "moving_range",
   k_sigma: 3.0,
   nelson_tests: [1, 2, 5],
+  value_column: null,
+  subgroup_column: null,
   phase_column: null,
   n_trials: null,
 };
@@ -205,6 +208,9 @@ export function createSlot(overrides = {}) {
     sigma: null,
     zones: null,
     overrides: { x: null, y: null },
+    chartValues: [],
+    chartLabels: [],
+    phases: [],
     ...overrides,
   };
 }
@@ -232,7 +238,6 @@ export function createInitialState() {
     datasets: [],
     activeDatasetId: null,
     showDataTable: false,
-    phases: [],
     points: [],
     transforms: [],
     findings: [],
@@ -300,7 +305,7 @@ export function setDatasets(state, datasets) {
   return { ...state, datasets };
 }
 
-export function loadDataset(state, { points, slots, datasetId, phases }) {
+export function loadDataset(state, { points, slots, datasetId }) {
   const updatedCharts = { ...state.charts };
   for (const [id, result] of Object.entries(slots)) {
     if (updatedCharts[id]) {
@@ -312,7 +317,6 @@ export function loadDataset(state, { points, slots, datasetId, phases }) {
     loading: false,
     error: null,
     activeDatasetId: datasetId,
-    phases: phases || [],
     points,
     selectedPointIndex: points.length > 0 ? points.length - 1 : 0,
     findings: [],

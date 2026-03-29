@@ -55,7 +55,7 @@ export const SIGMA_METHOD_LABELS = {
 };
 
 export function applyParamsToContext(context, params) {
-  return {
+  const result = {
     ...context,
     chartType: {
       id: params.chart_type,
@@ -68,6 +68,21 @@ export function applyParamsToContext(context, params) {
     },
     methodBadge: CHART_TYPE_LABELS[params.chart_type] || params.chart_type,
   };
+  // Per-chart column overrides
+  if (params.value_column) {
+    result.metric = { id: params.value_column, label: params.value_column, unit: "" };
+  }
+  if (params.subgroup_column) {
+    result.subgroup = { id: params.subgroup_column, label: params.subgroup_column, detail: `Grouped by ${params.subgroup_column}` };
+  } else {
+    result.subgroup = { id: "individual", label: "Individual", detail: "n=1" };
+  }
+  if (params.phase_column) {
+    result.phase = { id: params.phase_column, label: params.phase_column, detail: `By ${params.phase_column}` };
+  } else {
+    result.phase = { id: "single", label: "Single phase", detail: "No phase boundaries" };
+  }
+  return result;
 }
 
 export function computeStats(points) {

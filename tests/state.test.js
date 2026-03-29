@@ -5,10 +5,12 @@ import {
   clearNotice,
   createFindingFromSelection,
   createInitialState,
+  createSlot,
   deriveWorkspace,
   exportReport,
   failTransformStep,
   generateReportDraft,
+  getPrimary,
   loadDataset,
   navigate,
   recoverTransformStep,
@@ -68,20 +70,21 @@ function createPopulatedState() {
         violations: [],
         sigma: { sigma_hat: 0.042, method: "moving_range", n_used: 27 },
         zones: { zone_a_upper: 8.162, zone_b_upper: 8.12, cl: 8.078, zone_b_lower: 8.036, zone_a_lower: 7.994 },
+        phases: [
+          { id: "P1", label: "Pre-clean baseline", start: 0, end: 8 },
+          { id: "P2", label: "Ramp and cavity split", start: 9, end: 17 },
+          { id: "P3", label: "Post-maintenance shift", start: 18, end: 27 },
+        ],
       },
       challenger: {
         ...base.charts.challenger,
         limits: challengerLimits,
         violations: [],
         sigma: null,
+        phases: [],
       },
     },
     chartOrder: ["primary", "challenger"],
-    phases: [
-      { id: "P1", label: "Pre-clean baseline", start: 0, end: 8 },
-      { id: "P2", label: "Ramp and cavity split", start: 9, end: 17 },
-      { id: "P3", label: "Post-maintenance shift", start: 18, end: 27 },
-    ],
     points,
     transforms: [
       { id: "ingest", title: "CSV ingest", status: "complete", active: true, detail: "Validated.", rescue: "" },
@@ -324,4 +327,64 @@ test("setChartLayout sets arrangement and ratio", () => {
   assert.equal(next.chartLayout.arrangement, "vertical");
   assert.equal(next.chartLayout.primaryPosition, "top");
   assert.equal(next.chartLayout.splitRatio, 0.6);
+});
+
+// ── Per-slot phases tests ─────────────────────────────────
+
+test("createSlot includes empty phases array", () => {
+  const slot = createSlot();
+  assert.deepEqual(slot.phases, []);
+});
+
+test("loadDataset stores phases per chart slot", () => {
+  const s = createInitialState();
+  const points = [{ id: "pt-0", label: "pt-0", primaryValue: 10, excluded: false }];
+  const primaryPhases = [{ id: "A", start: 0, end: 0, limits: { center: 10, ucl: 12, lcl: 8 } }];
+  const challengerPhases = [{ id: "X", start: 0, end: 0, limits: { center: 11, ucl: 13, lcl: 9 } }];
+  const limits = { center: 10, ucl: 12, lcl: 8, usl: null, lsl: null, version: "v1", scope: "Dataset" };
+
+  const next = loadDataset(s, {
+    points,
+    slots: {
+      primary: { limits, phases: primaryPhases },
+      challenger: { limits, phases: challengerPhases },
+    },
+    datasetId: "d1",
+  });
+
+  assert.deepEqual(next.charts.primary.phases, primaryPhases);
+  assert.deepEqual(next.charts.challenger.phases, challengerPhases);
+});
+
+test("challenger phases are independent from primary phases", () => {
+  const s = createInitialState();
+  const points = [{ id: "pt-0", label: "pt-0", primaryValue: 10, excluded: false }];
+  const primaryPhases = [
+    { id: "P1", start: 0, end: 0, limits: { center: 10, ucl: 12, lcl: 8 } },
+  ];
+  const limits = { center: 10, ucl: 12, lcl: 8, usl: null, lsl: null, version: "v1", scope: "Dataset" };
+
+  const next = loadDataset(s, {
+    points,
+    slots: {
+      primary: { limits, phases: primaryPhases },
+      challenger: { limits }, // no phases provided
+    },
+    datasetId: "d1",
+  });
+
+  assert.equal(next.charts.primary.phases.length, 1);
+  assert.equal(next.charts.primary.phases[0].id, "P1");
+  // Challenger keeps its default empty phases (from createSlot)
+  assert.deepEqual(next.charts.challenger.phases, []);
+});
+
+test("getPhaseLabel reads from primary slot phases", () => {
+  const s = createPopulatedState();
+  // getPrimary(s).phases has P1, P2, P3
+  const primary = getPrimary(s);
+  assert.equal(primary.phases.length, 3);
+  assert.equal(primary.phases[0].label, "Pre-clean baseline");
+  // State no longer has top-level phases
+  assert.equal(s.phases, undefined);
 });

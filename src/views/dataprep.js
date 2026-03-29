@@ -43,38 +43,50 @@ function renderPrepTable(state) {
     return `<div class="prep-table-wrap"><div class="prep-empty" style="color:var(--red);">${dataPrep.error}</div></div>`;
   }
 
+  const cols = state.columnConfig.columns || [];
+  const roleLabels = { value: "Y", subgroup: "SG", phase: "PH", label: "LB" };
+
   const pts = [...dataPrep.datasetPoints];
   const { sortColumn, sortDirection } = dataPrep;
   if (sortColumn) {
     pts.sort((a, b) => {
-      const av = a[sortColumn], bv = b[sortColumn];
+      const raw_a = a.raw_data || a.metadata || {};
+      const raw_b = b.raw_data || b.metadata || {};
+      const av = sortColumn === "sequence_index" ? a.sequence_index : raw_a[sortColumn];
+      const bv = sortColumn === "sequence_index" ? b.sequence_index : raw_b[sortColumn];
       if (av == null) return 1;
       if (bv == null) return -1;
-      if (typeof av === "number") return sortDirection === "asc" ? av - bv : bv - av;
+      if (typeof av === "number" && typeof bv === "number") return sortDirection === "asc" ? av - bv : bv - av;
       return sortDirection === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
     });
   }
 
   const arrow = (col) => sortColumn === col ? `<span class="sort-arrow">${sortDirection === "asc" ? "\u25b2" : "\u25bc"}</span>` : "";
 
-  const rows = pts.map(p => `
-    <tr>
-      <td>${p.sequence_index + 1}</td>
-      <td>${p.value != null ? p.value.toFixed(3) : "\u2014"}</td>
-      <td>${p.subgroup || "\u2014"}</td>
-    </tr>`).join("");
+  const headers = cols.map(c => {
+    const badge = c.role ? `<span class="role-badge">${roleLabels[c.role] || c.role}</span>` : "";
+    return `<th class="sortable" data-action="sort-prep" data-column="${c.name}">${c.name}${badge} ${arrow(c.name)}</th>`;
+  }).join("");
+
+  const rows = pts.map(p => {
+    const raw = p.raw_data || p.metadata || {};
+    const cells = cols.map(c => {
+      const v = raw[c.name];
+      return `<td class="mono">${v != null ? v : "\u2014"}</td>`;
+    }).join("");
+    return `<tr><td>${p.sequence_index + 1}</td>${cells}</tr>`;
+  }).join("");
 
   return `
     <div class="prep-table-wrap">
       <table class="prep-table">
         <thead><tr>
           <th class="sortable" data-action="sort-prep" data-column="sequence_index"># ${arrow("sequence_index")}</th>
-          <th class="sortable" data-action="sort-prep" data-column="value">Value ${arrow("value")}</th>
-          <th class="sortable" data-action="sort-prep" data-column="subgroup">Subgroup ${arrow("subgroup")}</th>
+          ${headers}
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <div class="prep-table-footer">${pts.length} rows</div>
+      <div class="prep-table-footer">${pts.length} rows \u00b7 ${cols.length} columns</div>
     </div>`;
 }
 
@@ -87,14 +99,7 @@ function renderColumnInfo(state) {
 
   const stats = computeStats(dataPrep.datasetPoints);
   const cols = columnConfig.columns || [];
-
-  const roleOptions = (currentRole) => `
-    <option value="" ${!currentRole ? "selected" : ""}>None</option>
-    <option value="value" ${currentRole === "value" ? "selected" : ""}>Value</option>
-    <option value="subgroup" ${currentRole === "subgroup" ? "selected" : ""}>Subgroup</option>
-    <option value="phase" ${currentRole === "phase" ? "selected" : ""}>Phase</option>
-    <option value="label" ${currentRole === "label" ? "selected" : ""}>Label</option>
-  `;
+  const roleLabels = { value: "Y", subgroup: "SG", phase: "PH", label: "LB" };
 
   const statRow = (label, value) => `
     <div class="stat-row"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
@@ -104,19 +109,17 @@ function renderColumnInfo(state) {
       <div class="panel-card">
         <h4>Columns</h4>
         ${cols.length > 0 ? `
-          <table class="column-role-table">
-            <thead><tr><th>Column</th><th>Type</th><th>Role</th></tr></thead>
-            <tbody>
-              ${cols.map(c => `
-                <tr>
-                  <td class="mono" style="font-size:10px;">${c.name}</td>
-                  <td style="font-size:9px;color:var(--t-3);">${c.dtype}</td>
-                  <td><select data-action="set-column-role" data-column="${c.name}" style="font-size:10px;padding:2px;background:var(--bg-2);color:var(--t-1);border:1px solid var(--border-2);border-radius:2px;width:80px;">${roleOptions(c.role)}</select></td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
+          <div class="column-list">
+            ${cols.map(c => `
+              <div class="column-item">
+                <span class="mono" style="font-size:10px;">${c.name}</span>
+                <span style="font-size:9px;color:var(--t-3);">${c.dtype}</span>
+                ${c.role ? `<span class="role-badge">${roleLabels[c.role] || c.role}</span>` : ""}
+              </div>
+            `).join("")}
+          </div>
         ` : `<p class="muted" style="font-size:10px;">No column metadata available.</p>`}
+        <p class="muted" style="font-size:9px;margin-top:6px;">Assign column roles in the recipe rail.</p>
       </div>
       ${stats ? `
         <div class="panel-card">

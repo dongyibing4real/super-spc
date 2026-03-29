@@ -435,7 +435,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ── Rail section cards (Primary / Challenger) ── */
 .rail-card {
-  margin: 4px 6px;
+  margin: 4px 8px;
   border-radius: var(--r-sm);
   border: 1px solid var(--border-2);
   background: var(--bg-1);
@@ -446,7 +446,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
+  padding: 4px 8px;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -467,7 +467,7 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 
 .rail-card-header--primary {
@@ -485,14 +485,14 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 .rail-card-header--primary .rail-card-method {
   color: var(--t-2);
   margin-left: auto;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .rail-card-header--challenger {
@@ -510,14 +510,14 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 .rail-card-header--challenger .rail-card-method {
   color: var(--t-2);
   margin-left: auto;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 /* Dimmed state for unconfigured challenger */
@@ -544,7 +544,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   flex-direction: column;
   text-align: left;
-  padding: 5px 10px;
+  padding: 4px 10px;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -563,9 +563,9 @@ h1, h2, h3, h4, h5, h6 {
 .chip-label {
   display: block;
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.1em;
   color: var(--t-4);
   margin-bottom: 1px;
 }
@@ -590,24 +590,30 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--t-3);
 }
 
-/* ── Column role table (Data Prep) ── */
-.column-role-table {
-  width: 100%;
-  border-collapse: collapse;
+/* ── Column list + role badges (Data Prep) ── */
+.column-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin-top: 4px;
 }
-.column-role-table th {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--t-4);
+.column-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 3px 4px;
-  text-align: left;
   border-bottom: 1px solid var(--border-1);
 }
-.column-role-table td {
-  padding: 3px 4px;
-  border-bottom: 1px solid var(--border-1);
+.role-badge {
+  font-size: 8px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.06em;
+  color: var(--blue-bright);
+  background: var(--blue-dim);
+  padding: 1px 4px;
+  border-radius: 2px;
+  margin-left: auto;
 }
 
 /* ── Chip inline select (inside the chip itself) ── */
@@ -621,7 +627,7 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--bg-2);
   color: var(--t-1);
   border: 1px solid var(--border-3);
-  border-radius: 2px;
+  border-radius: var(--r-xs);
   font-size: 11px;
   font-family: 'IBM Plex Mono', monospace;
   cursor: pointer;
@@ -648,6 +654,47 @@ h1, h2, h3, h4, h5, h6 {
   accent-color: var(--blue);
   width: 10px;
   height: 10px;
+}
+
+/* ── Sigma editor (k input + optional method dropdown) ── */
+.chip-sigma-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chip-sigma-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: var(--t-3);
+  cursor: default;
+}
+.chip-sigma-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--t-3);
+  min-width: 44px;
+  flex-shrink: 0;
+}
+.chip-k-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  background: var(--bg-2);
+  color: var(--t-1);
+  border: 1px solid var(--border-3);
+  border-radius: var(--r-xs);
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  text-align: center;
+}
+.chip-k-input:focus {
+  outline: 1px solid var(--blue);
+  border-color: var(--blue);
 }
 
 /* ── Toggle row (Overlays) — minimal single-line ── */

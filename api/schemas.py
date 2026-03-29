@@ -85,7 +85,9 @@ class AnalysisRequest(BaseModel):
     center_method: str | None = Field(default=None, description="Center method: median, mean (run chart)")
     # CUSUM V-Mask
     d_units: float | None = Field(default=None, description="Horizontal scale factor (cusum_vmask)")
-    # Phase and subgroup overrides
+    # Column overrides — per-chart column assignment
+    value_column: str | None = Field(default=None, description="Column name for Y values (overrides dataset default)")
+    subgroup_column: str | None = Field(default=None, description="Column name for subgroup grouping (overrides dataset default)")
     phase_column: str | None = Field(default=None, description="Column name for phase grouping")
     n_trials: int | None = Field(default=None, description="Number of trials for attribute charts")
     subgroup_size: int | None = Field(default=None, description="Override subgroup size")
@@ -137,6 +139,8 @@ class PhaseResult(BaseModel):
     zones: ZonesOut
     capability: CapabilityOut | None = None
     violations: list[RuleViolationOut] = []
+    chart_values: list[float] = []
+    chart_labels: list[str] = []
 
 
 class AnalysisResult(BaseModel):
@@ -148,4 +152,6 @@ class AnalysisResult(BaseModel):
     capability: CapabilityOut | None = None
     violations: list[RuleViolationOut] = []
     phases: list[PhaseResult] = []
+    chart_values: list[float] = []
+    chart_labels: list[str] = []
     created_at: str

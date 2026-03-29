@@ -9,6 +9,8 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
   layer.selectAll('*').remove();
   labelLayer.selectAll('*').remove();
 
+  if (!data.phases || data.phases.length <= 1) return;
+
   // Phase boundary vertical lines (clipped — for all phases except the first)
   data.phases.slice(1).forEach(ph => {
     const bx = x(ph.start);
@@ -22,8 +24,9 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
   data.phases.forEach(ph => {
     const sx = x(ph.start);
     const ex = x(ph.end);
+    if (Math.abs(ex - sx) < 2) return; // skip degenerate zero-width phases
     const cx = (sx + ex) / 2;
-    const labelText = ph.id;
+    const labelText = ph.label || ph.id;
     const w = labelText.length * 6 + 12;
 
     const g = labelLayer.append('g');

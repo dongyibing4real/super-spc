@@ -12,6 +12,86 @@ import { renderEvents } from './events.js';
 import { DEFAULT_CONFIG, computeLayout } from './config.js';
 
 /**
+ * JMP-style y-axis label: function(measurement) depending on chart type.
+ * e.g., "Average of Thickness" for X-Bar, "Range of Thickness" for R chart.
+ */
+const CHART_Y_LABELS = {
+  imr:            (m) => m,                          // Individual chart — just the metric
+  mr:             (m) => `Moving Range of ${m}`,
+  xbar_r:         (m) => `Average of ${m}`,
+  xbar_s:         (m) => `Average of ${m}`,
+  r:              (m) => `Range of ${m}`,
+  s:              (m) => `Std Dev of ${m}`,
+  p:              (_) => 'Proportion',
+  np:             (_) => 'Count',
+  c:              (_) => 'Count',
+  u:              (_) => 'Rate',
+  laney_p:        (_) => 'Proportion',
+  laney_u:        (_) => 'Rate',
+  cusum:          (m) => `Cumulative Sum of ${m}`,
+  cusum_vmask:    (m) => `Cumulative Sum of ${m}`,
+  ewma:           (m) => `EWMA of ${m}`,
+  levey_jennings: (m) => m,
+  hotelling_t2:   (_) => 'T\u00B2 Statistic',
+  mewma:          (_) => 'MEWMA Statistic',
+  g:              (_) => 'Count Between Events',
+  t:              (_) => 'Time Between Events',
+  run:            (m) => m,
+  short_run:      (m) => m,
+  three_way:      (m) => m,
+  presummarize:   (m) => `Average of ${m}`,
+};
+
+function getYAxisLabel(chartTypeId, metricLabel) {
+  const fn = CHART_Y_LABELS[chartTypeId];
+  return fn ? fn(metricLabel) : metricLabel;
+}
+
+/**
+ * Render axis title labels.
+ *   X-axis: subgroup variable name (JMP convention)
+ *   Y-axis: function(measurement) (JMP convention)
+ */
+function renderAxisTitles(xTitleLayer, yTitleLayer, data, config) {
+  const p = config.padding;
+  const W = config.width;
+  const H = config.height;
+  const plotCenterX = p.left + (W - p.left - p.right) / 2;
+  const plotCenterY = p.top + (H - p.top - p.bottom) / 2;
+
+  // X-axis title — subgroup variable name (JMP: shows the grouping column)
+  xTitleLayer.selectAll('*').remove();
+  const xLabel = data.subgroup?.id === 'individual'
+    ? 'Observation'
+    : (data.subgroup?.label || 'Observation');
+  xTitleLayer.append('text')
+    .attr('x', plotCenterX)
+    .attr('y', H - 4)
+    .attr('text-anchor', 'middle')
+    .style('font-size', '10px')
+    .style('font-family', 'Inter, system-ui, sans-serif')
+    .style('font-weight', '500')
+    .style('fill', 'var(--chart-text-3)')
+    .text(xLabel);
+
+  // Y-axis title — function(measurement) (JMP convention)
+  yTitleLayer.selectAll('*').remove();
+  const metricName = data.metric?.label || 'Value';
+  const chartId = data.chartType?.id || 'imr';
+  const yLabel = getYAxisLabel(chartId, metricName);
+  yTitleLayer.append('text')
+    .attr('x', -plotCenterY)
+    .attr('y', 12)
+    .attr('transform', 'rotate(-90)')
+    .attr('text-anchor', 'middle')
+    .style('font-size', '10px')
+    .style('font-family', 'Inter, system-ui, sans-serif')
+    .style('font-weight', '500')
+    .style('fill', 'var(--chart-text-3)')
+    .text(yLabel);
+}
+
+/**
  * Create a D3-powered SPC control chart that auto-sizes to its container.
  *
  * @param {HTMLElement} container - DOM element to mount the SVG into
@@ -35,12 +115,10 @@ export function createChart(container, options = {}) {
 
   const svg = select(container)
     .append('svg')
-    .attr('preserveAspectRatio', 'none')
     .attr('role', 'img')
     .attr('aria-label', 'Control chart')
-    .style('width', '100%')
-    .style('height', '100%')
-    .style('display', 'block');
+    .style('display', 'block')
+    .style('overflow', 'hidden');
 
   // ── Clip path: constrains all plot content to the inner plot area ──
   const clipId = `plot-clip-${Math.random().toString(36).slice(2, 8)}`;
@@ -67,6 +145,8 @@ export function createChart(container, options = {}) {
     events: plotClip.append('g').attr('class', 'layer-events'),
     points: plotClip.append('g').attr('class', 'layer-points'),
     xAxis: svg.append('g').attr('class', 'layer-x-axis'),       // outside clip — labels visible
+    xTitle: svg.append('g').attr('class', 'layer-x-title'),     // x-axis title
+    yTitle: svg.append('g').attr('class', 'layer-y-title'),     // y-axis title
     selection: plotClip.append('g').attr('class', 'layer-selection'),
   };
 
@@ -203,7 +283,7 @@ export function createChart(container, options = {}) {
       if (width > 0 && height > 0 && (Math.abs(width - currentWidth) > 2 || Math.abs(height - currentHeight) > 2)) {
         currentWidth = width;
         currentHeight = height;
-        svg.attr('viewBox', `0 0 ${currentWidth} ${currentHeight}`);
+        svg.attr('width', currentWidth).attr('height', currentHeight);
         if (lastData) {
           renderAll(lastData);
         }
@@ -277,6 +357,9 @@ export function createChart(container, options = {}) {
     // X-axis labels
     renderAxes(layers.xAxis, scales, data, sizedConfig);
 
+    // Axis titles
+    renderAxisTitles(layers.xTitle, layers.yTitle, data, sizedConfig);
+
     // Selection halo (using configurable seriesKey)
     renderSelection(layers.selection, scales, data, seriesKey, sizedConfig);
 
@@ -302,14 +385,14 @@ export function createChart(container, options = {}) {
       .attr('height', currentHeight - p.top - p.bottom);
   }
 
-  /** Sync viewBox to current container size */
+  /** Sync SVG dimensions to current container size */
   function syncSize() {
     const w = container.clientWidth;
     const h = container.clientHeight;
     if (w > 0 && h > 0) {
       currentWidth = w;
       currentHeight = h;
-      svg.attr('viewBox', `0 0 ${w} ${h}`);
+      svg.attr('width', w).attr('height', h);
     }
   }
 
@@ -332,7 +415,7 @@ export function createChart(container, options = {}) {
       if (w !== currentWidth || h !== currentHeight) {
         currentWidth = w;
         currentHeight = h;
-        svg.attr('viewBox', `0 0 ${w} ${h}`);
+        svg.attr('width', w).attr('height', h);
         renderAll(data);
       }
     });

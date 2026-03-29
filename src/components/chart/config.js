@@ -42,7 +42,7 @@ export function computeLayout(data, width, height) {
   const yBudget = Math.max(50, width * 0.15);
   const yLabelFontSize = fitFontSize(longestY, yBudget);
   const yLabelWidth = textWidth(longestY, yLabelFontSize);
-  const left = Math.round(Math.max(28, yLabelWidth + 10));
+  const left = Math.round(Math.max(28, yLabelWidth + 18)); // +18 for axis title
 
   // ── Edge labels (right) ──────────────────────────────────────
   const edgeTexts = [
@@ -88,7 +88,7 @@ export function computeLayout(data, width, height) {
   } else {
     labelDescent = xFontSize + 22;
   }
-  const bottom = Math.round(Math.max(52, labelDescent + 16));
+  const bottom = Math.round(Math.max(52, labelDescent + 28)); // +28 for axis title
 
   return {
     padding: { top: 16, right, bottom, left },
