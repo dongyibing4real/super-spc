@@ -62,6 +62,7 @@ import { renderDataPrep } from "./views/dataprep.js";
 import { renderMethodLab } from "./views/methodlab.js";
 import { renderFindings } from "./views/findings.js";
 import { renderReports } from "./views/reports.js";
+import { morphInner, morphEl } from "./core/morph.js";
 
 /* ═══ Global state ═══ */
 const root = document.getElementById("app");
@@ -124,16 +125,7 @@ function buildChartData(id) {
 
 /* ═══ Main render ═══ */
 function render() {
-  const savedSvgs = {};
-  for (const role of state.chartOrder) {
-    const svgNode = charts[role]?.svg?.node();
-    if (svgNode?.parentNode) {
-      savedSvgs[role] = svgNode;
-      svgNode.remove();
-    }
-  }
-
-  root.innerHTML = `
+  morphInner(root, `
     <div class="app-shell">
       ${renderSidebar(state)}
       <main class="main-shell">
@@ -141,7 +133,7 @@ function render() {
         ${renderRoute()}
       </main>
     </div>
-  `;
+  `);
 
   if (state.route === "workspace") {
     const activeIds = state.chartOrder;
@@ -150,10 +142,9 @@ function render() {
       const mount = document.getElementById(id === "primary" ? CHART_MOUNT_PRIMARY : CHART_MOUNT_CHALLENGER);
       if (!mount) continue;
 
-      if (savedSvgs[id]) {
-        mount.appendChild(savedSvgs[id]);
-        charts[id].remount(mount);
-      } else {
+      // Recreate chart if instance is missing or SVG is stale (e.g. after data table toggle)
+      const svgStale = charts[id] && !charts[id].svg?.node()?.isConnected;
+      if (!charts[id] || svgStale) {
         if (charts[id]) { charts[id].destroy(); charts[id] = null; }
         charts[id] = createChart(mount, {
           onSelectPoint: (index) => commitChart(selectPoint(state, index, id)),
@@ -169,11 +160,9 @@ function render() {
     }
 
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        for (const id of activeIds) {
-          if (charts[id]) charts[id].update(buildChartData(id));
-        }
-      });
+      for (const id of activeIds) {
+        if (charts[id]) charts[id].update(buildChartData(id));
+      }
     });
 
     // Destroy charts not in chartOrder
@@ -293,7 +282,7 @@ function commitRecipeRail(next) {
   state = next;
   const rail = root.querySelector(".recipe-rail");
   if (!rail) return;
-  rail.outerHTML = renderRecipeRail(state);
+  morphEl(rail, renderRecipeRail(state));
 }
 
 /* ═══ Targeted commit — notice bar ═══ */
@@ -307,56 +296,13 @@ function commitNotice(next) {
   }
 }
 
-/* ═══ Targeted commit — data table toggle ═══ */
-function commitDataTable(next) {
-  state = next;
-  const card = root.querySelector(".chart-card");
-  if (!card) return;
-
-  // Detach SVGs before replacing HTML
-  const savedSvgs = {};
-  for (const role of state.chartOrder) {
-    const svgNode = charts[role]?.svg?.node();
-    if (svgNode?.parentNode) {
-      savedSvgs[role] = svgNode;
-      svgNode.remove();
-    }
-  }
-
-  // Replace chart card HTML (outerHTML replaces the node itself)
-  const wrapper = card.parentNode;
-  const placeholder = document.createElement("div");
-  card.replaceWith(placeholder);
-  placeholder.outerHTML = renderChartArena(state);
-
-  // Re-mount charts if switching back from data table
-  if (!state.showDataTable) {
-    for (const role of state.chartOrder) {
-      const mount = document.getElementById(role === "primary" ? CHART_MOUNT_PRIMARY : CHART_MOUNT_CHALLENGER);
-      if (!mount) continue;
-      if (savedSvgs[role]) {
-        mount.appendChild(savedSvgs[role]);
-        charts[role].remount(mount);
-        charts[role].update(buildChartData(role));
-      }
-    }
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        for (const role of state.chartOrder) {
-          if (charts[role]) charts[role].update(buildChartData(role));
-        }
-      });
-    });
-  }
-}
-
 /* ═══ Targeted commit — full workspace (recipe rail + chart arena + chart data) ═══ */
 function commitWorkspace(next) {
   state = next;
 
   // 1. Recipe rail
   const rail = root.querySelector(".recipe-rail");
-  if (rail) rail.outerHTML = renderRecipeRail(state);
+  if (rail) morphEl(rail, renderRecipeRail(state));
 
   // 2. Chart toolbar title
   const primary = getPrimary(state);
@@ -388,7 +334,7 @@ function commitWorkspace(next) {
   const evidenceRail = root.querySelector(".evidence-rail");
   if (evidenceRail) {
     const workspace = deriveWorkspace(state);
-    evidenceRail.outerHTML = renderEvidenceRail(state, workspace);
+    morphEl(evidenceRail, renderEvidenceRail(state, workspace));
   }
 }
 
@@ -398,7 +344,7 @@ function commitEvidenceRail(next) {
   const rail = root.querySelector(".evidence-rail");
   if (!rail) return;
   const workspace = deriveWorkspace(state);
-  rail.outerHTML = renderEvidenceRail(state, workspace);
+  morphEl(rail, renderEvidenceRail(state, workspace));
 }
 
 /* ═══ Slot builder — shared by loadDatasetById and reanalyze ═══ */
