@@ -60,6 +60,7 @@ import {
   openChartPicker,
   closeChartPicker,
   collectChartIds,
+  createSlot,
   swapCharts,
   moveChartToSplit,
   setLayoutPreset,
@@ -248,6 +249,7 @@ function commitLayout(next) {
   state = next;
   // Full re-render for layout changes (tree structure may have changed)
   render();
+  saveLayout();
 }
 
 function commitContextMenu(next) {
@@ -518,6 +520,7 @@ root.addEventListener("click", async (e) => {
       const chartType = typeSelect ? typeSelect.value : "imr";
       state = addChart(state, { chartType, splitDirection: "row" });
       commit(state);
+      saveLayout();
       // Trigger analysis for the new chart
       if (state.activeDatasetId) reanalyze();
       break;
@@ -538,6 +541,7 @@ root.addEventListener("click", async (e) => {
         // Destroy the D3 chart instance
         if (charts[chartId]) { charts[chartId].destroy(); delete charts[chartId]; }
         commit(state);
+        saveLayout();
       }
       break;
     }
@@ -913,6 +917,7 @@ function endDividerDrag() {
   document.body.style.cursor = "";
   if (lastRatio != null) {
     state = resizeSplit(state, path, [lastRatio, 1 - lastRatio]);
+    saveLayout();
   }
   dividerDrag = null;
   requestAnimationFrame(() => {
@@ -1072,6 +1077,35 @@ root.addEventListener("click", (e) => {
   main();
 });
 
+/* ═══ Layout persistence ═══ */
+const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
+
+function saveLayout() {
+  try {
+    const data = {
+      tree: state.chartLayout.tree,
+      chartOrder: state.chartOrder,
+      focusedChartId: state.focusedChartId,
+      nextChartId: state.nextChartId,
+      chartParams: {},
+    };
+    for (const id of state.chartOrder) {
+      data.chartParams[id] = state.charts[id]?.params || null;
+    }
+    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(data));
+  } catch { /* localStorage unavailable or full — silently ignore */ }
+}
+
+function restoreLayout() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data.tree || !data.chartOrder || !data.chartParams) return null;
+    return data;
+  } catch { return null; }
+}
+
 /* ═══ Boot ═══ */
 render();
 
@@ -1081,6 +1115,25 @@ async function main() {
     state = setDatasets(state, datasets);
     const id = datasets[0]?.id;
     if (!id) { state = setLoadingState(state, false); render(); return; }
+
+    // Restore saved layout if it exists
+    const saved = restoreLayout();
+    if (saved && saved.chartOrder.length > 0) {
+      // Rebuild charts from saved params
+      const restoredCharts = {};
+      for (const cid of saved.chartOrder) {
+        restoredCharts[cid] = createSlot(saved.chartParams[cid] ? { params: saved.chartParams[cid] } : {});
+      }
+      state = {
+        ...state,
+        charts: restoredCharts,
+        chartOrder: saved.chartOrder,
+        nextChartId: saved.nextChartId || saved.chartOrder.length + 1,
+        focusedChartId: saved.focusedChartId || saved.chartOrder[0],
+        chartLayout: { ...state.chartLayout, tree: saved.tree },
+      };
+    }
+
     await loadDatasetById(id);
   } catch (err) {
     state = setError(state, err.message);
