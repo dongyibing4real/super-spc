@@ -1142,6 +1142,55 @@ export function moveChartToSplit(state, chartId, targetId, direction, isFirst) {
   };
 }
 
+/** Build a tree from a preset name and a list of chart IDs */
+export function setLayoutPreset(state, preset) {
+  const ids = state.chartOrder;
+  if (ids.length < 2) return state;
+
+  let tree;
+  switch (preset) {
+    case "side-by-side": {
+      // Horizontal chain: all charts in a row
+      tree = ids.reduce((acc, id, i) => {
+        const p = { type: "pane", chartId: id };
+        return i === 0 ? p : { type: "container", direction: "row", children: [acc, p], sizes: [i / (i + 1), 1 / (i + 1)] };
+      }, null);
+      break;
+    }
+    case "stacked": {
+      // Vertical chain: all charts stacked
+      tree = ids.reduce((acc, id, i) => {
+        const p = { type: "pane", chartId: id };
+        return i === 0 ? p : { type: "container", direction: "column", children: [acc, p], sizes: [i / (i + 1), 1 / (i + 1)] };
+      }, null);
+      break;
+    }
+    case "grid": {
+      // 2x2 grid (or best approximation): top row, bottom row
+      const half = Math.ceil(ids.length / 2);
+      const topIds = ids.slice(0, half);
+      const bottomIds = ids.slice(half);
+
+      const buildRow = (rowIds) => rowIds.reduce((acc, id, i) => {
+        const p = { type: "pane", chartId: id };
+        return i === 0 ? p : { type: "container", direction: "row", children: [acc, p], sizes: [0.5, 0.5] };
+      }, null);
+
+      const topRow = buildRow(topIds);
+      const bottomRow = bottomIds.length > 0 ? buildRow(bottomIds) : null;
+
+      tree = bottomRow
+        ? { type: "container", direction: "column", children: [topRow, bottomRow], sizes: [0.5, 0.5] }
+        : topRow;
+      break;
+    }
+    default:
+      return state;
+  }
+
+  return { ...state, chartLayout: { ...state.chartLayout, tree } };
+}
+
 export function setXDomainOverride(state, min, max, id) {
   if (!id) id = state.focusedChartId || state.chartOrder[0];
   return updateSlot(state, id, { overrides: { ...state.charts[id].overrides, x: { min, max } } });

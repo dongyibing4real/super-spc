@@ -62,6 +62,7 @@ import {
   collectChartIds,
   swapCharts,
   moveChartToSplit,
+  setLayoutPreset,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
 import {
@@ -523,6 +524,11 @@ root.addEventListener("click", async (e) => {
     }
     case "cancel-add-chart": {
       commit(closeChartPicker(state));
+      break;
+    }
+    case "set-layout-preset": {
+      const preset = t.dataset.preset;
+      if (preset) commitLayout(setLayoutPreset(state, preset));
       break;
     }
     case "remove-chart": {

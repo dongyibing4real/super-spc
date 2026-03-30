@@ -1043,6 +1043,13 @@ h1, h2, h3, h4, h5, h6 {
   border-color: var(--chart-text-3);
 }
 
+.layout-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--chart-border);
+  margin: 0 2px;
+}
+
 /* Drag ghost */
 .drag-ghost {
   position: fixed;

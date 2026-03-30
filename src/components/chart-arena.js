@@ -158,6 +158,8 @@ export function renderDataTable(state) {
 export function renderChartArena(state) {
   const focusedSlot = state.charts[state.focusedChartId] || state.charts[state.chartOrder[0]];
   const tree = state.chartLayout.tree;
+  const hasMultiple = state.chartOrder.length >= 2;
+  const currentDir = tree.type === "container" ? tree.direction : null;
 
   return `
     <section class="chart-card">
@@ -168,6 +170,15 @@ export function renderChartArena(state) {
         </div>
         <div class="layout-controls">
           <button class="layout-btn ${state.showDataTable ? "active" : ""}" data-action="toggle-data-table" title="Data Table">\u2630</button>
+          ${hasMultiple ? `
+            <span class="layout-divider"></span>
+            <button class="layout-btn ${currentDir === "row" ? "active" : ""}" data-action="set-layout-preset" data-preset="side-by-side" title="Side by side">\u25eb</button>
+            <button class="layout-btn ${currentDir === "column" ? "active" : ""}" data-action="set-layout-preset" data-preset="stacked" title="Stacked">\u25a9</button>
+            ${state.chartOrder.length >= 3 ? `
+              <button class="layout-btn" data-action="set-layout-preset" data-preset="grid" title="Grid (2\u00d72)">\u2b1a</button>
+            ` : ""}
+          ` : ""}
+          <span class="layout-divider"></span>
           <button class="layout-btn" data-action="add-chart" title="Add chart">+</button>
         </div>
       </div>
