@@ -796,61 +796,22 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--chart-text-3);
 }
 
-/* ═══ Chart Arena — Multi-Pane Split-View Layout ═══ */
+/* ═══ Chart Arena — Snap Layout Grid ═══ */
 .chart-arena {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  position: relative;
-}
-
-/* Recursive split container */
-.split-container {
   display: grid;
-  gap: 0;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
   flex: 1;
-}
-
-/* Split divider (replaces old .chart-divider) */
-.split-divider {
-  position: relative;
-  z-index: 10;
+  min-height: 0;
+  gap: 1px;
   background: var(--chart-border, #DCE0E5);
-  transition: background 100ms ease;
+  /* grid-template-columns/rows set inline; areas via data-template */
 }
-
-.split-divider::after {
-  content: "\283F";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 8px;
-  color: var(--chart-text-3);
-  pointer-events: none;
-}
-
-.split-divider[data-direction="horizontal"] {
-  width: 6px;
-  cursor: col-resize;
-}
-
-.split-divider[data-direction="vertical"] {
-  height: 6px;
-  cursor: row-resize;
-}
-
-.split-divider:hover,
-.split-divider.active {
-  background: var(--blue, #2D72D2);
-}
-.split-divider:hover::after,
-.split-divider.active::after {
-  color: #fff;
-}
+.chart-arena[data-template="1"]   { grid-template-areas: "a"; }
+.chart-arena[data-template="2h"]  { grid-template-areas: "a b"; }
+.chart-arena[data-template="2v"]  { grid-template-areas: "a" "b"; }
+.chart-arena[data-template="3h"]  { grid-template-areas: "a b c"; }
+.chart-arena[data-template="2x2"] { grid-template-areas: "a b" "c d"; }
+.chart-arena[data-template="1+2"] { grid-template-areas: "a a" "b c"; }
+.chart-arena[data-template="2+1"] { grid-template-areas: "a b" "c c"; }
 
 /* Chart Pane */
 .chart-pane {
@@ -944,23 +905,7 @@ h1, h2, h3, h4, h5, h6 {
   overflow: hidden;
 }
 
-/* Drop zones */
-.drop-zone {
-  position: absolute;
-  pointer-events: none;
-  opacity: 0;
-  z-index: 100;
-  transition: opacity 120ms ease-out;
-  background: rgba(45, 114, 210, 0.06);
-  border: 2px dashed transparent;
-  border-radius: 4px;
-}
-
-.drop-zone.active {
-  opacity: 1;
-  border-color: rgba(45, 114, 210, 0.4);
-  background: rgba(45, 114, 210, 0.1);
-}
+/* (drop-zone styles removed — snap layout uses slot swap, not edge zones) */
 
 .grip-icon {
   color: var(--chart-text-3);
@@ -1038,73 +983,28 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0 2px;
 }
 
-/* Drag ghost */
-.drag-ghost {
-  position: fixed;
-  pointer-events: none;
-  z-index: 9999;
-  opacity: 0.7;
-  border: 2px solid var(--blue, #2D72D2);
-  border-radius: 4px;
-  background: var(--chart-bg);
-  overflow: hidden;
+/* Drag-to-reorder: drop target highlight */
+.chart-pane.drop-target {
+  outline: 2px solid var(--blue, #2D72D2);
+  outline-offset: -2px;
 }
 
-/* VS Code-style layout preview during drag */
-.pane-drop-preview {
-  position: absolute;
-  inset: 4px;
-  z-index: 50;
-  pointer-events: none;
-  border-radius: 4px;
-  background: rgba(17, 20, 24, 0.85);
-  display: flex;
-  gap: 2px;
-  padding: 4px;
+/* Layout template picker wireframe icons */
+.layout-template-btn {
+  padding: 3px 5px;
 }
-.pane-drop-preview.preview-row { flex-direction: row; }
-.pane-drop-preview.preview-col { flex-direction: column; }
-.pane-drop-preview[data-position="center"] {
-  align-items: center;
-  justify-content: center;
+.layout-template-btn svg {
+  width: 20px;
+  height: 14px;
+  color: var(--chart-text-3);
+  display: block;
 }
-
-.drop-preview-cell {
-  flex: 1;
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.layout-template-btn.active svg {
+  color: var(--chart-text);
 }
-.drop-preview-cell.dropped {
-  background: rgba(45, 114, 210, 0.25);
-  border: 1.5px solid rgba(45, 114, 210, 0.6);
+.layout-template-btn:hover svg {
   color: var(--blue-bright, #4C90F0);
 }
-.drop-preview-cell.existing {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1.5px dashed rgba(255, 255, 255, 0.15);
-  color: var(--t-3, #8F99A8);
-}
-.drop-preview-cell.swap {
-  background: rgba(45, 114, 210, 0.15);
-  border: 1.5px solid rgba(45, 114, 210, 0.4);
-  color: var(--blue-bright, #4C90F0);
-  flex: none;
-  padding: 12px 24px;
-}
-
-.drop-preview-divider {
-  flex-shrink: 0;
-  background: rgba(45, 114, 210, 0.3);
-  border-radius: 1px;
-}
-.drop-preview-divider.v { width: 2px; }
-.drop-preview-divider.h { height: 2px; }
 
 .chart-stage {
   position: relative;
@@ -1671,6 +1571,32 @@ h1, h2, h3, h4, h5, h6 {
 .prep-panel-check input[type="checkbox"] { accent-color: var(--blue); }
 .prep-panel-preview { font-size: 10px; color: var(--t-4); font-weight: 600; margin-left: auto; }
 .prep-panel-sep { width: 1px; height: 18px; background: var(--border-2); }
+.prep-mapping-rows { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.prep-mapping-row { display: flex; align-items: center; gap: 6px; }
+.prep-mapping-row input[type="text"] {
+  padding: 3px 6px; background: var(--bg-3); color: var(--t-1);
+  border: 1px solid var(--border-2); border-radius: var(--r-xs);
+  font-size: 11px; font-family: 'IBM Plex Mono', monospace; min-width: 80px;
+}
+.prep-mapping-add {
+  font-size: 9px; font-weight: 600; padding: 2px 8px; margin-top: 2px;
+  background: transparent; border: 1px dashed var(--border-2);
+  color: var(--t-4); border-radius: 4px; cursor: pointer; align-self: flex-start;
+}
+.prep-mapping-add:hover { border-color: var(--border-3); color: var(--t-2); }
+.prep-hint {
+  font-size: 9px; color: var(--t-4); font-weight: 500;
+  font-family: 'IBM Plex Mono', monospace; white-space: nowrap;
+}
+.prep-preview-badge {
+  font-size: 9px; font-weight: 600; color: var(--green); padding: 2px 6px;
+  background: var(--green-dim); border-radius: 3px; white-space: nowrap;
+}
+.prep-panel input[type="number"] {
+  padding: 3px 6px; background: var(--bg-3); color: var(--t-1);
+  border: 1px solid var(--border-2); border-radius: var(--r-xs);
+  font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+}
 
 /* ── data prep: column info (right panel) ── */
 .column-info { overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }

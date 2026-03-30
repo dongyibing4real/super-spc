@@ -257,42 +257,39 @@ export function getFocused(state) {
   return state.charts[state.focusedChartId] || getPrimary(state);
 }
 
-/* ═══ Split tree helpers ═══ */
+/* ═══ Snap Layout templates (Windows 11 / macOS style) ═══ */
 
-/** Find the tree node at a given path (array of 0/1 indices) */
-function getNodeAtPath(tree, path) {
-  let node = tree;
-  for (const idx of path) {
-    if (!node.children) return null;
-    node = node.children[idx];
-  }
-  return node;
+/**
+ * Layout templates define CSS Grid rules for chart arrangement.
+ * Each template has a name, slot count, and a function that returns
+ * CSS grid-template-columns and grid-template-rows.
+ */
+export const LAYOUT_TEMPLATES = {
+  "1":    { slots: 1, label: "Single",        cols: "1fr",         rows: "1fr",     areas: '"a"' },
+  "2h":   { slots: 2, label: "Side by side",  cols: "1fr 1fr",     rows: "1fr",     areas: '"a b"' },
+  "2v":   { slots: 2, label: "Stacked",       cols: "1fr",         rows: "1fr 1fr", areas: '"a" "b"' },
+  "3h":   { slots: 3, label: "Three columns", cols: "1fr 1fr 1fr", rows: "1fr",     areas: '"a b c"' },
+  "2x2":  { slots: 4, label: "Grid",          cols: "1fr 1fr",     rows: "1fr 1fr", areas: '"a b" "c d"' },
+  "1+2":  { slots: 3, label: "Wide + two",    cols: "1fr 1fr",     rows: "1fr 1fr", areas: '"a a" "b c"' },
+  "2+1":  { slots: 3, label: "Two + wide",    cols: "1fr 1fr",     rows: "1fr 1fr", areas: '"a b" "c c"' },
+};
+
+/** Pick the best default template for a given chart count */
+export function autoTemplate(count) {
+  if (count <= 1) return "1";
+  if (count === 2) return "2h";
+  if (count === 3) return "1+2";
+  return "2x2"; // 4+
 }
 
-/** Immutably replace a tree node at a given path */
-function replaceNodeAtPath(tree, path, replacement) {
-  if (path.length === 0) return replacement;
-  const [head, ...rest] = path;
-  const newChildren = tree.children.map((child, i) =>
-    i === head ? replaceNodeAtPath(child, rest, replacement) : child
-  );
-  return { ...tree, children: newChildren, sizes: [...tree.sizes] };
-}
-
-/** Collect all chartIds from a tree (leaf traversal) */
-export function collectChartIds(node) {
-  if (node.type === "pane") return [node.chartId];
-  return node.children.flatMap(collectChartIds);
-}
-
-/** Find the path to a pane by chartId */
-function findPanePath(node, chartId, path = []) {
-  if (node.type === "pane") return node.chartId === chartId ? path : null;
-  for (let i = 0; i < node.children.length; i++) {
-    const result = findPanePath(node.children[i], chartId, [...path, i]);
-    if (result) return result;
-  }
-  return null;
+/** Get visible chart IDs from the layout slots (alias for tree-era collectChartIds) */
+export function collectChartIds(layout) {
+  // Accept either the old tree format or the new flat format
+  if (layout && layout.slots) return [...layout.slots];
+  // Fallback for tree format during migration
+  if (layout && layout.type === "pane") return [layout.chartId];
+  if (layout && layout.children) return layout.children.flatMap(collectChartIds);
+  return [];
 }
 
 export function createInitialState() {
@@ -342,10 +339,9 @@ export function createInitialState() {
     nextChartId: 2,
     focusedChartId: "chart-1",
     chartLayout: {
-      tree: { type: "pane", chartId: "chart-1" },
-      minPaneSize: 300,
+      template: "1",
+      slots: ["chart-1"],
     },
-    chartPicker: null, // { open: true } when the add-chart picker is visible
     ui: {
       notice: null,
       contextMenu: null,
@@ -360,6 +356,7 @@ export function createInitialState() {
       sortColumn: 'sequence_index',
       sortDirection: 'asc',
       rawRows: null,
+      originalColumns: [],
       arqueroTable: null,
       transforms: [],
       hiddenColumns: [],
@@ -505,6 +502,7 @@ export function setPrepParsedData(state, { rawRows, arqueroTable, columns }) {
     dataPrep: {
       ...state.dataPrep,
       rawRows,
+      originalColumns: columns, // preserved for undo replay (immune to rename/type changes)
       arqueroTable,
       transforms: [],
       hiddenColumns: [],
@@ -578,6 +576,46 @@ export function closeActivePanel(state) {
   return {
     ...state,
     dataPrep: { ...state.dataPrep, activePanel: null },
+  };
+}
+
+/**
+ * Update column metadata (for rename, change dtype).
+ * Also updates hiddenColumns if a column name changed.
+ */
+export function updateColumnMeta(state, oldName, updates) {
+  const columns = state.columnConfig.columns.map(c =>
+    c.name === oldName ? { ...c, ...updates } : c
+  );
+  let hiddenColumns = state.dataPrep.hiddenColumns;
+  if (updates.name && updates.name !== oldName) {
+    hiddenColumns = hiddenColumns.map(h => h === oldName ? updates.name : h);
+  }
+  return {
+    ...state,
+    columnConfig: { ...state.columnConfig, columns },
+    dataPrep: { ...state.dataPrep, hiddenColumns },
+  };
+}
+
+/**
+ * Add new column metadata (for calculated, split, concat, recode-to-new, bin).
+ * @param {Object} state
+ * @param {Array<{name: string, dtype: string, role: string|null}>} newColumns
+ */
+export function addColumnMeta(state, newColumns) {
+  const startOrdinal = state.columnConfig.columns.length;
+  const withOrdinals = newColumns.map((c, i) => ({
+    ...c,
+    role: c.role ?? null,
+    ordinal: startOrdinal + i,
+  }));
+  return {
+    ...state,
+    columnConfig: {
+      ...state.columnConfig,
+      columns: [...state.columnConfig.columns, ...withOrdinals],
+    },
   };
 }
 
@@ -942,40 +980,21 @@ export function closeContextMenu(state) {
   return { ...state, ui: { ...state.ui, contextMenu: null } };
 }
 
-export function setChartLayout(state, arrangement, primaryPosition, splitRatio) {
-  // Legacy preset support: convert arrangement name to a tree
-  if (state.chartOrder.length <= 1) return state;
-  const ids = state.chartOrder;
-  const ratio = splitRatio != null ? splitRatio : (arrangement.includes("wide") || arrangement.includes("tall") ? 0.67 : 0.5);
-  const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
-  const direction = isVert ? "column" : "row";
-  const firstId = (primaryPosition === "left" || primaryPosition === "top") ? ids[0] : ids[1];
-  const secondId = firstId === ids[0] ? ids[1] : ids[0];
+/* ═══ Snap Layout actions (Windows 11 / macOS style) ═══ */
 
-  if (arrangement === "single") {
-    return { ...state, chartLayout: { ...state.chartLayout, tree: { type: "pane", chartId: ids[0] } } };
-  }
-  return {
-    ...state,
-    chartLayout: {
-      ...state.chartLayout,
-      tree: {
-        type: "container", direction,
-        children: [{ type: "pane", chartId: firstId }, { type: "pane", chartId: secondId }],
-        sizes: [ratio, 1 - ratio],
-      },
-    },
-  };
+export function setChartLayout(state, template) {
+  const tpl = LAYOUT_TEMPLATES[template];
+  if (!tpl) return state;
+  // Keep existing slot order, just change the template
+  return { ...state, chartLayout: { ...state.chartLayout, template } };
 }
-
-/* ═══ Multi-chart actions ═══ */
 
 export function focusChart(state, chartId) {
   if (!state.charts[chartId] || state.focusedChartId === chartId) return state;
   return { ...state, focusedChartId: chartId };
 }
 
-export function addChart(state, { chartType = "imr", splitDirection = "row" } = {}) {
+export function addChart(state, { chartType = "imr" } = {}) {
   const newId = `chart-${state.nextChartId}`;
   const focusedSlot = getFocused(state);
 
@@ -988,7 +1007,7 @@ export function addChart(state, { chartType = "imr", splitDirection = "row" } = 
     phase_column: focusedSlot.params.phase_column,
   };
 
-  // Set initial context to reflect chosen chart type (fully updated by reanalyze later)
+  // Set initial context to reflect chosen chart type
   const chartLabels = {
     imr: "IMR", xbar_r: "X-Bar R", xbar_s: "X-Bar S", r: "R", s: "S", mr: "MR",
     p: "P", np: "NP", c: "C", u: "U", laney_p: "Laney P\u2019", laney_u: "Laney U\u2019",
@@ -1006,25 +1025,10 @@ export function addChart(state, { chartType = "imr", splitDirection = "row" } = 
   const newSlot = createSlot({ params: newParams, context: initialContext });
   const newCharts = { ...state.charts, [newId]: newSlot };
   const newOrder = [...state.chartOrder, newId];
+  const newSlots = [...state.chartLayout.slots, newId];
 
-  // Split the focused pane in the tree
-  const focusedPath = findPanePath(state.chartLayout.tree, state.focusedChartId);
-  const newTree = focusedPath !== null
-    ? replaceNodeAtPath(state.chartLayout.tree, focusedPath, {
-        type: "container",
-        direction: splitDirection,
-        children: [
-          { type: "pane", chartId: state.focusedChartId },
-          { type: "pane", chartId: newId },
-        ],
-        sizes: [0.5, 0.5],
-      })
-    : {
-        type: "container",
-        direction: splitDirection,
-        children: [state.chartLayout.tree, { type: "pane", chartId: newId }],
-        sizes: [0.5, 0.5],
-      };
+  // Auto-upgrade template to fit new chart count
+  const newTemplate = autoTemplate(newSlots.length);
 
   return {
     ...state,
@@ -1032,38 +1036,19 @@ export function addChart(state, { chartType = "imr", splitDirection = "row" } = 
     chartOrder: newOrder,
     nextChartId: state.nextChartId + 1,
     focusedChartId: newId,
-    chartLayout: { ...state.chartLayout, tree: newTree },
-    chartPicker: null,
+    chartLayout: { template: newTemplate, slots: newSlots },
   };
 }
 
 export function removeChart(state, chartId) {
-  // Cannot remove the last chart
   if (state.chartOrder.length <= 1) return state;
   if (!state.charts[chartId]) return state;
 
-  // Remove from charts and order
   const newCharts = { ...state.charts };
   delete newCharts[chartId];
   const newOrder = state.chartOrder.filter(id => id !== chartId);
-
-  // Collapse the tree: find the pane, replace its parent container with the sibling
-  const path = findPanePath(state.chartLayout.tree, chartId);
-  let newTree = state.chartLayout.tree;
-  if (path && path.length > 0) {
-    const parentPath = path.slice(0, -1);
-    const childIndex = path[path.length - 1];
-    const parent = getNodeAtPath(newTree, parentPath);
-    if (parent && parent.children) {
-      const sibling = parent.children[1 - childIndex];
-      newTree = replaceNodeAtPath(newTree, parentPath, sibling);
-    }
-  } else if (path && path.length === 0) {
-    // Removing root pane — shouldn't happen (guarded above), but safe fallback
-    newTree = { type: "pane", chartId: newOrder[0] };
-  }
-
-  // Move focus to sibling or first chart
+  const newSlots = state.chartLayout.slots.filter(id => id !== chartId);
+  const newTemplate = autoTemplate(newSlots.length);
   const newFocus = state.focusedChartId === chartId ? newOrder[0] : state.focusedChartId;
 
   return {
@@ -1071,124 +1056,19 @@ export function removeChart(state, chartId) {
     charts: newCharts,
     chartOrder: newOrder,
     focusedChartId: newFocus,
-    chartLayout: { ...state.chartLayout, tree: newTree },
+    chartLayout: { template: newTemplate, slots: newSlots },
   };
 }
 
-export function resizeSplit(state, path, sizes) {
-  const node = getNodeAtPath(state.chartLayout.tree, path);
-  if (!node || node.type !== "container") return state;
-  const newTree = replaceNodeAtPath(state.chartLayout.tree, path, { ...node, sizes });
-  return { ...state, chartLayout: { ...state.chartLayout, tree: newTree } };
-}
-
-export function openChartPicker(state) {
-  return { ...state, chartPicker: { open: true } };
-}
-
-export function closeChartPicker(state) {
-  return { ...state, chartPicker: null };
-}
-
-/** Swap two charts' positions in the tree */
-export function swapCharts(state, idA, idB) {
-  const tree = state.chartLayout.tree;
-  // Find both panes and swap their chartIds
-  function swapInNode(node) {
-    if (node.type === "pane") {
-      if (node.chartId === idA) return { ...node, chartId: idB };
-      if (node.chartId === idB) return { ...node, chartId: idA };
-      return node;
-    }
-    return { ...node, children: node.children.map(swapInNode) };
-  }
-  return { ...state, chartLayout: { ...state.chartLayout, tree: swapInNode(tree) } };
-}
-
-/** Move a chart from its current position to split a target pane */
-export function moveChartToSplit(state, chartId, targetId, direction, isFirst) {
-  let tree = state.chartLayout.tree;
-
-  // Step 1: Remove chartId from the tree (collapse its parent)
-  const path = findPanePath(tree, chartId);
-  if (path && path.length > 0) {
-    const parentPath = path.slice(0, -1);
-    const childIndex = path[path.length - 1];
-    const parent = getNodeAtPath(tree, parentPath);
-    if (parent && parent.children) {
-      const sibling = parent.children[1 - childIndex];
-      tree = replaceNodeAtPath(tree, parentPath, sibling);
-    }
-  }
-
-  // Step 2: Split the target pane, inserting chartId
-  const targetPath = findPanePath(tree, targetId);
-  if (targetPath !== null) {
-    const draggedPane = { type: "pane", chartId };
-    const targetPane = { type: "pane", chartId: targetId };
-    const newContainer = {
-      type: "container",
-      direction,
-      children: isFirst ? [draggedPane, targetPane] : [targetPane, draggedPane],
-      sizes: [0.5, 0.5],
-    };
-    tree = replaceNodeAtPath(tree, targetPath, newContainer);
-  }
-
-  return {
-    ...state,
-    focusedChartId: chartId,
-    chartLayout: { ...state.chartLayout, tree },
-  };
-}
-
-/** Build a tree from a preset name and a list of chart IDs */
-export function setLayoutPreset(state, preset) {
-  const ids = state.chartOrder;
-  if (ids.length < 2) return state;
-
-  let tree;
-  switch (preset) {
-    case "side-by-side": {
-      // Horizontal chain: all charts in a row
-      tree = ids.reduce((acc, id, i) => {
-        const p = { type: "pane", chartId: id };
-        return i === 0 ? p : { type: "container", direction: "row", children: [acc, p], sizes: [i / (i + 1), 1 / (i + 1)] };
-      }, null);
-      break;
-    }
-    case "stacked": {
-      // Vertical chain: all charts stacked
-      tree = ids.reduce((acc, id, i) => {
-        const p = { type: "pane", chartId: id };
-        return i === 0 ? p : { type: "container", direction: "column", children: [acc, p], sizes: [i / (i + 1), 1 / (i + 1)] };
-      }, null);
-      break;
-    }
-    case "grid": {
-      // 2x2 grid (or best approximation): top row, bottom row
-      const half = Math.ceil(ids.length / 2);
-      const topIds = ids.slice(0, half);
-      const bottomIds = ids.slice(half);
-
-      const buildRow = (rowIds) => rowIds.reduce((acc, id, i) => {
-        const p = { type: "pane", chartId: id };
-        return i === 0 ? p : { type: "container", direction: "row", children: [acc, p], sizes: [0.5, 0.5] };
-      }, null);
-
-      const topRow = buildRow(topIds);
-      const bottomRow = bottomIds.length > 0 ? buildRow(bottomIds) : null;
-
-      tree = bottomRow
-        ? { type: "container", direction: "column", children: [topRow, bottomRow], sizes: [0.5, 0.5] }
-        : topRow;
-      break;
-    }
-    default:
-      return state;
-  }
-
-  return { ...state, chartLayout: { ...state.chartLayout, tree } };
+/** Swap two charts' slot positions */
+export function swapSlots(state, idA, idB) {
+  const slots = [...state.chartLayout.slots];
+  const iA = slots.indexOf(idA);
+  const iB = slots.indexOf(idB);
+  if (iA === -1 || iB === -1) return state;
+  slots[iA] = idB;
+  slots[iB] = idA;
+  return { ...state, chartLayout: { ...state.chartLayout, slots } };
 }
 
 export function setXDomainOverride(state, min, max, id) {

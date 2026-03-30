@@ -28,7 +28,6 @@ import {
   setPrepError,
   setPrepSort,
   resetAxis,
-  setChartLayout,
   setChallengerStatus,
   setDatasets,
   setError,
@@ -53,17 +52,15 @@ import {
   undoPrepTransform,
   setActivePanel,
   closeActivePanel,
+  updateColumnMeta,
+  addColumnMeta,
   focusChart,
   addChart,
   removeChart,
-  resizeSplit,
-  openChartPicker,
-  closeChartPicker,
   collectChartIds,
   createSlot,
-  swapCharts,
-  moveChartToSplit,
-  setLayoutPreset,
+  swapSlots,
+  setChartLayout,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
 import {
@@ -72,7 +69,7 @@ import {
 } from "./data/api.js";
 import { transformPoints, transformAnalysis, buildDefaultContext } from "./data/transforms.js";
 import { parseCSV } from "./data/csv-engine.js";
-import { createTable, filterRows, sortTable, findReplace, removeDuplicates, handleMissing, cleanText } from "./data/data-prep-engine.js";
+import { createTable, filterRows, sortTable, findReplace, removeDuplicates, handleMissing, cleanText, renameColumn, changeColumnType, previewTypeConversion, addCalculatedColumn, recodeValues, binColumn, splitColumn, concatColumns } from "./data/data-prep-engine.js";
 
 import { getCapability, capClass, detectRuleViolations, applyParamsToContext } from "./helpers.js";
 import { deriveWorkspace } from "./core/state.js";
@@ -170,7 +167,7 @@ function render() {
 
   if (state.route === "workspace") {
     // Collect visible chart IDs from the layout tree
-    const visibleIds = collectChartIds(state.chartLayout.tree);
+    const visibleIds = state.chartLayout.slots;
 
     for (const id of visibleIds) {
       const mount = document.getElementById(`chart-mount-${id}`);
@@ -505,26 +502,25 @@ root.addEventListener("click", async (e) => {
     case "toggle-export-failure": commit(toggleReportFailureMode(state)); break;
     case "clear-notice":       commitNotice(clearNotice(state)); break;
     case "toggle-data-table":  commit(toggleDataTable(state)); break;
-    case "set-layout": {
-      const arr = t.dataset.arrangement;
-      const posMap = { horizontal: "left", vertical: "top", "primary-wide": "left", "primary-tall": "top", single: "left" };
-      commitLayout(setChartLayout(state, arr, posMap[arr] || "left"));
-      break;
-    }
+    // "set-layout" removed — replaced by "set-snap-layout"
     case "add-chart-from-rail": {
       // Clone focused chart's type, create new chart, auto-focus it
       const focusedType = getFocused(state).params.chart_type;
-      state = addChart(state, { chartType: focusedType, splitDirection: "row" });
+      state = addChart(state, { chartType: focusedType });
       commit(state);
       saveLayout();
       if (state.activeDatasetId) reanalyze();
       break;
     }
-    case "set-layout-preset": {
-      const preset = t.dataset.preset;
-      if (preset) commitLayout(setLayoutPreset(state, preset));
+    case "set-snap-layout": {
+      const template = t.dataset.template;
+      if (template) {
+        commitLayout(setChartLayout(state, template));
+        saveLayout();
+      }
       break;
     }
+    // set-layout-preset removed — replaced by set-snap-layout above
     case "remove-chart": {
       const chartId = t.dataset.chartId;
       if (chartId) {
@@ -591,16 +587,32 @@ root.addEventListener("click", async (e) => {
     case "prep-undo": {
       if (state.dataPrep.transforms.length > 0) {
         state = undoPrepTransform(state);
-        // Replay transforms from original table
-        if (state.dataPrep.rawRows && state.columnConfig.columns.length > 0) {
-          let table = createTable(state.dataPrep.rawRows, state.columnConfig.columns);
+        // Replay transforms from original table using original columns
+        const origCols = state.dataPrep.originalColumns || state.columnConfig.columns;
+        if (state.dataPrep.rawRows && origCols.length > 0) {
+          let table = createTable(state.dataPrep.rawRows, origCols);
+          let columns = origCols.map(c => ({ ...c }));
           for (const tr of state.dataPrep.transforms) {
             try {
               table = applyTransform(table, tr);
+              // Rebuild column metadata for Phase 2 transforms
+              if (tr.type === 'rename') {
+                columns = columns.map(c => c.name === tr.params.oldName ? { ...c, name: tr.params.newName } : c);
+              } else if (tr.type === 'change_type') {
+                columns = columns.map(c => c.name === tr.params.column ? { ...c, dtype: tr.params.targetType } : c);
+              } else if (tr.type === 'calculated' || tr.type === 'bin' || tr.type === 'concat') {
+                columns.push({ name: tr.params.newColName, dtype: tr.type === 'bin' ? 'text' : tr.type === 'concat' ? 'text' : 'numeric', role: null, ordinal: columns.length });
+              } else if (tr.type === 'split') {
+                for (let i = 0; i < tr.params.maxParts; i++) {
+                  columns.push({ name: `${tr.params.column}_${i + 1}`, dtype: 'text', role: null, ordinal: columns.length });
+                }
+              } else if (tr.type === 'recode' && tr.params.newColName) {
+                columns.push({ name: tr.params.newColName, dtype: 'text', role: null, ordinal: columns.length });
+              }
             } catch { /* skip failed transforms */ }
           }
           state = setPrepTable(state, table);
-          // Reset unsavedChanges based on transform count
+          state = setColumns(state, columns);
           if (state.dataPrep.transforms.length === 0) {
             state = markPrepSaved(state);
           }
@@ -651,6 +663,13 @@ root.addEventListener("click", async (e) => {
     case "prep-find-replace": { commit(setActivePanel(state, 'find')); break; }
     case "prep-dedup": { commit(setActivePanel(state, 'dedup')); break; }
     case "prep-missing": { commit(setActivePanel(state, 'missing')); break; }
+    case "prep-rename": { commit(setActivePanel(state, 'rename')); break; }
+    case "prep-change-type": { commit(setActivePanel(state, 'change_type')); break; }
+    case "prep-calc": { commit(setActivePanel(state, 'calculated')); break; }
+    case "prep-recode": { commit(setActivePanel(state, 'recode')); break; }
+    case "prep-bin": { commit(setActivePanel(state, 'bin')); break; }
+    case "prep-split": { commit(setActivePanel(state, 'split')); break; }
+    case "prep-concat": { commit(setActivePanel(state, 'concat')); break; }
     /* ═══ Panel apply handlers ═══ */
     case "prep-apply-filter": {
       if (!state.dataPrep.arqueroTable) break;
@@ -720,6 +739,148 @@ root.addEventListener("click", async (e) => {
       } catch (err) { commit(setPrepError(state, err.message)); }
       break;
     }
+    /* ═══ Phase 2 apply handlers ═══ */
+    case "prep-apply-rename": {
+      if (!state.dataPrep.arqueroTable) break;
+      const oldName = root.querySelector('[data-field="rename-col"]')?.value;
+      const newName = root.querySelector('[data-field="rename-new"]')?.value?.trim();
+      if (!oldName || !newName) break;
+      const existing = state.columnConfig.columns.map(c => c.name);
+      if (existing.includes(newName)) { commit(setPrepError(state, `Column "${newName}" already exists`)); break; }
+      try {
+        const table = renameColumn(state.dataPrep.arqueroTable, oldName, newName);
+        state = addPrepTransform(state, { type: 'rename', params: { oldName, newName } });
+        state = setPrepTable(state, table);
+        state = updateColumnMeta(state, oldName, { name: newName });
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-change-type": {
+      if (!state.dataPrep.arqueroTable) break;
+      const tcol = root.querySelector('[data-field="type-col"]')?.value;
+      const targetType = root.querySelector('[data-field="type-target"]')?.value;
+      if (!tcol || !targetType) break;
+      try {
+        const table = changeColumnType(state.dataPrep.arqueroTable, tcol, targetType);
+        state = addPrepTransform(state, { type: 'change_type', params: { column: tcol, targetType } });
+        state = setPrepTable(state, table);
+        state = updateColumnMeta(state, tcol, { dtype: targetType });
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-calc": {
+      if (!state.dataPrep.arqueroTable) break;
+      const calcName = root.querySelector('[data-field="calc-name"]')?.value?.trim();
+      const calcExpr = root.querySelector('[data-field="calc-expr"]')?.value?.trim();
+      if (!calcName || !calcExpr) break;
+      const colNames = state.columnConfig.columns.map(c => c.name);
+      if (colNames.includes(calcName)) { commit(setPrepError(state, `Column "${calcName}" already exists`)); break; }
+      try {
+        const table = addCalculatedColumn(state.dataPrep.arqueroTable, calcName, calcExpr, colNames);
+        state = addPrepTransform(state, { type: 'calculated', params: { newColName: calcName, expression: calcExpr, columns: colNames } });
+        state = setPrepTable(state, table);
+        state = addColumnMeta(state, [{ name: calcName, dtype: 'numeric' }]);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-recode": {
+      if (!state.dataPrep.arqueroTable) break;
+      const rcol = root.querySelector('[data-field="recode-col"]')?.value;
+      const asNew = root.querySelector('[data-field="recode-new-col"]')?.checked;
+      const newColName = asNew ? root.querySelector('[data-field="recode-new-name"]')?.value?.trim() : null;
+      if (!rcol) break;
+      if (asNew && !newColName) break;
+      // Read mapping rows
+      const mapping = {};
+      const rows = root.querySelectorAll('.prep-mapping-row');
+      rows.forEach(row => {
+        const oldVal = row.querySelector('[data-field="recode-old"]')?.value;
+        const newVal = row.querySelector('[data-field="recode-new"]')?.value;
+        if (oldVal != null && oldVal !== '') mapping[oldVal] = newVal ?? '';
+      });
+      if (Object.keys(mapping).length === 0) break;
+      try {
+        const table = recodeValues(state.dataPrep.arqueroTable, rcol, mapping, newColName);
+        state = addPrepTransform(state, { type: 'recode', params: { column: rcol, mapping, newColName } });
+        state = setPrepTable(state, table);
+        if (newColName) state = addColumnMeta(state, [{ name: newColName, dtype: 'text' }]);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-bin": {
+      if (!state.dataPrep.arqueroTable) break;
+      const bcol = root.querySelector('[data-field="bin-col"]')?.value;
+      const binCount = parseInt(root.querySelector('[data-field="bin-count"]')?.value || '5', 10);
+      const useCustom = root.querySelector('[data-field="bin-custom"]')?.checked;
+      const binName = root.querySelector('[data-field="bin-name"]')?.value?.trim() || `${bcol}_binned`;
+      let customBreaks = null;
+      if (useCustom) {
+        const breaksStr = root.querySelector('[data-field="bin-breaks"]')?.value || '';
+        customBreaks = breaksStr.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n)).sort((a, b) => a - b);
+        if (customBreaks.length === 0) { commit(setPrepError(state, 'Enter valid break values')); break; }
+      }
+      if (!bcol) break;
+      try {
+        const table = binColumn(state.dataPrep.arqueroTable, bcol, binCount, binName, customBreaks);
+        state = addPrepTransform(state, { type: 'bin', params: { column: bcol, binCount, newColName: binName, customBreaks } });
+        state = setPrepTable(state, table);
+        state = addColumnMeta(state, [{ name: binName, dtype: 'text' }]);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-split": {
+      if (!state.dataPrep.arqueroTable) break;
+      const scol = root.querySelector('[data-field="split-col"]')?.value;
+      const delim = root.querySelector('[data-field="split-delim"]')?.value || ',';
+      const maxParts = parseInt(root.querySelector('[data-field="split-parts"]')?.value || '2', 10);
+      if (!scol) break;
+      try {
+        const table = splitColumn(state.dataPrep.arqueroTable, scol, delim, maxParts);
+        state = addPrepTransform(state, { type: 'split', params: { column: scol, delimiter: delim, maxParts } });
+        state = setPrepTable(state, table);
+        const newCols = Array.from({ length: maxParts }, (_, i) => ({ name: `${scol}_${i + 1}`, dtype: 'text' }));
+        state = addColumnMeta(state, newCols);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-concat": {
+      if (!state.dataPrep.arqueroTable) break;
+      const concatCols = [...root.querySelectorAll('[data-field="concat-col"]:checked')].map(el => el.value);
+      const sep = root.querySelector('[data-field="concat-sep"]')?.value ?? ' ';
+      const cname = root.querySelector('[data-field="concat-name"]')?.value?.trim() || 'combined';
+      if (concatCols.length < 2) break;
+      try {
+        const table = concatColumns(state.dataPrep.arqueroTable, concatCols, sep, cname);
+        state = addPrepTransform(state, { type: 'concat', params: { columns: concatCols, separator: sep, newColName: cname } });
+        state = setPrepTable(state, table);
+        state = addColumnMeta(state, [{ name: cname, dtype: 'text' }]);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-recode-add-row": {
+      const container = root.querySelector('.prep-mapping-rows');
+      if (container) {
+        const row = document.createElement('div');
+        row.className = 'prep-mapping-row';
+        row.innerHTML = `<input type="text" data-field="recode-old" placeholder="old value" /><span class="prep-panel-label">\u2192</span><input type="text" data-field="recode-new" placeholder="new value" />`;
+        container.appendChild(row);
+      }
+      break;
+    }
   }
 });
 
@@ -745,6 +906,14 @@ function applyTransform(table, tr) {
       for (const col of tr.params.columns) { try { t = cleanText(t, col, 'trim'); } catch { /* skip */ } }
       return t;
     }
+    // Phase 2
+    case 'rename': return renameColumn(table, tr.params.oldName, tr.params.newName);
+    case 'change_type': return changeColumnType(table, tr.params.column, tr.params.targetType);
+    case 'calculated': return addCalculatedColumn(table, tr.params.newColName, tr.params.expression, tr.params.columns);
+    case 'recode': return recodeValues(table, tr.params.column, tr.params.mapping, tr.params.newColName);
+    case 'bin': return binColumn(table, tr.params.column, tr.params.binCount, tr.params.newColName, tr.params.customBreaks);
+    case 'split': return splitColumn(table, tr.params.column, tr.params.delimiter, tr.params.maxParts);
+    case 'concat': return concatColumns(table, tr.params.columns, tr.params.separator, tr.params.newColName);
     default: return table;
   }
 }
@@ -772,15 +941,15 @@ root.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
 });
 
-/* ═══ Drag-to-arrange + drag-to-split chart panes (VS Code style) ═══ */
+/* ═══ Drag-to-reorder chart slots (Snap Layout style) ═══ */
 let dragState = null;
 
 root.addEventListener("pointerdown", (e) => {
   const handle = e.target.closest("[data-drag-handle]");
   if (!handle) return;
+  if (state.chartOrder.length < 2) return;
   const pane = handle.closest(".chart-pane");
-  const arena = pane?.closest(".chart-arena");
-  if (!pane || !arena) return;
+  if (!pane) return;
 
   e.preventDefault();
   const chartId = handle.dataset.dragHandle;
@@ -792,7 +961,7 @@ root.addEventListener("pointerdown", (e) => {
   document.body.appendChild(ghost);
   pane.classList.add("dragging");
 
-  dragState = { chartId, pane, arena, ghost, dropTarget: null, dropPos: null };
+  dragState = { chartId, pane, ghost, dropTarget: null };
 });
 
 root.addEventListener("pointermove", (e) => {
@@ -801,147 +970,38 @@ root.addEventListener("pointermove", (e) => {
   ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + "px";
   ghost.style.top = (e.clientY - 20) + "px";
 
-  // Remove previous drop highlight
-  root.querySelectorAll(".pane-drop-preview").forEach(el => el.remove());
+  // Highlight the slot we'd swap with
+  root.querySelectorAll(".chart-pane.drop-target").forEach(p => p.classList.remove("drop-target"));
 
-  // Find which pane the cursor is over (not the dragged one)
   const allPanes = [...root.querySelectorAll(".chart-pane:not(.dragging)")];
-  let targetPane = null;
-  let targetPos = null;
   for (const p of allPanes) {
     const r = p.getBoundingClientRect();
-    const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
-    if (x < 0 || x > r.width || y < 0 || y > r.height) continue;
-
-    // Determine edge: within 30% of each edge = that side
-    const rx = x / r.width;
-    const ry = y / r.height;
-    if (rx < 0.3) targetPos = "left";
-    else if (rx > 0.7) targetPos = "right";
-    else if (ry < 0.3) targetPos = "top";
-    else if (ry > 0.7) targetPos = "bottom";
-    else targetPos = "center"; // drop on center = swap
-    targetPane = p;
-    break;
-  }
-
-  if (targetPane && targetPos) {
-    // Show VS Code-style layout preview wireframe
-    const overlay = document.createElement("div");
-    overlay.classList.add("pane-drop-preview");
-    overlay.dataset.position = targetPos;
-
-    const targetId = targetPane.dataset.chartId;
-    const dragLabel = state.charts[chartId]?.context?.chartType?.label || chartId;
-    const targetLabel = state.charts[targetId]?.context?.chartType?.label || targetId;
-
-    if (targetPos === "center") {
-      overlay.innerHTML = `<div class="drop-preview-cell swap">${dragLabel} \u21c4 ${targetLabel}</div>`;
-    } else {
-      const isHoriz = targetPos === "left" || targetPos === "right";
-      const first = (targetPos === "left" || targetPos === "top") ? dragLabel : targetLabel;
-      const second = (targetPos === "left" || targetPos === "top") ? targetLabel : dragLabel;
-      const firstIsDropped = (targetPos === "left" || targetPos === "top");
-      overlay.classList.add(isHoriz ? "preview-row" : "preview-col");
-      overlay.innerHTML = `
-        <div class="drop-preview-cell ${firstIsDropped ? "dropped" : "existing"}">${first}</div>
-        <div class="drop-preview-divider ${isHoriz ? "v" : "h"}"></div>
-        <div class="drop-preview-cell ${firstIsDropped ? "existing" : "dropped"}">${second}</div>
-      `;
+    if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+      p.classList.add("drop-target");
+      dragState.dropTarget = p.dataset.chartId;
+      return;
     }
-
-    targetPane.style.position = "relative";
-    targetPane.appendChild(overlay);
-    dragState.dropTarget = targetId;
-    dragState.dropPos = targetPos;
-  } else {
-    dragState.dropTarget = null;
-    dragState.dropPos = null;
   }
+  dragState.dropTarget = null;
 });
 
 function endDrag() {
   if (!dragState) return;
-  const { pane, ghost, chartId, dropTarget, dropPos } = dragState;
+  const { pane, ghost, chartId, dropTarget } = dragState;
   pane.classList.remove("dragging");
   ghost.remove();
-  root.querySelectorAll(".pane-drop-preview").forEach(el => el.remove());
+  root.querySelectorAll(".chart-pane.drop-target").forEach(p => p.classList.remove("drop-target"));
 
-  if (dropTarget && dropPos && dropTarget !== chartId) {
-    if (dropPos === "center") {
-      // Swap: exchange positions in the tree
-      state = swapCharts(state, chartId, dropTarget);
-    } else {
-      // Split: remove dragged chart from tree, then split the target pane
-      const direction = (dropPos === "left" || dropPos === "right") ? "row" : "column";
-      const isFirst = dropPos === "left" || dropPos === "top";
-      state = moveChartToSplit(state, chartId, dropTarget, direction, isFirst);
-    }
+  if (dropTarget && dropTarget !== chartId) {
+    state = swapSlots(state, chartId, dropTarget);
     commitLayout(state);
+    saveLayout();
   }
   dragState = null;
 }
 
 root.addEventListener("pointerup", endDrag);
 root.addEventListener("pointercancel", endDrag);
-
-/* ═══ Resize split divider (tree-path-aware) ═══ */
-let dividerDrag = null;
-
-root.addEventListener("pointerdown", (e) => {
-  const divider = e.target.closest(".split-divider");
-  if (!divider) return;
-  e.preventDefault();
-  divider.setPointerCapture(e.pointerId);
-  const container = divider.closest(".split-container");
-  if (!container) return;
-  const rect = container.getBoundingClientRect();
-  const isHoriz = divider.dataset.direction === "horizontal";
-  const path = divider.dataset.path ? divider.dataset.path.split(".").map(Number) : [];
-  divider.classList.add("active");
-  document.body.style.cursor = isHoriz ? "col-resize" : "row-resize";
-  dividerDrag = { divider, container, rect, isHoriz, path, pointerId: e.pointerId };
-});
-
-root.addEventListener("pointermove", (e) => {
-  if (!dividerDrag) return;
-  const { rect, isHoriz, container } = dividerDrag;
-  const minPx = state.chartLayout.minPaneSize || 300;
-  const totalPx = isHoriz ? rect.width : rect.height;
-  const minRatio = Math.min(0.2, minPx / totalPx);
-  let ratio;
-  if (isHoriz) {
-    ratio = Math.max(minRatio, Math.min(1 - minRatio, (e.clientX - rect.left) / rect.width));
-    container.style.gridTemplateColumns = `${ratio}fr auto ${1 - ratio}fr`;
-  } else {
-    ratio = Math.max(minRatio, Math.min(1 - minRatio, (e.clientY - rect.top) / rect.height));
-    container.style.gridTemplateRows = `${ratio}fr auto ${1 - ratio}fr`;
-  }
-  dividerDrag.lastRatio = ratio;
-});
-
-function endDividerDrag() {
-  if (!dividerDrag) return;
-  const { divider, lastRatio, path } = dividerDrag;
-  divider.classList.remove("active");
-  document.body.style.cursor = "";
-  if (lastRatio != null) {
-    state = resizeSplit(state, path, [lastRatio, 1 - lastRatio]);
-    saveLayout();
-  }
-  dividerDrag = null;
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      for (const id of state.chartOrder) {
-        if (charts[id]) charts[id].update(buildChartData(id));
-      }
-    });
-  });
-}
-
-root.addEventListener("pointerup", endDividerDrag);
-root.addEventListener("pointercancel", endDividerDrag);
 
 root.addEventListener("contextmenu", (e) => {
   if (e.defaultPrevented) return;
@@ -971,6 +1031,40 @@ root.addEventListener("change", async (e) => {
   if (e.target.matches('[data-field="missing-strategy"]')) {
     const custom = root.querySelector('[data-field="missing-custom"]');
     if (custom) custom.style.display = e.target.value === 'fill_custom' ? '' : 'none';
+    return;
+  }
+  // Phase 2 dynamic panel interactions
+  if (e.target.matches('[data-field="recode-new-col"]')) {
+    const nameInput = root.querySelector('[data-field="recode-new-name"]');
+    if (nameInput) nameInput.style.display = e.target.checked ? '' : 'none';
+    return;
+  }
+  if (e.target.matches('[data-field="bin-custom"]')) {
+    const breaksInput = root.querySelector('[data-field="bin-breaks"]');
+    if (breaksInput) breaksInput.style.display = e.target.checked ? '' : 'none';
+    return;
+  }
+  if (e.target.matches('[data-field="type-col"]')) {
+    // Update type conversion preview when column changes
+    if (state.dataPrep.arqueroTable) {
+      const col = e.target.value;
+      const targetType = root.querySelector('[data-field="type-target"]')?.value || 'numeric';
+      const pv = previewTypeConversion(state.dataPrep.arqueroTable, col, targetType);
+      const badge = root.querySelector('[data-field="type-preview"]');
+      if (badge) badge.textContent = `${pv.convertible}/${pv.total} convertible`;
+    }
+    return;
+  }
+  if (e.target.matches('[data-field="type-target"]')) {
+    if (state.dataPrep.arqueroTable) {
+      const col = root.querySelector('[data-field="type-col"]')?.value;
+      const targetType = e.target.value;
+      if (col) {
+        const pv = previewTypeConversion(state.dataPrep.arqueroTable, col, targetType);
+        const badge = root.querySelector('[data-field="type-preview"]');
+        if (badge) badge.textContent = `${pv.convertible}/${pv.total} convertible`;
+      }
+    }
     return;
   }
 
@@ -1094,7 +1188,8 @@ const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
 function saveLayout() {
   try {
     const data = {
-      tree: state.chartLayout.tree,
+      template: state.chartLayout.template,
+      slots: state.chartLayout.slots,
       chartOrder: state.chartOrder,
       focusedChartId: state.focusedChartId,
       nextChartId: state.nextChartId,
@@ -1112,7 +1207,12 @@ function restoreLayout() {
     const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (!data.tree || !data.chartOrder || !data.chartParams) return null;
+    if (!data.chartOrder || !data.chartParams) return null;
+    // Migrate old tree-based layouts to snap layout
+    if (!data.template || !data.slots) {
+      data.template = data.chartOrder.length <= 1 ? "1" : "2h";
+      data.slots = [...data.chartOrder];
+    }
     return data;
   } catch { return null; }
 }
@@ -1141,7 +1241,7 @@ async function main() {
         chartOrder: saved.chartOrder,
         nextChartId: saved.nextChartId || saved.chartOrder.length + 1,
         focusedChartId: saved.focusedChartId || saved.chartOrder[0],
-        chartLayout: { ...state.chartLayout, tree: saved.tree },
+        chartLayout: { template: saved.template, slots: saved.slots },
       };
     }
 

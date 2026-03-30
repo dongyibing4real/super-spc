@@ -1,20 +1,10 @@
-import { getCapability, capClass, detectRuleViolations, CHART_TYPE_LABELS } from "../helpers.js";
+import { getCapability, capClass, CHART_TYPE_LABELS } from "../helpers.js";
 import { renderContextMenu } from "./context-menu.js";
-import { collectChartIds } from "../core/state.js";
-
-/* ═══ Chart type options (shared with recipe-rail) ═══ */
-const CHART_TYPES = [
-  ["Variables", [["imr","IMR"],["xbar_r","X-Bar R"],["xbar_s","X-Bar S"],["r","R"],["s","S"],["mr","MR"]]],
-  ["Attributes", [["p","P"],["np","NP"],["c","C"],["u","U"],["laney_p","Laney P\u2019"],["laney_u","Laney U\u2019"]]],
-  ["Advanced", [["cusum","CUSUM"],["ewma","EWMA"],["levey_jennings","Levey-Jennings"],["cusum_vmask","CUSUM V-Mask"],["three_way","Three-Way"],["presummarize","Presummarize"],["run","Run Chart"]]],
-  ["Short Run", [["short_run","Short Run"]]],
-  ["Rare Event", [["g","G"],["t","T"]]],
-  ["Multivariate", [["hotelling_t2","Hotelling T\u00B2"],["mewma","MEWMA"]]],
-];
+import { LAYOUT_TEMPLATES } from "../core/state.js";
 
 /* ═══ Chart pane renderer ═══ */
 
-function renderChartPane(state, chartId) {
+function renderChartPane(state, chartId, slotIndex) {
   const slot = state.charts[chartId];
   if (!slot) return "";
 
@@ -23,13 +13,11 @@ function renderChartPane(state, chartId) {
   const caps = getCapability(state, chartId);
   const method = slot.context.chartType?.label || "";
   const metric = slot.context.metric?.label || "";
-  const chartIndex = state.chartOrder.indexOf(chartId) + 1;
 
-  // VS Code behavior: hide titlebar when only 1 chart (no ambiguity needed)
   const titlebar = isOnlyChart ? "" : `
       <div class="chart-pane-titlebar" data-drag-handle="${chartId}">
         <span class="grip-icon">\u2817</span>
-        <span class="method-dot ${chartId}"></span>
+        <span class="method-dot"></span>
         <strong class="pane-method">${method}</strong>
         <span class="pane-metric">${metric}</span>
         ${caps.cpk ? `
@@ -41,8 +29,11 @@ function renderChartPane(state, chartId) {
         <button class="pane-close" data-action="remove-chart" data-chart-id="${chartId}" title="Close chart">\u00d7</button>
       </div>`;
 
+  // Grid area name for template-area layouts (a, b, c, d...)
+  const areaName = String.fromCharCode(97 + slotIndex); // 0→a, 1→b, 2→c, 3→d
+
   return `
-    <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}">
+    <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}" style="grid-area: ${areaName}">
       ${titlebar}
       <div class="chart-stage" id="chart-mount-${chartId}" tabindex="0" data-chart-focus="true" aria-label="${chartId} control chart">
         ${isFocused && state.ui.contextMenu ? renderContextMenu(state) : ""}
@@ -51,46 +42,37 @@ function renderChartPane(state, chartId) {
   `;
 }
 
-/* ═══ Recursive tree renderer ═══ */
+/* ═══ Layout template wireframe icons (SVG miniatures) ═══ */
 
-function renderTreeNode(state, node, path = []) {
-  if (node.type === "pane") {
-    return renderChartPane(state, node.chartId);
-  }
+const TEMPLATE_ICONS = {
+  "1":   '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="1" fill="currentColor" opacity="0.3"/></svg>',
+  "2h":  '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="8.5" height="12" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="1" width="8.5" height="12" rx="1" fill="currentColor" opacity="0.3"/></svg>',
+  "2v":  '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
+  "3h":  '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="5.3" height="12" rx="1" fill="currentColor" opacity="0.3"/><rect x="7.3" y="1" width="5.3" height="12" rx="1" fill="currentColor" opacity="0.3"/><rect x="13.6" y="1" width="5.3" height="12" rx="1" fill="currentColor" opacity="0.3"/></svg>',
+  "2x2": '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
+  "1+2": '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
+  "2+1": '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
+};
 
-  const isRow = node.direction === "row";
-  const gridProp = isRow ? "grid-template-columns" : "grid-template-rows";
-  const crossProp = isRow ? "grid-template-rows" : "grid-template-columns";
-  const gridStyle = `${gridProp}: ${node.sizes[0]}fr auto ${node.sizes[1]}fr; ${crossProp}: 1fr;`;
-  const dividerDir = isRow ? "horizontal" : "vertical";
+function renderLayoutPicker(state) {
+  const count = state.chartOrder.length;
+  if (count < 2) return "";
 
-  return `
-    <div class="split-container" data-direction="${node.direction}" data-path="${path.join(".")}" style="${gridStyle}">
-      ${renderTreeNode(state, node.children[0], [...path, 0])}
-      <div class="split-divider" data-direction="${dividerDir}" data-path="${path.join(".")}"></div>
-      ${renderTreeNode(state, node.children[1], [...path, 1])}
-    </div>
-  `;
-}
+  const current = state.chartLayout.template;
 
-/* ═══ Chart picker (inline panel) ═══ */
+  // Show templates that fit the current chart count (or have fewer slots)
+  const available = Object.entries(LAYOUT_TEMPLATES)
+    .filter(([, tpl]) => tpl.slots >= 2 && tpl.slots <= Math.max(count, 4))
+    .map(([id, tpl]) => {
+      const active = id === current;
+      const icon = TEMPLATE_ICONS[id] || "";
+      return `<button class="layout-btn layout-template-btn ${active ? "active" : ""}"
+        data-action="set-snap-layout" data-template="${id}" title="${tpl.label}">
+        ${icon}
+      </button>`;
+    });
 
-function renderChartPicker(state) {
-  if (!state.chartPicker) return "";
-  return `
-    <div class="chart-picker">
-      <span class="picker-label">New chart type:</span>
-      <select class="chip-select" data-field="picker-chart-type">
-        ${CHART_TYPES.map(([group, items]) =>
-          `<optgroup label="${group}">${items.map(([val, label]) =>
-            `<option value="${val}">${label}</option>`
-          ).join("")}</optgroup>`
-        ).join("")}
-      </select>
-      <button class="picker-btn primary" data-action="confirm-add-chart">Add</button>
-      <button class="picker-btn" data-action="cancel-add-chart">Cancel</button>
-    </div>
-  `;
+  return `<span class="layout-divider"></span>${available.join("")}`;
 }
 
 /* ═══ Data table renderer ═══ */
@@ -157,9 +139,14 @@ export function renderDataTable(state) {
 
 export function renderChartArena(state) {
   const focusedSlot = state.charts[state.focusedChartId] || state.charts[state.chartOrder[0]];
-  const tree = state.chartLayout.tree;
-  const hasMultiple = state.chartOrder.length >= 2;
-  const currentDir = tree.type === "container" ? tree.direction : null;
+  const layout = state.chartLayout;
+  const tpl = LAYOUT_TEMPLATES[layout.template] || LAYOUT_TEMPLATES["1"];
+
+  // Grid columns/rows inline, areas via data-template CSS rules
+  const gridStyle = `grid-template-columns: ${tpl.cols}; grid-template-rows: ${tpl.rows}`;
+
+  // Render chart panes for each slot
+  const panes = layout.slots.map((chartId, i) => renderChartPane(state, chartId, i)).join("");
 
   return `
     <section class="chart-card">
@@ -170,19 +157,12 @@ export function renderChartArena(state) {
         </div>
         <div class="layout-controls">
           <button class="layout-btn ${state.showDataTable ? "active" : ""}" data-action="toggle-data-table" title="Data Table">\u2630</button>
-          ${hasMultiple ? `
-            <span class="layout-divider"></span>
-            <button class="layout-btn ${currentDir === "row" ? "active" : ""}" data-action="set-layout-preset" data-preset="side-by-side" title="Side by side">\u25eb</button>
-            <button class="layout-btn ${currentDir === "column" ? "active" : ""}" data-action="set-layout-preset" data-preset="stacked" title="Stacked">\u25a9</button>
-            ${state.chartOrder.length >= 3 ? `
-              <button class="layout-btn" data-action="set-layout-preset" data-preset="grid" title="Grid (2\u00d72)">\u2b1a</button>
-            ` : ""}
-          ` : ""}
+          ${renderLayoutPicker(state)}
         </div>
       </div>
       ${state.showDataTable ? renderDataTable(state) : `
-        <div class="chart-arena">
-          ${renderTreeNode(state, tree)}
+        <div class="chart-arena" data-template="${layout.template}" style="${gridStyle}">
+          ${panes}
         </div>
       `}
     </section>
