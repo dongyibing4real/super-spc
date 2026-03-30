@@ -70,7 +70,7 @@ Derived from Palantir Blueprint's dark palette with SPC-specific extensions.
 | `--blue-bright` | `#4C90F0` | Links, active focus (Blueprint BLUE4) |
 | `--blue-dim` | `rgba(45,114,210,0.15)` | Selected backgrounds |
 | `--teal` | `#1C6E42` | Robust/alternative method, secondary positive (Blueprint GREEN2) |
-| `--teal-bright` | `#32A467` | Challenger overlay, comparison (Blueprint GREEN4) |
+| `--teal-bright` | `#32A467` | Alternative method, comparison (Blueprint GREEN4) |
 | `--green` | `#238551` | Success, in-control, center line (Blueprint GREEN3) |
 | `--green-dim` | `rgba(35,133,81,0.15)` | Success backgrounds |
 | `--red` | `#CD4246` | Error, OOC points, critical alerts (Blueprint RED3) |
@@ -106,7 +106,7 @@ These colors are reserved for statistical chart elements and must not be used fo
 |---------|-------|-------|
 | Primary series line | `--blue` (#2D72D2) | 1.5-2px solid |
 | Primary series points | `--blue` (#2D72D2) | 4px circles, white stroke |
-| Challenger/overlay line | `--teal-bright` (#32A467) | 1px dashed |
+| Alternative method line | `--teal-bright` (#32A467) | 1px dashed |
 | OOC points | `--red` (#CD4246) | Enlarged, filled red |
 | Center line (CL) | `--green` (#238551) | 1.5px solid, 0.85 opacity (dominant anchor) |
 | UCL/LCL lines | `--red` (#CD4246) | 1.5px solid, 0.75 opacity (primary control limits — solid, not dashed) |
@@ -197,14 +197,13 @@ The control chart is the single most important element in the product. Everythin
 ### Control Panel (Recipe Rail — JMP-Inspired)
 This is the JMP "control panel alongside chart" concept: a vertical panel that shows all current chart configuration.
 
-- **Organized in three sections:** Dataset chip (top), Primary method chips, Challenger method chips. Each section separated by a `recipe-divider`.
+- **Accordion layout:** Dataset chip at top (shared). Below it, all chart cards — the focused chart's card is expanded with full editable chips; non-focused charts appear as collapsed summary cards (method, metric, sigma, tests on one line). Clicking a collapsed card focuses that chart.
 - **Dataset chip** at top shows active dataset name with inline dropdown to switch datasets.
-- **Primary section** contains all chart configuration chips: Metric, Subgroup, Phase, Chart type, Sigma method, Nelson tests. These are the analysis parameters for the primary chart.
-- **Challenger section** mirrors Primary with its own independent set of chips, allowing a different method/sigma/test configuration for side-by-side comparison.
+- **Each chart card** contains configuration chips: Metric, Subgroup, Phase, Chart type, Sigma method, Nelson tests, Specs, and a Data Table toggle. These are the per-chart analysis parameters.
+- **"+Add Chart"** button at the bottom opens a type picker dropdown. The focused chart's type is pre-selected.
 - **Each parameter is a "chip"** showing: eyebrow label and current value. Clicking opens an inline dropdown or checkbox editor — never a full modal.
-- **Active chip** (being edited) has a `chip-editing` class. Active method chips (Metric, Chart) may use `active-chip` with left-border highlight (`--blue`, 2px).
-- **Collapsible** to a 40px icon strip showing section icons only.
-- **Layer toggles** are NOT in the recipe rail. They live in the chart toolbar or are accessible via context menu. The recipe rail is exclusively for analysis parameter configuration.
+- **Active chip** (being edited) has a `chip-editing` class.
+- **Layer toggles** are NOT in the recipe rail. They are accessible via context menu. The recipe rail is exclusively for analysis parameter configuration.
 
 ### Evidence Rail
 The right rail is language-led, not widget-led. It explains, cites, and recommends.
@@ -290,11 +289,13 @@ The Data Prep layer uses a client-first architecture. CSV is parsed client-side 
 - **Color-coded:** Green (≥1.33), amber (1.0-1.33), red (<1.0) via `capClass()` utility
 - **Visibility:** Only appears when `capability` is computed for the dataset; the titlebar gracefully omits these when no capability data exists
 
-### Challenger Overlay
-- **Challenger visibility** is automatic — the teal dashed line appears when a challenger method is marked "ready" via Method Lab, disappears when none is selected
-- There is NO manual toggle for overlay visibility — it follows method selection state
-- **Dual-pane layout:** When challenger is ready, the chart arena splits into primary + challenger panes with configurable arrangement (horizontal, vertical, primary-wide, primary-tall, single)
-- **Layout controls** appear in the chart toolbar only when a challenger is active
+### Multi-Chart Layout
+- Row-grid model: charts arranged in rows, each row is a flex container
+- All charts in a row share equal width; all rows share equal height
+- Drag a chart's titlebar to rearrange: left/right = join row, above/below = new row
+- "+Add Chart" auto-places: fills last row up to the width of the row above, then starts a new row
+- Every chart is independent — no linked axes, no shared interaction
+- Min pane: 250×180px; max per row/column computed from viewport
 
 ### Navigation Sidebar
 - **140px text sidebar** with full labels, dark background (`--bg-0`)
