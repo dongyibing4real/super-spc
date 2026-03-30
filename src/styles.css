@@ -833,13 +833,11 @@ h1, h2, h3, h4, h5, h6 {
   overflow: hidden;
   min-height: 0;
   min-width: 0;
-  border: 2px solid transparent;
-  transition: border-color 100ms ease;
 }
 
-/* Focused pane indicator */
-.chart-pane.pane-focused {
-  border-top-color: var(--blue, #2D72D2);
+/* Focused pane indicator — top accent bar on titlebar */
+.chart-pane.pane-focused .chart-pane-titlebar {
+  box-shadow: inset 0 2px 0 var(--blue, #2D72D2);
 }
 
 /* Pane close button */
