@@ -1090,6 +1090,58 @@ export function closeChartPicker(state) {
   return { ...state, chartPicker: null };
 }
 
+/** Swap two charts' positions in the tree */
+export function swapCharts(state, idA, idB) {
+  const tree = state.chartLayout.tree;
+  // Find both panes and swap their chartIds
+  function swapInNode(node) {
+    if (node.type === "pane") {
+      if (node.chartId === idA) return { ...node, chartId: idB };
+      if (node.chartId === idB) return { ...node, chartId: idA };
+      return node;
+    }
+    return { ...node, children: node.children.map(swapInNode) };
+  }
+  return { ...state, chartLayout: { ...state.chartLayout, tree: swapInNode(tree) } };
+}
+
+/** Move a chart from its current position to split a target pane */
+export function moveChartToSplit(state, chartId, targetId, direction, isFirst) {
+  let tree = state.chartLayout.tree;
+
+  // Step 1: Remove chartId from the tree (collapse its parent)
+  const path = findPanePath(tree, chartId);
+  if (path && path.length > 0) {
+    const parentPath = path.slice(0, -1);
+    const childIndex = path[path.length - 1];
+    const parent = getNodeAtPath(tree, parentPath);
+    if (parent && parent.children) {
+      const sibling = parent.children[1 - childIndex];
+      tree = replaceNodeAtPath(tree, parentPath, sibling);
+    }
+  }
+
+  // Step 2: Split the target pane, inserting chartId
+  const targetPath = findPanePath(tree, targetId);
+  if (targetPath !== null) {
+    const draggedPane = { type: "pane", chartId };
+    const targetPane = { type: "pane", chartId: targetId };
+    const newContainer = {
+      type: "container",
+      direction,
+      children: isFirst ? [draggedPane, targetPane] : [targetPane, draggedPane],
+      sizes: [0.5, 0.5],
+    };
+    tree = replaceNodeAtPath(tree, targetPath, newContainer);
+  }
+
+  return {
+    ...state,
+    focusedChartId: chartId,
+    chartLayout: { ...state.chartLayout, tree },
+  };
+}
+
 export function setXDomainOverride(state, min, max, id) {
   if (!id) id = state.focusedChartId || state.chartOrder[0];
   return updateSlot(state, id, { overrides: { ...state.charts[id].overrides, x: { min, max } } });

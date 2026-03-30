@@ -60,6 +60,8 @@ import {
   openChartPicker,
   closeChartPicker,
   collectChartIds,
+  swapCharts,
+  moveChartToSplit,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
 import {
@@ -769,21 +771,18 @@ root.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
 });
 
-/* ═══ Drag-to-arrange chart panes ═══ */
+/* ═══ Drag-to-arrange + drag-to-split chart panes (VS Code style) ═══ */
 let dragState = null;
 
 root.addEventListener("pointerdown", (e) => {
   const handle = e.target.closest("[data-drag-handle]");
   if (!handle) return;
-  // Only drag when multiple panes exist
-  if (state.chartOrder.length < 2) return;
   const pane = handle.closest(".chart-pane");
   const arena = pane?.closest(".chart-arena");
   if (!pane || !arena) return;
 
   e.preventDefault();
   const chartId = handle.dataset.dragHandle;
-  const rect = arena.getBoundingClientRect();
 
   const ghost = pane.cloneNode(true);
   ghost.classList.add("drag-ghost");
@@ -792,78 +791,72 @@ root.addEventListener("pointerdown", (e) => {
   document.body.appendChild(ghost);
   pane.classList.add("dragging");
 
-  const zones = ["left", "right", "top", "bottom"].map(pos => {
-    const zone = document.createElement("div");
-    zone.classList.add("drop-zone");
-    zone.dataset.dropPosition = pos;
-    arena.style.position = "relative";
-    arena.appendChild(zone);
-    Object.assign(zone.style, {
-      position: "absolute", zIndex: "100",
-      ...(pos === "left"   ? { left: 0, top: 0, width: "50%", height: "100%" } : {}),
-      ...(pos === "right"  ? { right: 0, top: 0, width: "50%", height: "100%" } : {}),
-      ...(pos === "top"    ? { left: 0, top: 0, width: "100%", height: "50%" } : {}),
-      ...(pos === "bottom" ? { left: 0, bottom: 0, width: "100%", height: "50%" } : {}),
-    });
-    return zone;
-  });
-
-  dragState = { chartId, pane, arena, ghost, zones, arenaRect: rect };
+  dragState = { chartId, pane, arena, ghost, dropTarget: null, dropPos: null };
 });
 
 root.addEventListener("pointermove", (e) => {
   if (!dragState) return;
-  const { ghost, zones, arenaRect } = dragState;
+  const { ghost, chartId } = dragState;
   ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + "px";
   ghost.style.top = (e.clientY - 20) + "px";
 
-  const x = e.clientX - arenaRect.left;
-  const y = e.clientY - arenaRect.top;
-  const w = arenaRect.width;
-  const h = arenaRect.height;
+  // Remove previous drop highlight
+  root.querySelectorAll(".pane-drop-highlight").forEach(el => el.remove());
 
-  let activePos = null;
-  if (x < w * 0.35) activePos = "left";
-  else if (x > w * 0.65) activePos = "right";
-  else if (y < h * 0.35) activePos = "top";
-  else if (y > h * 0.65) activePos = "bottom";
+  // Find which pane the cursor is over (not the dragged one)
+  const allPanes = [...root.querySelectorAll(".chart-pane:not(.dragging)")];
+  let targetPane = null;
+  let targetPos = null;
+  for (const p of allPanes) {
+    const r = p.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    if (x < 0 || x > r.width || y < 0 || y > r.height) continue;
 
-  zones.forEach(z => z.classList.toggle("active", z.dataset.dropPosition === activePos));
-  dragState.activePos = activePos;
+    // Determine edge: within 30% of each edge = that side
+    const rx = x / r.width;
+    const ry = y / r.height;
+    if (rx < 0.3) targetPos = "left";
+    else if (rx > 0.7) targetPos = "right";
+    else if (ry < 0.3) targetPos = "top";
+    else if (ry > 0.7) targetPos = "bottom";
+    else targetPos = "center"; // drop on center = swap
+    targetPane = p;
+    break;
+  }
+
+  if (targetPane && targetPos) {
+    // Show drop highlight on the target pane edge
+    const hl = document.createElement("div");
+    hl.classList.add("pane-drop-highlight");
+    hl.dataset.position = targetPos;
+    targetPane.style.position = "relative";
+    targetPane.appendChild(hl);
+    dragState.dropTarget = targetPane.dataset.chartId;
+    dragState.dropPos = targetPos;
+  } else {
+    dragState.dropTarget = null;
+    dragState.dropPos = null;
+  }
 });
 
 function endDrag() {
   if (!dragState) return;
-  const { pane, ghost, zones, activePos, chartId } = dragState;
+  const { pane, ghost, chartId, dropTarget, dropPos } = dragState;
   pane.classList.remove("dragging");
   ghost.remove();
-  zones.forEach(z => z.remove());
+  root.querySelectorAll(".pane-drop-highlight").forEach(el => el.remove());
 
-  if (activePos && state.chartOrder.length >= 2) {
-    // Rebuild the tree with the new direction based on drop position
-    const direction = (activePos === "left" || activePos === "right") ? "row" : "column";
-    const ids = state.chartOrder;
-    // Put the dragged chart in the dropped position, others fill the other side
-    const otherIds = ids.filter(id => id !== chartId);
-
-    // Build a simple tree: dragged chart on the drop side, rest on the other
-    let draggedPane = { type: "pane", chartId };
-    let otherNode = otherIds.length === 1
-      ? { type: "pane", chartId: otherIds[0] }
-      : otherIds.reduce((acc, id, i) => {
-          const p = { type: "pane", chartId: id };
-          return i === 0 ? p : { type: "container", direction, children: [acc, p], sizes: [0.5, 0.5] };
-        }, null);
-
-    const isFirst = activePos === "left" || activePos === "top";
-    const newTree = {
-      type: "container",
-      direction,
-      children: isFirst ? [draggedPane, otherNode] : [otherNode, draggedPane],
-      sizes: [0.5, 0.5],
-    };
-
-    state = { ...state, chartLayout: { ...state.chartLayout, tree: newTree } };
+  if (dropTarget && dropPos && dropTarget !== chartId) {
+    if (dropPos === "center") {
+      // Swap: exchange positions in the tree
+      state = swapCharts(state, chartId, dropTarget);
+    } else {
+      // Split: remove dragged chart from tree, then split the target pane
+      const direction = (dropPos === "left" || dropPos === "right") ? "row" : "column";
+      const isFirst = dropPos === "left" || dropPos === "top";
+      state = moveChartToSplit(state, chartId, dropTarget, direction, isFirst);
+    }
     commitLayout(state);
   }
   dragState = null;
