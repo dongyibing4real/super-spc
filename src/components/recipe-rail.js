@@ -116,7 +116,7 @@ export function renderRecipeRail(state) {
         <div class="rail-card-header rail-card-header--focused">
           <span class="rail-card-dot"></span>
           <span class="rail-card-label">${chartLabel}</span>
-          <span class="rail-card-id">${focusedId}</span>
+          <span class="rail-card-id">Chart ${state.chartOrder.indexOf(focusedId) + 1}</span>
         </div>
         ${renderChartChips(state, focusedId, focusedSlot.params, focusedSlot.context, ae, cols)}
       </div>

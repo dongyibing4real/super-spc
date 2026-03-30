@@ -22,13 +22,13 @@ function renderChartPane(state, chartId) {
   const isLastChart = state.chartOrder.length <= 1;
   const caps = getCapability(state, chartId);
   const method = slot.context.chartType?.label || "";
+  const chartIndex = state.chartOrder.indexOf(chartId) + 1;
 
   return `
     <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}">
-      <div class="chart-pane-titlebar" data-drag-handle="${chartId}">
-        <span class="grip-icon">\u2817</span>
+      <div class="chart-pane-titlebar">
         <span class="method-dot ${chartId}"></span>
-        <span class="pane-role">${CHART_TYPE_LABELS[slot.params.chart_type] || chartId}</span>
+        <span class="pane-role">${chartIndex}</span>
         <strong class="pane-method">${method}</strong>
         ${caps.cpk ? `
           <div class="pane-caps">
