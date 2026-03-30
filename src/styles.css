@@ -833,6 +833,7 @@ h1, h2, h3, h4, h5, h6 {
   overflow: hidden;
   min-height: 0;
   min-width: 0;
+  flex: 1;             /* fill arena when solo, fill grid cell in split */
 }
 
 /* Focused pane indicator — top accent bar on titlebar */
