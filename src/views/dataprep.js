@@ -151,13 +151,13 @@ function renderPrepTable(state) {
   const { dataPrep } = state;
 
   if (!dataPrep.selectedDatasetId) {
-    return '<div class="prep-table-wrap"><div class="prep-empty">Select a dataset to view its data.</div></div>';
+    return '<div class="prep-center"><div class="prep-table-wrap"><div class="prep-empty">Select a dataset to view its data.</div></div></div>';
   }
   if (dataPrep.loading) {
-    return '<div class="prep-table-wrap"><div class="prep-empty">Loading\u2026</div></div>';
+    return '<div class="prep-center"><div class="prep-table-wrap"><div class="prep-empty">Loading\u2026</div></div></div>';
   }
   if (dataPrep.error) {
-    return `<div class="prep-table-wrap"><div class="prep-empty" style="color:var(--red);">${dataPrep.error}</div></div>`;
+    return `<div class="prep-center"><div class="prep-table-wrap"><div class="prep-empty" style="color:var(--red);">${dataPrep.error}</div></div></div>`;
   }
 
   const allCols = state.columnConfig.columns || [];
@@ -215,6 +215,7 @@ function renderPrepTable(state) {
   }).join("");
 
   return `
+    <div class="prep-center">
     ${renderTransformBar(state)}
     ${renderPrepPanel(state)}
     <div class="prep-table-wrap" data-action="prep-table-scroll">
@@ -228,6 +229,7 @@ function renderPrepTable(state) {
       <div class="prep-table-footer">
         ${totalRows} rows \u00b7 ${cols.length} columns${hidden.size > 0 ? ` \u00b7 ${hidden.size} hidden` : ""}
       </div>
+    </div>
     </div>`;
 }
 
