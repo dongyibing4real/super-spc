@@ -905,19 +905,17 @@ h1, h2, h3, h4, h5, h6 {
   opacity: 0.9;
 }
 
-/* Pane Title Bar (draggable) */
+/* Pane Title Bar */
 .chart-pane-titlebar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   background: var(--chart-surface);
-  cursor: grab;
+  cursor: default;
   user-select: none;
   border-bottom: 1px solid var(--chart-border);
 }
-
-.chart-pane-titlebar:active { cursor: grabbing; }
 
 .grip-icon {
   color: var(--chart-text-3);
