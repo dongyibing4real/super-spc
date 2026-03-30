@@ -4,39 +4,70 @@ import { LAYOUT_TEMPLATES } from "../core/state.js";
 
 /* ═══ Chart pane renderer ═══ */
 
-function renderChartPane(state, chartId, slotIndex) {
+function renderChartPane(state, chartId) {
   const slot = state.charts[chartId];
   if (!slot) return "";
 
   const isFocused = state.focusedChartId === chartId;
-  const isOnlyChart = state.chartOrder.length <= 1;
+  const isOnly = state.chartOrder.length <= 1;
   const caps = getCapability(state, chartId);
   const method = slot.context.chartType?.label || "";
   const metric = slot.context.metric?.label || "";
 
-  const titlebar = isOnlyChart ? "" : `
-      <div class="chart-pane-titlebar" data-drag-handle="${chartId}">
-        <span class="grip-icon">\u2817</span>
-        <span class="method-dot"></span>
-        <strong class="pane-method">${method}</strong>
-        <span class="pane-metric">${metric}</span>
-        ${caps.cpk ? `
-          <div class="pane-caps">
-            <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(caps.cpk)}">${caps.cpk}</span></span>
-            <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(caps.ppk)}">${caps.ppk}</span></span>
-          </div>
-        ` : ""}
-        <button class="pane-close" data-action="remove-chart" data-chart-id="${chartId}" title="Close chart">\u00d7</button>
-      </div>`;
-
-  // Grid area name for template-area layouts (a, b, c, d...)
-  const areaName = String.fromCharCode(97 + slotIndex); // 0→a, 1→b, 2→c, 3→d
+  const titlebar = isOnly ? "" : `
+    <div class="chart-pane-titlebar" data-drag-handle="${chartId}">
+      <span class="grip-icon">⠗</span>
+      <span class="method-dot"></span>
+      <strong class="pane-method">${method}</strong>
+      <span class="pane-metric">${metric}</span>
+      ${caps.cpk ? `
+        <div class="pane-caps">
+          <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(caps.cpk)}">${caps.cpk}</span></span>
+          <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(caps.ppk)}">${caps.ppk}</span></span>
+        </div>
+      ` : ""}
+      <div class="pane-actions">
+        <button class="pane-split-btn" data-action="split-pane" data-chart-id="${chartId}" data-direction="h" title="Split right">
+          <svg viewBox="0 0 12 12" width="10" height="10"><rect x="0" y="1" width="5" height="10" rx="1" fill="currentColor" opacity="0.5"/><rect x="7" y="1" width="5" height="10" rx="1" fill="currentColor" opacity="0.5"/></svg>
+        </button>
+        <button class="pane-split-btn" data-action="split-pane" data-chart-id="${chartId}" data-direction="v" title="Split down">
+          <svg viewBox="0 0 12 12" width="10" height="10"><rect x="1" y="0" width="10" height="5" rx="1" fill="currentColor" opacity="0.5"/><rect x="1" y="7" width="10" height="5" rx="1" fill="currentColor" opacity="0.5"/></svg>
+        </button>
+        <button class="pane-close" data-action="remove-chart" data-chart-id="${chartId}" title="Close chart">×</button>
+      </div>
+    </div>`;
 
   return `
-    <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}" style="grid-area: ${areaName}">
+    <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}">
       ${titlebar}
       <div class="chart-stage" id="chart-mount-${chartId}" tabindex="0" data-chart-focus="true" aria-label="${chartId} control chart">
         ${isFocused && state.ui.contextMenu ? renderContextMenu(state) : ""}
+      </div>
+    </div>
+  `;
+}
+
+/* ═══ Recursive tree renderer ═══ */
+
+function renderTreeNode(state, node) {
+  if (!node) return "";
+
+  if (node.type === "pane") {
+    return renderChartPane(state, node.chartId);
+  }
+
+  // Container node: two children separated by a draggable divider
+  const isH = node.direction === "h";
+  const pct = (node.ratio * 100).toFixed(2);
+
+  return `
+    <div class="split-container split-${node.direction}" data-container-id="${node.id}">
+      <div class="split-child" style="flex: 0 0 ${pct}%">
+        ${renderTreeNode(state, node.children[0])}
+      </div>
+      <div class="split-divider split-divider-${node.direction}" data-container-id="${node.id}" data-direction="${node.direction}"></div>
+      <div class="split-child" style="flex: 1 1 0">
+        ${renderTreeNode(state, node.children[1])}
       </div>
     </div>
   `;
@@ -58,15 +89,11 @@ function renderLayoutPicker(state) {
   const count = state.chartOrder.length;
   if (count < 2) return "";
 
-  const current = state.chartLayout.template;
-
-  // Show templates that fit the current chart count (or have fewer slots)
   const available = Object.entries(LAYOUT_TEMPLATES)
     .filter(([, tpl]) => tpl.slots >= 2 && tpl.slots <= Math.max(count, 4))
     .map(([id, tpl]) => {
-      const active = id === current;
       const icon = TEMPLATE_ICONS[id] || "";
-      return `<button class="layout-btn layout-template-btn ${active ? "active" : ""}"
+      return `<button class="layout-btn layout-template-btn"
         data-action="set-snap-layout" data-template="${id}" title="${tpl.label}">
         ${icon}
       </button>`;
@@ -139,30 +166,23 @@ export function renderDataTable(state) {
 
 export function renderChartArena(state) {
   const focusedSlot = state.charts[state.focusedChartId] || state.charts[state.chartOrder[0]];
-  const layout = state.chartLayout;
-  const tpl = LAYOUT_TEMPLATES[layout.template] || LAYOUT_TEMPLATES["1"];
-
-  // Grid columns/rows inline, areas via data-template CSS rules
-  const gridStyle = `grid-template-columns: ${tpl.cols}; grid-template-rows: ${tpl.rows}`;
-
-  // Render chart panes for each slot
-  const panes = layout.slots.map((chartId, i) => renderChartPane(state, chartId, i)).join("");
+  const tree = state.chartLayout.tree;
 
   return `
     <section class="chart-card">
       <div class="chart-toolbar">
         <div class="toolbar-title">
-          <h3>${focusedSlot.context.metric?.label || ""} \u2014 ${focusedSlot.context.chartType?.label || ""}</h3>
+          <h3>${focusedSlot.context.metric?.label || ""} — ${focusedSlot.context.chartType?.label || ""}</h3>
           <span class="toolbar-window">${focusedSlot.context.window || ""}</span>
         </div>
         <div class="layout-controls">
-          <button class="layout-btn ${state.showDataTable ? "active" : ""}" data-action="toggle-data-table" title="Data Table">\u2630</button>
+          <button class="layout-btn ${state.showDataTable ? "active" : ""}" data-action="toggle-data-table" title="Data Table">☰</button>
           ${renderLayoutPicker(state)}
         </div>
       </div>
       ${state.showDataTable ? renderDataTable(state) : `
-        <div class="chart-arena" data-template="${layout.template}" style="${gridStyle}">
-          ${panes}
+        <div class="chart-arena">
+          ${renderTreeNode(state, tree)}
         </div>
       `}
     </section>

@@ -54,9 +54,16 @@ import {
   closeActivePanel,
   updateColumnMeta,
   addColumnMeta,
+  toggleRowExclusion,
+  clearAllExclusions,
+  setExpandedProfileColumn,
+  setProfileCache,
   focusChart,
   addChart,
   removeChart,
+  splitPane,
+  setSplitRatio,
+  applyLayoutTemplate,
   collectChartIds,
   createSlot,
   swapSlots,
@@ -167,7 +174,7 @@ function render() {
 
   if (state.route === "workspace") {
     // Collect visible chart IDs from the layout tree
-    const visibleIds = state.chartLayout.slots;
+    const visibleIds = collectChartIds(state.chartLayout);
 
     for (const id of visibleIds) {
       const mount = document.getElementById(`chart-mount-${id}`);
@@ -339,10 +346,11 @@ function commitEvidenceRail(next) {
 function buildSlots(analyses, baseContext) {
   const slots = {};
   state.chartOrder.forEach((id, i) => {
-    const t = transformAnalysis(analyses[i]);
+    const p = state.charts[id].params;
+    const t = transformAnalysis(analyses[i], p.usl, p.lsl);
     slots[id] = {
-      context: applyParamsToContext(baseContext, state.charts[id].params),
-      limits: t.limits, capability: t.capability, violations: t.violations,
+      context: applyParamsToContext(baseContext, p),
+      limits: { ...t.limits, target: p.target ?? null }, capability: t.capability, violations: t.violations,
       sigma: t.sigma, zones: t.zones, chartValues: t.chartValues,
       chartLabels: t.chartLabels, phases: t.phases,
     };
@@ -405,10 +413,11 @@ async function reanalyze() {
     const slots = {};
     state.chartOrder.forEach((id, i) => {
       if (analysisResults[i].status === "fulfilled") {
-        const t = transformAnalysis(analysisResults[i].value);
+        const p = state.charts[id].params;
+        const t = transformAnalysis(analysisResults[i].value, p.usl, p.lsl);
         slots[id] = {
-          context: applyParamsToContext(baseContext, state.charts[id].params),
-          limits: t.limits, capability: t.capability, violations: t.violations,
+          context: applyParamsToContext(baseContext, p),
+          limits: { ...t.limits, target: p.target ?? null }, capability: t.capability, violations: t.violations,
           sigma: t.sigma, zones: t.zones, chartValues: t.chartValues,
           chartLabels: t.chartLabels, phases: t.phases,
         };
@@ -504,7 +513,7 @@ root.addEventListener("click", async (e) => {
     case "toggle-data-table":  commit(toggleDataTable(state)); break;
     // "set-layout" removed — replaced by "set-snap-layout"
     case "add-chart-from-rail": {
-      // Clone focused chart's type, create new chart, auto-focus it
+      // Split focused pane horizontally, clone focused chart type
       const focusedType = getFocused(state).params.chart_type;
       state = addChart(state, { chartType: focusedType });
       commit(state);
@@ -512,20 +521,38 @@ root.addEventListener("click", async (e) => {
       if (state.activeDatasetId) reanalyze();
       break;
     }
-    case "set-snap-layout": {
-      const template = t.dataset.template;
-      if (template) {
-        commitLayout(setChartLayout(state, template));
+    case "split-pane": {
+      const chartId = t.dataset.chartId;
+      const direction = t.dataset.direction; // "h" or "v"
+      if (chartId && direction) {
+        const focusedType = state.charts[chartId]?.params?.chart_type || "imr";
+        state = splitPane(state, chartId, direction, { chartType: focusedType });
+        commit(state);
         saveLayout();
+        if (state.activeDatasetId) reanalyze();
       }
       break;
     }
-    // set-layout-preset removed — replaced by set-snap-layout above
+    case "set-snap-layout": {
+      const template = t.dataset.template;
+      if (template) {
+        const prev = collectChartIds(state.chartLayout);
+        state = applyLayoutTemplate(state, template);
+        // Destroy D3 instances for charts removed by template change
+        const next = new Set(collectChartIds(state.chartLayout));
+        for (const id of prev) {
+          if (!next.has(id) && charts[id]) { charts[id].destroy(); delete charts[id]; }
+        }
+        commitLayout(state);
+        saveLayout();
+        if (state.activeDatasetId) reanalyze();
+      }
+      break;
+    }
     case "remove-chart": {
       const chartId = t.dataset.chartId;
       if (chartId) {
         state = removeChart(state, chartId);
-        // Destroy the D3 chart instance
         if (charts[chartId]) { charts[chartId].destroy(); delete charts[chartId]; }
         commit(state);
         saveLayout();
@@ -569,6 +596,14 @@ root.addEventListener("click", async (e) => {
     case "load-prep-to-chart": {
       if (state.dataPrep.selectedDatasetId) {
         await loadDatasetById(state.dataPrep.selectedDatasetId);
+        // Apply row exclusions from data prep to chart points
+        const excludedSet = new Set(state.dataPrep.excludedRows || []);
+        if (excludedSet.size > 0 && state.points.length > 0) {
+          state = {
+            ...state,
+            points: state.points.map((p, i) => excludedSet.has(i) ? { ...p, excluded: true } : p),
+          };
+        }
         commit(navigate(state, "workspace"));
       }
       break;
@@ -881,6 +916,56 @@ root.addEventListener("click", async (e) => {
       }
       break;
     }
+    /* ═══ Phase 3 handlers ═══ */
+    case "prep-validate": { commit(setActivePanel(state, 'validate')); break; }
+    case "toggle-row-exclude": {
+      const rowIdx = Number(t.dataset.row);
+      if (!isNaN(rowIdx)) {
+        commit(toggleRowExclusion(state, rowIdx));
+      }
+      break;
+    }
+    case "prep-restore-all": {
+      commit(clearAllExclusions(state));
+      break;
+    }
+    case "prep-apply-validate": {
+      const vcol = root.querySelector('[data-field="validate-col"]')?.value;
+      const vtype = root.querySelector('[data-field="validate-type"]')?.value;
+      if (!vcol || !vtype) break;
+      let rule;
+      if (vtype === 'range') {
+        const min = root.querySelector('[data-field="validate-min"]')?.value;
+        const max = root.querySelector('[data-field="validate-max"]')?.value;
+        rule = { type: 'range', min: min !== '' ? Number(min) : null, max: max !== '' ? Number(max) : null };
+      } else if (vtype === 'allowed') {
+        const valStr = root.querySelector('[data-field="validate-values"]')?.value || '';
+        rule = { type: 'allowed', values: valStr.split(',').map(s => s.trim()).filter(Boolean) };
+      } else if (vtype === 'regex') {
+        const pattern = root.querySelector('[data-field="validate-pattern"]')?.value || '';
+        rule = { type: 'regex', pattern };
+      }
+      if (rule) {
+        state = updateColumnMeta(state, vcol, { validation: rule });
+        state = closeActivePanel(state);
+        render();
+      }
+      break;
+    }
+    case "prep-clear-validate": {
+      const vcol = root.querySelector('[data-field="validate-col"]')?.value;
+      if (vcol) {
+        state = updateColumnMeta(state, vcol, { validation: null });
+        state = closeActivePanel(state);
+        render();
+      }
+      break;
+    }
+    case "toggle-profile-column": {
+      const col = t.dataset.column;
+      if (col) commit(setExpandedProfileColumn(state, col));
+      break;
+    }
   }
 });
 
@@ -941,40 +1026,78 @@ root.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
 });
 
-/* ═══ Drag-to-reorder chart slots (Snap Layout style) ═══ */
+/* ═══ Divider drag — resize split panes ═══ */
+let dividerDrag = null;
+
+/* ═══ Header drag — reorder chart slots ═══ */
 let dragState = null;
 
 root.addEventListener("pointerdown", (e) => {
+  // ── Divider resize drag ──
+  const divider = e.target.closest(".split-divider");
+  if (divider) {
+    e.preventDefault();
+    e.stopPropagation();
+    const container = divider.closest(".split-container");
+    if (!container) return;
+    divider.setPointerCapture(e.pointerId);
+    divider.classList.add("split-divider-active");
+    dividerDrag = {
+      containerId: divider.dataset.containerId,
+      direction: divider.dataset.direction,
+      containerEl: container,
+      rect: container.getBoundingClientRect(),
+      firstChild: container.querySelector(".split-child"),
+    };
+    return;
+  }
+
+  // ── Header drag to swap positions ──
   const handle = e.target.closest("[data-drag-handle]");
   if (!handle) return;
   if (state.chartOrder.length < 2) return;
   const pane = handle.closest(".chart-pane");
   if (!pane) return;
 
+  // Don't start drag if clicking a button inside the titlebar
+  if (e.target.closest("button")) return;
+
   e.preventDefault();
   const chartId = handle.dataset.dragHandle;
-
   const ghost = pane.cloneNode(true);
   ghost.classList.add("drag-ghost");
   ghost.style.width = pane.offsetWidth + "px";
   ghost.style.height = pane.offsetHeight + "px";
   document.body.appendChild(ghost);
   pane.classList.add("dragging");
-
   dragState = { chartId, pane, ghost, dropTarget: null };
 });
 
 root.addEventListener("pointermove", (e) => {
+  // ── Divider resize ──
+  if (dividerDrag) {
+    const { containerId, direction, firstChild, rect } = dividerDrag;
+    const freshRect = dividerDrag.containerEl.getBoundingClientRect();
+    let ratio;
+    if (direction === "h") {
+      ratio = (e.clientX - freshRect.left) / freshRect.width;
+    } else {
+      ratio = (e.clientY - freshRect.top) / freshRect.height;
+    }
+    ratio = Math.max(0.1, Math.min(0.9, ratio));
+    dividerDrag.pendingRatio = ratio;
+    // Update DOM immediately for smooth feedback
+    if (firstChild) firstChild.style.flex = `0 0 ${(ratio * 100).toFixed(2)}%`;
+    return;
+  }
+
+  // ── Header drag ──
   if (!dragState) return;
-  const { ghost, chartId } = dragState;
+  const { ghost } = dragState;
   ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + "px";
   ghost.style.top = (e.clientY - 20) + "px";
-
-  // Highlight the slot we'd swap with
   root.querySelectorAll(".chart-pane.drop-target").forEach(p => p.classList.remove("drop-target"));
-
-  const allPanes = [...root.querySelectorAll(".chart-pane:not(.dragging)")];
-  for (const p of allPanes) {
+  for (const p of root.querySelectorAll(".chart-pane:not(.dragging)")) {
     const r = p.getBoundingClientRect();
     if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
       p.classList.add("drop-target");
@@ -985,13 +1108,30 @@ root.addEventListener("pointermove", (e) => {
   dragState.dropTarget = null;
 });
 
+function endDividerDrag() {
+  if (!dividerDrag) return;
+  const { containerId, pendingRatio } = dividerDrag;
+  root.querySelectorAll(".split-divider-active").forEach(el => el.classList.remove("split-divider-active"));
+  if (pendingRatio !== undefined) {
+    state = setSplitRatio(state, containerId, pendingRatio);
+    saveLayout();
+    // Re-render D3 charts with new sizes
+    const visibleIds = collectChartIds(state.chartLayout);
+    requestAnimationFrame(() => {
+      for (const id of visibleIds) {
+        if (charts[id]) charts[id].update(buildChartData(id));
+      }
+    });
+  }
+  dividerDrag = null;
+}
+
 function endDrag() {
   if (!dragState) return;
   const { pane, ghost, chartId, dropTarget } = dragState;
   pane.classList.remove("dragging");
   ghost.remove();
   root.querySelectorAll(".chart-pane.drop-target").forEach(p => p.classList.remove("drop-target"));
-
   if (dropTarget && dropTarget !== chartId) {
     state = swapSlots(state, chartId, dropTarget);
     commitLayout(state);
@@ -1000,15 +1140,51 @@ function endDrag() {
   dragState = null;
 }
 
-root.addEventListener("pointerup", endDrag);
-root.addEventListener("pointercancel", endDrag);
+root.addEventListener("pointerup", (e) => { endDividerDrag(); endDrag(); });
+root.addEventListener("pointercancel", (e) => { endDividerDrag(); endDrag(); });
+
+/* ═══ Pane titlebar right-click — split/close context menu ═══ */
+let paneMenu = null;
+
+function closePaneMenu() {
+  if (paneMenu) { paneMenu.remove(); paneMenu = null; }
+}
+
+function showPaneContextMenu(x, y, chartId) {
+  closePaneMenu();
+  const isOnly = collectChartIds(state.chartLayout).length <= 1;
+  const menu = document.createElement("div");
+  menu.className = "pane-context-menu";
+  menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:9999`;
+  menu.innerHTML = `
+    <button data-action="split-pane" data-chart-id="${chartId}" data-direction="h">Split Right</button>
+    <button data-action="split-pane" data-chart-id="${chartId}" data-direction="v">Split Down</button>
+    <div class="pane-menu-sep"></div>
+    <button data-action="remove-chart" data-chart-id="${chartId}" ${isOnly ? "disabled" : ""}>Close Pane</button>
+  `;
+  document.body.appendChild(menu);
+  paneMenu = menu;
+}
+
+document.addEventListener("pointerdown", (e) => {
+  if (paneMenu && !paneMenu.contains(e.target)) closePaneMenu();
+}, true);
 
 root.addEventListener("contextmenu", (e) => {
+  // ── Pane titlebar right-click ──
+  const titlebar = e.target.closest(".chart-pane-titlebar");
+  if (titlebar) {
+    e.preventDefault();
+    const pane = titlebar.closest(".chart-pane[data-chart-id]");
+    if (pane?.dataset.chartId) showPaneContextMenu(e.clientX, e.clientY, pane.dataset.chartId);
+    return;
+  }
+
+  // ── Chart canvas right-click (existing behavior) ──
   if (e.defaultPrevented) return;
   const ch = e.target.closest(".chart-stage");
   if (!ch) return;
   e.preventDefault();
-  // Focus the chart pane that was right-clicked
   const pane = ch.closest('.chart-pane[data-chart-id]');
   if (pane && pane.dataset.chartId !== state.focusedChartId) {
     state = focusChart(state, pane.dataset.chartId);
@@ -1042,6 +1218,19 @@ root.addEventListener("change", async (e) => {
   if (e.target.matches('[data-field="bin-custom"]')) {
     const breaksInput = root.querySelector('[data-field="bin-breaks"]');
     if (breaksInput) breaksInput.style.display = e.target.checked ? '' : 'none';
+    return;
+  }
+  // Phase 3: validate type conditional visibility
+  if (e.target.matches('[data-field="validate-type"]')) {
+    const vt = e.target.value;
+    const minEl = root.querySelector('[data-field="validate-min"]');
+    const maxEl = root.querySelector('[data-field="validate-max"]');
+    const valuesEl = root.querySelector('[data-field="validate-values"]');
+    const patternEl = root.querySelector('[data-field="validate-pattern"]');
+    if (minEl) minEl.style.display = vt === 'range' ? '' : 'none';
+    if (maxEl) maxEl.style.display = vt === 'range' ? '' : 'none';
+    if (valuesEl) valuesEl.style.display = vt === 'allowed' ? '' : 'none';
+    if (patternEl) patternEl.style.display = vt === 'regex' ? '' : 'none';
     return;
   }
   if (e.target.matches('[data-field="type-col"]')) {
@@ -1173,6 +1362,24 @@ root.addEventListener("change", async (e) => {
     }
     return;
   }
+  if (chartId && baseAction === "set-usl") {
+    const v = e.target.value.trim();
+    state = setChartParams(state, chartId, { usl: v !== '' ? parseFloat(v) : null });
+    await reanalyze();
+    return;
+  }
+  if (chartId && baseAction === "set-lsl") {
+    const v = e.target.value.trim();
+    state = setChartParams(state, chartId, { lsl: v !== '' ? parseFloat(v) : null });
+    await reanalyze();
+    return;
+  }
+  if (chartId && baseAction === "set-target") {
+    const v = e.target.value.trim();
+    state = setChartParams(state, chartId, { target: v !== '' ? parseFloat(v) : null });
+    await reanalyze();
+    return;
+  }
 });
 
 /* ═══ Retry handler ═══ */
@@ -1188,8 +1395,7 @@ const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
 function saveLayout() {
   try {
     const data = {
-      template: state.chartLayout.template,
-      slots: state.chartLayout.slots,
+      tree: state.chartLayout.tree,
       chartOrder: state.chartOrder,
       focusedChartId: state.focusedChartId,
       nextChartId: state.nextChartId,
@@ -1208,10 +1414,19 @@ function restoreLayout() {
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (!data.chartOrder || !data.chartParams) return null;
-    // Migrate old tree-based layouts to snap layout
-    if (!data.template || !data.slots) {
-      data.template = data.chartOrder.length <= 1 ? "1" : "2h";
-      data.slots = [...data.chartOrder];
+    // Migrate old flat snap-layout format to tree format
+    if (!data.tree) {
+      const slots = data.slots || data.chartOrder;
+      if (slots.length === 1) {
+        data.tree = { type: "pane", chartId: slots[0] };
+      } else {
+        // Build a simple horizontal split tree for 2+ charts
+        let tree = { type: "pane", chartId: slots[slots.length - 1] };
+        for (let i = slots.length - 2; i >= 0; i--) {
+          tree = { type: "container", id: `cm${i}`, direction: "h", ratio: 1 / (slots.length - i), children: [{ type: "pane", chartId: slots[i] }, tree] };
+        }
+        data.tree = tree;
+      }
     }
     return data;
   } catch { return null; }
@@ -1241,7 +1456,7 @@ async function main() {
         chartOrder: saved.chartOrder,
         nextChartId: saved.nextChartId || saved.chartOrder.length + 1,
         focusedChartId: saved.focusedChartId || saved.chartOrder[0],
-        chartLayout: { template: saved.template, slots: saved.slots },
+        chartLayout: { tree: saved.tree },
       };
     }
 

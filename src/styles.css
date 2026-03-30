@@ -796,32 +796,60 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--chart-text-3);
 }
 
-/* ═══ Chart Arena — Snap Layout Grid ═══ */
+/* ═══ Chart Arena — Freeform Split Layout ═══ */
+
+/* The arena itself is a single flex container — the tree does the rest */
 .chart-arena {
-  display: grid;
-  flex: 1;
+  display: flex;
+  flex: 1 1 0;
   min-height: 0;
-  gap: 1px;
-  background: var(--chart-border, #DCE0E5);
-  /* grid-template-columns/rows set inline; areas via data-template */
+  min-width: 0;
+  overflow: hidden;
 }
-.chart-arena[data-template="1"]   { grid-template-areas: "a"; }
-.chart-arena[data-template="2h"]  { grid-template-areas: "a b"; }
-.chart-arena[data-template="2v"]  { grid-template-areas: "a" "b"; }
-.chart-arena[data-template="3h"]  { grid-template-areas: "a b c"; }
-.chart-arena[data-template="2x2"] { grid-template-areas: "a b" "c d"; }
-.chart-arena[data-template="1+2"] { grid-template-areas: "a a" "b c"; }
-.chart-arena[data-template="2+1"] { grid-template-areas: "a b" "c c"; }
+
+/* Split containers (binary tree internal nodes) */
+.split-container {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.split-container.split-h { flex-direction: row; }
+.split-container.split-v { flex-direction: column; }
+
+/* Split children — each wraps either a pane or a nested container */
+.split-child {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Draggable divider between split children */
+.split-divider {
+  flex: 0 0 4px;
+  background: var(--border-1, rgba(0,0,0,0.4));
+  transition: background 60ms ease;
+  z-index: 10;
+  position: relative;
+}
+.split-divider-h { cursor: col-resize; }
+.split-divider-v { cursor: row-resize; }
+.split-divider:hover,
+.split-divider-active {
+  background: var(--blue, #2D72D2) !important;
+}
 
 /* Chart Pane */
 .chart-pane {
   display: flex;
   flex-direction: column;
-  background: var(--chart-bg);
-  overflow: hidden;
+  flex: 1 1 0;
   min-height: 0;
   min-width: 0;
-  flex: 1;             /* fill arena when solo, fill grid cell in split */
+  overflow: hidden;
+  background: var(--chart-bg);
 }
 
 /* Focused pane indicator — VS Code style: accent bar + subtle bg shift */
@@ -845,25 +873,47 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 500;
 }
 
+/* Pane actions group (split + close buttons) */
+.pane-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+.chart-pane-titlebar:hover .pane-actions {
+  opacity: 1;
+}
+
+/* Split pane buttons */
+.pane-split-btn {
+  background: none;
+  border: none;
+  color: var(--chart-text-3);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+.pane-split-btn:hover {
+  background: rgba(45,114,210,0.15);
+  color: var(--blue, #2D72D2);
+}
+
 /* Pane close button */
 .pane-close {
-  margin-left: auto;
   background: none;
   border: none;
   color: var(--chart-text-3);
   cursor: pointer;
   font-size: 14px;
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 3px;
   line-height: 1;
-  opacity: 0;
-  transition: opacity 100ms ease;
 }
-
-.chart-pane-titlebar:hover .pane-close {
-  opacity: 1;
-}
-
 .pane-close:hover {
   background: rgba(205,66,70,0.15);
   color: var(--red, #CD4246);
@@ -874,18 +924,16 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 4px 8px 4px 12px;
   background: var(--chart-surface);
   cursor: grab;
   user-select: none;
   border-bottom: 1px solid var(--chart-border);
+  flex-shrink: 0;
 }
-
 .chart-pane-titlebar:active { cursor: grabbing; }
 
-.chart-pane.dragging {
-  opacity: 0.3;
-}
+.chart-pane.dragging { opacity: 0.3; }
 
 .grip-icon {
   color: var(--chart-text-3);
@@ -903,14 +951,6 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 4px;
   background: var(--chart-bg);
   overflow: hidden;
-}
-
-/* (drop-zone styles removed — snap layout uses slot swap, not edge zones) */
-
-.grip-icon {
-  color: var(--chart-text-3);
-  font-size: 10px;
-  opacity: 0.5;
 }
 
 .method-dot {
@@ -943,7 +983,43 @@ h1, h2, h3, h4, h5, h6 {
 .pane-caps {
   display: flex;
   gap: 10px;
-  margin-left: auto;
+}
+
+/* Pane right-click context menu (split/close) */
+.pane-context-menu {
+  background: var(--bg-3, #2F343C);
+  border: 1px solid var(--border-2, rgba(255,255,255,0.1));
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  padding: 4px;
+  min-width: 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pane-context-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--t-1, #F6F7F9);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.pane-context-menu button:hover:not(:disabled) {
+  background: var(--bg-4, #383E47);
+}
+.pane-context-menu button:disabled {
+  color: var(--t-4, #5F6B7C);
+  cursor: default;
+}
+.pane-menu-sep {
+  height: 1px;
+  background: var(--border-2, rgba(255,255,255,0.1));
+  margin: 3px 0;
 }
 
 /* Layout control buttons */
@@ -1619,6 +1695,42 @@ h1, h2, h3, h4, h5, h6 {
 }
 .stat-label { font-size: 10px; font-weight: 600; color: var(--t-4); text-transform: uppercase; letter-spacing: 0.06em; }
 .stat-value { font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600; color: var(--t-1); }
+
+/* ── Phase 3: row exclusion ── */
+.prep-table .row-excluded td { opacity: 0.25; }
+.prep-table .row-excluded td:first-child { opacity: 1; }
+.prep-table td:first-child input[type="checkbox"] { margin-right: 4px; vertical-align: middle; }
+.prep-excluded-count {
+  font-size: 9px; font-weight: 600; color: var(--amber);
+  padding: 2px 6px; background: rgba(245,158,11,0.12); border-radius: 3px; white-space: nowrap;
+}
+
+/* ── Phase 3: cell validation ── */
+.prep-table td.cell-invalid {
+  background: rgba(239,68,68,0.12);
+  border-bottom: 2px solid var(--red);
+}
+.validation-badge {
+  font-size: 8px; font-weight: 700; color: var(--green);
+  background: var(--green-dim); border-radius: 2px; padding: 0 3px;
+}
+
+/* ── Phase 3: column profiling ── */
+.col-spark {
+  display: inline-flex; align-items: flex-end; gap: 0; height: 12px; margin-left: 4px; flex-shrink: 0;
+}
+.col-spark span {
+  width: 3px; background: var(--t-4); border-radius: 0.5px 0.5px 0 0; min-height: 1px;
+}
+.column-profile {
+  font-size: 10px; padding: 4px 0 4px 8px; margin: 2px 0 4px; border-left: 2px solid var(--bg-4);
+}
+.column-profile .stat-row { padding: 1px 0; border-bottom: none; }
+.column-profile .stat-label { font-size: 9px; }
+.column-profile .stat-value { font-size: 10px; }
+.column-item { cursor: default; }
+.column-expanded { background: var(--bg-3); border-radius: var(--r-xs); }
+.column-name-click:hover { color: var(--blue); }
 
 @media (max-width: 900px) {
   .dataprep-grid { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; height: auto; }
