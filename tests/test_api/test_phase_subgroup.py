@@ -165,11 +165,12 @@ async def test_phase_top_level_limits_concatenated(phase_db):
 @pytest.mark.asyncio
 async def test_no_phase_column_single_phase(phase_db):
     """Without phase column, phases list is empty (backward compat)."""
-    # Remove the phase column role
+    # Remove only the phase column role (keep the value column role)
     from sqlalchemy import update
     await phase_db.execute(
         update(DatasetColumn)
         .where(DatasetColumn.dataset_id == PHASE_DATASET_ID)
+        .where(DatasetColumn.role == "phase")
         .values(role=None)
     )
     await phase_db.commit()
@@ -352,11 +353,12 @@ async def test_n_trials_override(attr_db):
 @pytest.mark.asyncio
 async def test_explicit_phase_column_param(phase_db):
     """Phase column can be specified explicitly via request param."""
-    # Remove the column role so auto-derive won't find it
+    # Remove only the phase column role so auto-derive won't find it (keep value role)
     from sqlalchemy import update
     await phase_db.execute(
         update(DatasetColumn)
         .where(DatasetColumn.dataset_id == PHASE_DATASET_ID)
+        .where(DatasetColumn.role == "phase")
         .values(role=None)
     )
     await phase_db.commit()
