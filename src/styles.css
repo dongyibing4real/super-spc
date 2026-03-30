@@ -1812,7 +1812,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 .th-name-row {
   display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
-  margin-bottom: 5px;
+  margin-bottom: 5px; color: var(--t-2);
 }
 .th-profile { display: flex; flex-direction: column; gap: 2px; }
 
@@ -1824,10 +1824,10 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Numeric mini histogram */
 .th-mini-hist {
-  display: flex; align-items: flex-end; gap: 1px; height: 22px;
+  display: flex; align-items: flex-end; gap: 1px; height: 14px;
 }
 .th-hist-bar {
-  flex: 1; background: rgba(59,130,246,0.4); border-radius: 1px 1px 0 0; min-height: 1px;
+  flex: 1; background: rgba(45,114,210,0.45); border-radius: 1px 1px 0 0; min-height: 1px;
 }
 
 /* Text top-value mini bars */
