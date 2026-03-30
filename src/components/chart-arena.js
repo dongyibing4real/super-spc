@@ -134,24 +134,11 @@ export function renderDataTable(state, chartId) {
 /* ═══ Main chart arena ═══ */
 
 export function renderChartArena(state) {
-  const focusedSlot = state.charts[state.focusedChartId] || state.charts[state.chartOrder[0]];
-
   return `
     <section class="chart-card">
-      <div class="chart-toolbar">
-        <div class="toolbar-title">
-          <h3>${focusedSlot.context.metric?.label || ""} — ${focusedSlot.context.chartType?.label || ""}</h3>
-          <span class="toolbar-window">${focusedSlot.context.window || ""}</span>
-        </div>
-        <div class="layout-controls">
-          <button class="layout-btn ${state.showDataTable ? "active" : ""}" data-action="toggle-data-table" title="Data Table">☰</button>
-        </div>
+      <div class="chart-arena">
+        ${renderRows(state)}
       </div>
-      ${state.showDataTable ? renderDataTable(state) : `
-        <div class="chart-arena">
-          ${renderRows(state)}
-        </div>
-      `}
     </section>
   `;
 }

@@ -772,31 +772,7 @@ h1, h2, h3, h4, h5, h6 {
   min-height: 200px;   /* minimum usable chart height */
 }
 
-.chart-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: var(--chart-surface);
-  border-bottom: 1px solid var(--chart-border);
-}
-
-.toolbar-title { display: flex; align-items: baseline; gap: 8px; }
-
-.chart-toolbar h3 {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--chart-text);
-}
-
-.toolbar-window {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--chart-text-3);
-}
-
-/* ═══ Chart Arena — Freeform Split Layout ═══ */
+/* ═══ Chart Arena — Row-Grid Layout ═══ */
 
 /* The arena is a column-direction flex container of chart-rows */
 .chart-arena {
@@ -1037,36 +1013,6 @@ h1, h2, h3, h4, h5, h6 {
   height: 1px;
   background: var(--border-2, rgba(255,255,255,0.1));
   margin: 3px 0;
-}
-
-/* Layout control buttons */
-.layout-controls {
-  display: flex;
-  gap: 2px;
-  margin-left: auto;
-}
-
-.layout-btn {
-  padding: 4px 8px;
-  border: 1px solid var(--chart-border);
-  border-radius: var(--r-xs, 3px);
-  background: var(--chart-bg);
-  font-size: 12px;
-  color: var(--chart-text-3);
-  cursor: pointer;
-  white-space: pre;
-  line-height: 1;
-  min-width: 28px;
-  min-height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.layout-btn.active {
-  background: var(--chart-surface);
-  color: var(--chart-text);
-  border-color: var(--chart-text-3);
 }
 
 /* Drag-to-reorder: drop target highlight */

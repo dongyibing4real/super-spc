@@ -32,7 +32,6 @@ import {
   setDatasets,
   setError,
   setLoadingState,
-  toggleDataTable,
   setXDomainOverride,
   setYDomainOverride,
   toggleChartOption,
@@ -297,14 +296,7 @@ function commitWorkspace(next) {
   const rail = root.querySelector(".recipe-rail");
   if (rail) morphEl(rail, renderRecipeRail(state));
 
-  // 2. Chart toolbar title (shows focused chart info)
-  const focused = getFocused(state);
-  const title = root.querySelector(".toolbar-title h3");
-  if (title) title.textContent = `${focused.context.metric.label} \u2014 ${focused.context.chartType.label}`;
-  const windowEl = root.querySelector(".toolbar-window");
-  if (windowEl) windowEl.textContent = focused.context.window;
-
-  // 3. Pane method labels + capability badges
+  // 2. Pane method labels + capability badges
   for (const id of state.chartOrder) {
     const paneMethod = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-method`);
     if (paneMethod) paneMethod.textContent = state.charts[id].context.chartType?.label || "";
@@ -446,10 +438,6 @@ root.addEventListener("click", async (e) => {
       });
       commitRecipeRail(state);
       commitEvidenceRail(state);
-      // Update toolbar title
-      const focused = getFocused(state);
-      const titleEl = root.querySelector(".toolbar-title h3");
-      if (titleEl) titleEl.textContent = `${focused.context.metric.label} \u2014 ${focused.context.chartType.label}`;
     }
   }
 
@@ -508,7 +496,6 @@ root.addEventListener("click", async (e) => {
     case "export-report":      commit(exportReport(state)); break;
     case "toggle-export-failure": commit(toggleReportFailureMode(state)); break;
     case "clear-notice":       commitNotice(clearNotice(state)); break;
-    case "toggle-data-table":  commit(toggleDataTable(state)); break;
     case "toggle-pane-table": {
       const cid = t.dataset.chartId;
       if (cid) commit(togglePaneDataTable(state, cid));
