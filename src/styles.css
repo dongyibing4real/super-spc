@@ -1478,6 +1478,65 @@ h1, h2, h3, h4, h5, h6 {
   height: 100%; color: var(--t-4); font-size: 12px;
 }
 
+/* ── data prep: toolbar ── */
+.prep-toolbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 8px; gap: 6px;
+  background: var(--bg-3); border-bottom: 1px solid var(--border-1);
+  min-height: 32px;
+}
+.prep-toolbar-left, .prep-toolbar-right { display: flex; align-items: center; gap: 4px; }
+.prep-tool-btn {
+  font-size: 10px; font-weight: 600; padding: 3px 8px;
+  background: transparent; border: 1px solid var(--border-2);
+  color: var(--t-3); border-radius: 4px; cursor: pointer;
+}
+.prep-tool-btn:hover { border-color: var(--border-3); color: var(--t-1); }
+.prep-save-btn { border-color: var(--blue); color: var(--blue-bright); }
+.prep-save-btn:hover { background: var(--blue-dim); }
+.prep-transform-count { font-size: 9px; color: var(--t-4); font-weight: 600; }
+.prep-unsaved { font-size: 9px; color: var(--amber); font-weight: 600; }
+.column-toggle {
+  background: none; border: none; cursor: pointer; padding: 0 2px;
+  font-size: 10px; color: var(--t-4); line-height: 1;
+}
+.column-toggle:hover { color: var(--t-2); }
+.column-item { display: flex; align-items: center; gap: 4px; padding: 2px 0; }
+.column-item.column-hidden { opacity: 0.4; }
+
+/* ── data prep: inline panels ── */
+.prep-tool-btn.active { border-color: var(--blue); color: var(--blue-bright); background: var(--blue-dim); }
+.prep-panel {
+  background: var(--bg-2); border-bottom: 1px solid var(--border-2);
+  padding: 8px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+.prep-panel-label {
+  font-size: 10px; font-weight: 600; color: var(--t-3); white-space: nowrap;
+}
+.prep-panel select, .prep-panel input[type="text"] {
+  padding: 3px 6px; background: var(--bg-3); color: var(--t-1);
+  border: 1px solid var(--border-2); border-radius: var(--r-xs);
+  font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+}
+.prep-panel select:focus, .prep-panel input[type="text"]:focus {
+  outline: 1px solid var(--blue); border-color: var(--blue);
+}
+.prep-panel input[type="text"] { min-width: 80px; }
+.prep-panel-apply {
+  font-size: 10px; font-weight: 600; padding: 3px 10px;
+  background: var(--blue-dim); border: 1px solid var(--blue);
+  color: var(--blue-bright); border-radius: var(--r-xs); cursor: pointer;
+}
+.prep-panel-apply:hover { background: rgba(45,114,210,0.25); }
+.prep-panel-check {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-family: 'IBM Plex Mono', monospace; color: var(--t-2);
+  cursor: pointer; user-select: none;
+}
+.prep-panel-check input[type="checkbox"] { accent-color: var(--blue); }
+.prep-panel-preview { font-size: 10px; color: var(--t-4); font-weight: 600; margin-left: auto; }
+.prep-panel-sep { width: 1px; height: 18px; background: var(--border-2); }
+
 /* ── data prep: column info (right panel) ── */
 .column-info { overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 
@@ -1903,3 +1962,244 @@ button:focus-visible { outline-offset: 0; }
 /* ═══════════════════════════════════════════════════
    PAIRED CHART — location + dispersion stacked
    ═══════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════
+   FINDINGS DASHBOARD
+   ═══════════════════════════════════════════════════ */
+
+.findings-health-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-sm, 4px);
+  margin-bottom: 8px;
+}
+.health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.health-badge.good { background: var(--green-dim); color: var(--green); }
+.health-badge.warning { background: var(--amber-dim); color: var(--amber); }
+.health-badge.danger { background: var(--red-dim); color: var(--red); }
+.health-badge.info { background: var(--blue-dim); color: var(--blue); }
+
+.health-metrics {
+  display: flex;
+  gap: 16px;
+  margin-left: auto;
+}
+.health-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.health-metric .eyebrow { font-size: 9px; color: var(--t-4); }
+.health-metric strong { font-size: 12px; }
+.health-metric strong.good { color: var(--green); }
+.health-metric strong.warning { color: var(--amber); }
+.health-metric strong.danger { color: var(--red); }
+
+.findings-count-badge { display: flex; gap: 8px; font-size: 11px; font-weight: 600; }
+.findings-count-badge .danger { color: var(--red); }
+.findings-count-badge .warning { color: var(--amber); }
+
+/* Dashboard grid: cards left, detail right */
+.findings-dashboard-grid {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* Left column: finding cards grouped by category */
+.findings-card-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+.finding-category-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.finding-category-group > .eyebrow {
+  padding: 0 4px;
+  margin-bottom: 2px;
+}
+
+/* Finding cards */
+.finding-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-2);
+  border-left: 3px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: var(--t-1);
+  transition: border-color 0.1s;
+}
+.finding-card:hover { border-color: var(--border-3); }
+.finding-card.active { border-left-color: var(--blue); background: var(--bg-4); }
+.finding-card.active.good { border-left-color: var(--green); }
+.finding-card.active.warning { border-left-color: var(--amber); }
+.finding-card.active.danger { border-left-color: var(--red); }
+
+.finding-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.finding-card-head h4 { font-size: 12px; font-weight: 600; margin: 0; }
+
+.finding-severity-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.finding-severity-dot.good { background: var(--green); }
+.finding-severity-dot.warning { background: var(--amber); }
+.finding-severity-dot.danger { background: var(--red); }
+.finding-severity-dot.info { background: var(--blue); }
+
+.finding-card-metric {
+  font-size: 10px;
+  color: var(--t-3);
+  padding-left: 13px;
+}
+
+/* Right column: detail panel */
+.findings-detail-column {
+  min-height: 200px;
+}
+.finding-detail-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.finding-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.finding-detail-head h4 { font-size: 14px; font-weight: 700; margin: 0; }
+.finding-detail-text { color: var(--t-2); font-size: 12px; line-height: 1.5; margin: 0; }
+
+.finding-metric-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border-radius: 3px;
+}
+.finding-metric-hero .data-large {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.finding-context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+}
+.finding-context-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+  background: var(--bg-2);
+  border-radius: 2px;
+}
+.finding-context-grid .eyebrow { font-size: 9px; color: var(--t-4); }
+.finding-context-grid strong { font-size: 11px; color: var(--t-2); }
+
+/* Summary stats table */
+.findings-stats-table {
+  margin-top: 4px;
+}
+.findings-stats-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 3px;
+}
+.findings-stats-table th {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--t-4);
+  padding: 5px 8px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-2);
+}
+.findings-stats-table td {
+  font-size: 12px;
+  padding: 6px 8px;
+  text-align: center;
+  color: var(--t-2);
+  font-family: "IBM Plex Mono", monospace;
+}
+
+/* AI Insights section */
+.findings-ai-section {
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+.findings-ai-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.findings-ai-header p {
+  color: var(--t-3);
+  font-size: 11px;
+  margin: 2px 0 0;
+}
+.findings-ai-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.ai-placeholder-card {
+  padding: 8px;
+  background: var(--bg-3);
+  border: 1px dashed var(--border-2);
+  border-radius: 3px;
+}
+.ai-placeholder-card .eyebrow { margin-bottom: 4px; }
+.ai-placeholder-card p { font-size: 11px; margin: 0; }
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .findings-dashboard-grid { grid-template-columns: 1fr; }
+  .findings-ai-cards { grid-template-columns: 1fr; }
+}

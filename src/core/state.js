@@ -271,6 +271,8 @@ export function createInitialState() {
     points: [],
     transforms: [],
     findings: [],
+    structuralFindings: [],
+    selectedFindingId: null,
     reportTemplate: {
       title: "SPC Investigation Report",
       sections: ["Executive summary", "Evidence ledger", "Method comparison", "Recommended actions"]
@@ -320,6 +322,13 @@ export function createInitialState() {
       error: null,
       sortColumn: 'sequence_index',
       sortDirection: 'asc',
+      rawRows: null,
+      arqueroTable: null,
+      transforms: [],
+      hiddenColumns: [],
+      columnOrder: [],
+      unsavedChanges: false,
+      activePanel: null,
     },
     columnConfig: {
       columns: [],
@@ -351,6 +360,8 @@ export function loadDataset(state, { points, slots, datasetId }) {
     selectedPointIndex: points.length > 0 ? points.length - 1 : 0,
     findings: [],
     activeFindingId: null,
+    structuralFindings: [],
+    selectedFindingId: null,
     auditLog: [`Dataset loaded with ${points.length} points.`],
     charts: updatedCharts,
   };
@@ -446,6 +457,90 @@ export function deletePrepDataset(state, datasetId) {
     : state.dataPrep;
   const activeDatasetId = state.activeDatasetId === datasetId ? null : state.activeDatasetId;
   return { ...state, datasets, dataPrep: dp, activeDatasetId };
+}
+
+/* ═══ Client-side data prep actions ═══ */
+
+export function setPrepParsedData(state, { rawRows, arqueroTable, columns }) {
+  return {
+    ...state,
+    dataPrep: {
+      ...state.dataPrep,
+      rawRows,
+      arqueroTable,
+      transforms: [],
+      hiddenColumns: [],
+      columnOrder: columns.map(c => c.name),
+      unsavedChanges: false,
+      loading: false,
+      error: null,
+    },
+    columnConfig: { ...state.columnConfig, columns, loading: false },
+  };
+}
+
+export function setPrepTable(state, arqueroTable) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, arqueroTable, unsavedChanges: true },
+  };
+}
+
+export function addPrepTransform(state, transform) {
+  return {
+    ...state,
+    dataPrep: {
+      ...state.dataPrep,
+      transforms: [...state.dataPrep.transforms, { ...transform, timestamp: Date.now() }],
+      unsavedChanges: true,
+    },
+  };
+}
+
+export function undoPrepTransform(state) {
+  const transforms = state.dataPrep.transforms.slice(0, -1);
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, transforms, unsavedChanges: transforms.length > 0 },
+  };
+}
+
+export function clearPrepTransforms(state) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, transforms: [], unsavedChanges: false },
+  };
+}
+
+export function setPrepHiddenColumns(state, hiddenColumns) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, hiddenColumns },
+  };
+}
+
+export function markPrepSaved(state) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, unsavedChanges: false },
+  };
+}
+
+export function setActivePanel(state, panel) {
+  return {
+    ...state,
+    dataPrep: {
+      ...state.dataPrep,
+      activePanel: state.dataPrep.activePanel === panel ? null : panel,
+    },
+  };
+}
+
+export function closeActivePanel(state) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, activePanel: null },
+  };
 }
 
 /* ═══ Column Config + Analysis Params actions ═══ */
@@ -841,4 +936,18 @@ export function resetAxis(state, axis, id = "primary") {
   if (axis === 'x') return updateSlot(state, id, { overrides: { ...overrides, x: null } });
   if (axis === 'y') return updateSlot(state, id, { overrides: { ...overrides, y: null } });
   return state;
+}
+
+/* ═══ Structural Findings actions ═══ */
+
+export function setStructuralFindings(state, findings) {
+  return {
+    ...state,
+    structuralFindings: findings,
+    selectedFindingId: findings.length > 0 ? findings[0].id : null,
+  };
+}
+
+export function selectStructuralFinding(state, findingId) {
+  return { ...state, selectedFindingId: findingId };
 }

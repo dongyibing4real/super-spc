@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 
 from .database import close_db, get_session_factory, init_db
-from .models import Dataset, DatasetColumn, Measurement
+from .models import Dataset, DatasetColumn, DataRow
 from .routes.analyze import router as analyze_router
 from .routes.datasets import router as datasets_router
 
@@ -65,18 +65,9 @@ async def _seed_if_empty() -> None:
                 )
 
             for idx, row in enumerate(reader):
-                value = float(row["Thickness"])
-                subgroup = row.get("Hour")
-                metadata = {
-                    k: v for k, v in row.items()
-                    if k not in ("Thickness", "Hour")
-                }
-                dataset.measurements.append(
-                    Measurement(
-                        value=value,
-                        subgroup=subgroup,
+                dataset.data_rows.append(
+                    DataRow(
                         sequence_index=idx,
-                        metadata_json=json.dumps(metadata) if metadata else None,
                         raw_json=json.dumps(dict(row)),
                     )
                 )

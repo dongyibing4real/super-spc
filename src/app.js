@@ -22,6 +22,8 @@ import {
   selectFinding,
   selectPoint,
   selectPrepDataset,
+  selectStructuralFinding,
+  setStructuralFindings,
   setPrepError,
   setPrepSort,
   resetAxis,
@@ -41,13 +43,23 @@ import {
   setChartParams,
   setActiveChipEditor,
   getPrimary,
+  setPrepParsedData,
+  setPrepTable,
+  addPrepTransform,
+  markPrepSaved,
+  setPrepHiddenColumns,
+  undoPrepTransform,
+  setActivePanel,
+  closeActivePanel,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
 import {
-  deleteDataset, fetchColumns, fetchDatasets, fetchPoints,
-  runAnalysis, updateColumnRoles, uploadCsv
+  createDataset, deleteDataset, fetchColumns, fetchDatasets, fetchPoints,
+  runAnalysis, updateColumnRoles
 } from "./data/api.js";
 import { transformPoints, transformAnalysis, buildDefaultContext } from "./data/transforms.js";
+import { parseCSV } from "./data/csv-engine.js";
+import { createTable, filterRows, sortTable, findReplace, removeDuplicates, handleMissing, cleanText } from "./data/data-prep-engine.js";
 
 import { getCapability, capClass, detectRuleViolations, applyParamsToContext } from "./helpers.js";
 import { deriveWorkspace } from "./core/state.js";
@@ -63,11 +75,19 @@ import { renderMethodLab } from "./views/methodlab.js";
 import { renderFindings } from "./views/findings.js";
 import { renderReports } from "./views/reports.js";
 import { morphInner, morphEl } from "./core/morph.js";
+import { generateFindings } from "./core/findings-engine.js";
 
 /* ═══ Global state ═══ */
 const root = document.getElementById("app");
 let state = createInitialState();
 let charts = { primary: null, challenger: null };
+
+/* ═══ Unsaved changes guard ═══ */
+window.addEventListener("beforeunload", (e) => {
+  if (state.dataPrep.unsavedChanges) {
+    e.preventDefault();
+  }
+});
 
 /* ═══ Router ═══ */
 function renderRoute() {
@@ -392,6 +412,7 @@ async function loadDatasetById(datasetId) {
     const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
     const slots = buildSlots(analyses, baseContext);
     state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId });
+    state = setStructuralFindings(state, generateFindings(state));
     render();
   } catch (err) {
     state = setError(state, err.message);
@@ -412,6 +433,7 @@ async function reanalyze() {
     const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
     const slots = buildSlots(analyses, baseContext);
     state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId: dsId });
+    state = setStructuralFindings(state, generateFindings(state));
     commitWorkspace(state);
   } catch (err) {
     state = setError(state, err.message);
@@ -425,6 +447,9 @@ root.addEventListener("click", async (e) => {
   if (!t) {
     if (state.activeChipEditor) commitRecipeRail(setActiveChipEditor(state, state.activeChipEditor));
     if (state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
+    if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-tool-btn')) {
+      commit(closeActivePanel(state));
+    }
     return;
   }
   const a = t.dataset.action;
@@ -433,8 +458,16 @@ root.addEventListener("click", async (e) => {
       commit(navigate(state, t.dataset.route));
       if (t.dataset.route === "dataprep" && state.dataPrep.selectedDatasetId && state.dataPrep.datasetPoints.length === 0) {
         try {
-          const pts = await fetchPoints(state.dataPrep.selectedDatasetId);
-          commit(loadPrepPoints(state, pts));
+          const dsId = state.dataPrep.selectedDatasetId;
+          const [pts, cols] = await Promise.all([
+            fetchPoints(dsId),
+            fetchColumns(dsId).catch(() => []),
+          ]);
+          const rawRows = pts.map(p => p.raw_data || {});
+          const arqueroTable = createTable(rawRows, cols.length > 0 ? cols : state.columnConfig.columns);
+          state = setPrepParsedData(state, { rawRows, arqueroTable, columns: cols.length > 0 ? cols : state.columnConfig.columns });
+          state = loadPrepPoints(state, pts);
+          render();
         } catch (err) { commit(setPrepError(state, err.message)); }
       }
       break;
@@ -452,6 +485,7 @@ root.addEventListener("click", async (e) => {
     case "recover-transform":  commitEvidenceRail(recoverTransformStep(state, t.dataset.stepId)); break;
     case "set-challenger-status": commit(setChallengerStatus(state, t.dataset.status)); break;
     case "select-finding":     commit(selectFinding(state, t.dataset.findingId)); break;
+    case "select-structural-finding": commit(selectStructuralFinding(state, t.dataset.findingId)); break;
     case "create-finding":     commitEvidenceRail(createFindingFromSelection(state)); commitContextMenu(closeContextMenu(state)); break;
     case "generate-report":    commit(generateReportDraft(state)); break;
     case "export-report":      commit(exportReport(state)); break;
@@ -478,7 +512,13 @@ root.addEventListener("click", async (e) => {
           fetchColumns(dsId).catch(() => []),
         ]);
         state = setColumns(state, cols);
-        commit(loadPrepPoints(state, pts));
+        state = loadPrepPoints(state, pts);
+        // Build Arquero table from server data for transforms
+        const rawRows = pts.map(p => p.raw_data || {});
+        const arqueroTable = createTable(rawRows, cols);
+        state = setPrepParsedData(state, { rawRows, arqueroTable, columns: cols });
+        state = loadPrepPoints(state, pts);
+        render();
       } catch (err) { commit(setPrepError(state, err.message)); }
       break;
     }
@@ -503,8 +543,173 @@ root.addEventListener("click", async (e) => {
       commit(setPrepSort(state, t.dataset.column));
       break;
     }
+    case "toggle-column-visibility": {
+      const col = t.dataset.column;
+      const hidden = state.dataPrep.hiddenColumns || [];
+      const next = hidden.includes(col) ? hidden.filter(c => c !== col) : [...hidden, col];
+      commit(setPrepHiddenColumns(state, next));
+      break;
+    }
+    case "prep-undo": {
+      if (state.dataPrep.transforms.length > 0) {
+        state = undoPrepTransform(state);
+        // Replay transforms from original table
+        if (state.dataPrep.rawRows && state.columnConfig.columns.length > 0) {
+          let table = createTable(state.dataPrep.rawRows, state.columnConfig.columns);
+          for (const tr of state.dataPrep.transforms) {
+            try {
+              table = applyTransform(table, tr);
+            } catch { /* skip failed transforms */ }
+          }
+          state = setPrepTable(state, table);
+          // Reset unsavedChanges based on transform count
+          if (state.dataPrep.transforms.length === 0) {
+            state = markPrepSaved(state);
+          }
+        }
+        render();
+      }
+      break;
+    }
+    case "prep-trim": {
+      const cols = state.columnConfig.columns.filter(c => c.dtype === 'text');
+      if (cols.length > 0 && state.dataPrep.arqueroTable) {
+        let table = state.dataPrep.arqueroTable;
+        for (const c of cols) {
+          try { table = cleanText(table, c.name, 'trim'); } catch { /* skip */ }
+        }
+        state = addPrepTransform(state, { type: 'trim', params: { columns: cols.map(c => c.name) } });
+        state = setPrepTable(state, table);
+        render();
+      }
+      break;
+    }
+    case "prep-save": {
+      if (state.dataPrep.rawRows && state.dataPrep.selectedDatasetId) {
+        try {
+          await createDataset({
+            name: state.datasets.find(d => d.id === state.dataPrep.selectedDatasetId)?.name + ' (cleaned)',
+            columns: state.columnConfig.columns,
+            rows: state.dataPrep.arqueroTable
+              ? state.dataPrep.arqueroTable.objects().map(row => {
+                  const out = {};
+                  for (const [k, v] of Object.entries(row)) out[k] = v != null ? String(v) : '';
+                  return out;
+                })
+              : state.dataPrep.rawRows,
+          });
+          const datasets = await fetchDatasets();
+          state = setDatasets(state, datasets);
+          state = markPrepSaved(state);
+          render();
+        } catch (err) {
+          commit(setPrepError(state, err.message));
+        }
+      }
+      break;
+    }
+    /* ═══ Panel toggle handlers ═══ */
+    case "prep-filter": { commit(setActivePanel(state, 'filter')); break; }
+    case "prep-find-replace": { commit(setActivePanel(state, 'find')); break; }
+    case "prep-dedup": { commit(setActivePanel(state, 'dedup')); break; }
+    case "prep-missing": { commit(setActivePanel(state, 'missing')); break; }
+    /* ═══ Panel apply handlers ═══ */
+    case "prep-apply-filter": {
+      if (!state.dataPrep.arqueroTable) break;
+      const col = root.querySelector('[data-field="filter-col"]')?.value;
+      const op = root.querySelector('[data-field="filter-op"]')?.value;
+      const val = root.querySelector('[data-field="filter-val"]')?.value;
+      const val2 = root.querySelector('[data-field="filter-val2"]')?.value;
+      if (!col || !op) break;
+      const filterVal = op === 'between' ? [val, val2] : (op === 'is_null' || op === 'is_not_null') ? null : val;
+      try {
+        const table = filterRows(state.dataPrep.arqueroTable, col, op, filterVal);
+        state = addPrepTransform(state, { type: 'filter', params: { column: col, operator: op, value: filterVal } });
+        state = setPrepTable(state, table);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-find": {
+      if (!state.dataPrep.arqueroTable) break;
+      const fcol = root.querySelector('[data-field="find-col"]')?.value;
+      const search = root.querySelector('[data-field="find-search"]')?.value;
+      const repl = root.querySelector('[data-field="find-replace"]')?.value ?? '';
+      const useRegex = root.querySelector('[data-field="find-regex"]')?.checked || false;
+      if (!search) break;
+      try {
+        let table = state.dataPrep.arqueroTable;
+        if (fcol === '__all__') {
+          for (const c of table.columnNames()) {
+            try { table = findReplace(table, c, search, repl, useRegex); } catch { /* skip */ }
+          }
+        } else {
+          table = findReplace(table, fcol, search, repl, useRegex);
+        }
+        state = addPrepTransform(state, { type: 'find_replace', params: { column: fcol, find: search, replace: repl, useRegex } });
+        state = setPrepTable(state, table);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-dedup": {
+      if (!state.dataPrep.arqueroTable) break;
+      const checked = [...root.querySelectorAll('[data-field="dedup-col"]:checked')].map(el => el.value);
+      if (checked.length === 0) break;
+      try {
+        const table = removeDuplicates(state.dataPrep.arqueroTable, checked);
+        state = addPrepTransform(state, { type: 'dedup', params: { keyColumns: checked } });
+        state = setPrepTable(state, table);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-missing": {
+      if (!state.dataPrep.arqueroTable) break;
+      const mcol = root.querySelector('[data-field="missing-col"]')?.value;
+      const strat = root.querySelector('[data-field="missing-strategy"]')?.value;
+      const custom = root.querySelector('[data-field="missing-custom"]')?.value;
+      if (!mcol || !strat) break;
+      try {
+        const table = handleMissing(state.dataPrep.arqueroTable, mcol, strat, custom || null);
+        state = addPrepTransform(state, { type: 'missing', params: { column: mcol, strategy: strat, customValue: custom || null } });
+        state = setPrepTable(state, table);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
   }
 });
+
+/** Apply a single transform to an Arquero table. */
+function applyTransform(table, tr) {
+  switch (tr.type) {
+    case 'filter': return filterRows(table, tr.params.column, tr.params.operator, tr.params.value);
+    case 'sort': return sortTable(table, tr.params.sortSpec);
+    case 'find_replace': {
+      if (tr.params.column === '__all__') {
+        let t = table;
+        for (const c of t.columnNames()) {
+          try { t = findReplace(t, c, tr.params.find, tr.params.replace, tr.params.useRegex); } catch { /* skip */ }
+        }
+        return t;
+      }
+      return findReplace(table, tr.params.column, tr.params.find, tr.params.replace, tr.params.useRegex);
+    }
+    case 'dedup': return removeDuplicates(table, tr.params.keyColumns);
+    case 'missing': return handleMissing(table, tr.params.column, tr.params.strategy, tr.params.customValue);
+    case 'trim': {
+      let t = table;
+      for (const col of tr.params.columns) { try { t = cleanText(t, col, 'trim'); } catch { /* skip */ } }
+      return t;
+    }
+    default: return table;
+  }
+}
 
 root.addEventListener("keydown", (e) => {
   if (state.ui.contextMenu && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
@@ -677,6 +882,21 @@ root.addEventListener("contextmenu", (e) => {
 
 /* ═══ Change handlers ═══ */
 root.addEventListener("change", async (e) => {
+  // Prep panel conditional visibility
+  if (e.target.matches('[data-field="filter-op"]')) {
+    const op = e.target.value;
+    const val1 = root.querySelector('[data-field="filter-val"]');
+    const val2 = root.querySelector('[data-field="filter-val2"]');
+    if (val1) val1.style.display = (op === 'is_null' || op === 'is_not_null') ? 'none' : '';
+    if (val2) val2.style.display = op === 'between' ? '' : 'none';
+    return;
+  }
+  if (e.target.matches('[data-field="missing-strategy"]')) {
+    const custom = root.querySelector('[data-field="missing-custom"]');
+    if (custom) custom.style.display = e.target.value === 'fill_custom' ? '' : 'none';
+    return;
+  }
+
   if (e.target.matches('[data-action="upload-csv"]')) {
     const file = e.target.files[0];
     if (!file) return;
@@ -684,9 +904,28 @@ root.addEventListener("change", async (e) => {
     state = setLoadingState(state, true);
     render();
     try {
-      const newDs = await uploadCsv(file);
+      // Client-side parse with PapaParse
+      const parsed = await parseCSV(file);
+      const arqueroTable = createTable(parsed.rows, parsed.columns);
+
+      // Save to server (raw string rows, no derivation)
+      const name = file.name.replace(/\.csv$/i, '');
+      const newDs = await createDataset({
+        name,
+        columns: parsed.columns,
+        rows: parsed.rows,
+      });
+
       const datasets = await fetchDatasets();
       state = setDatasets(state, datasets);
+
+      // Store parsed data in state for data prep
+      state = setPrepParsedData(state, {
+        rawRows: parsed.rows,
+        arqueroTable,
+        columns: parsed.columns,
+      });
+
       await loadDatasetById(newDs.id);
     } catch (err) {
       state = setError(state, err.message);

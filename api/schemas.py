@@ -39,13 +39,17 @@ class UpdateColumnsRequest(BaseModel):
     columns: list[ColumnRoleUpdate]
 
 
-class MeasurementOut(BaseModel):
+class DataRowOut(BaseModel):
     id: int
-    value: float
-    subgroup: str | None = None
     sequence_index: int
     metadata: dict | None = None
     raw_data: dict | None = None
+
+
+class CreateDatasetRequest(BaseModel):
+    name: str
+    columns: list[ColumnOut]
+    rows: list[dict]
 
 
 # --- Analysis request/response ---
