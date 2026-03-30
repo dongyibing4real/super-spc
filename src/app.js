@@ -67,6 +67,7 @@ import {
   collectChartIds,
   createSlot,
   swapSlots,
+  computeDragResult,
   setChartLayout,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
@@ -85,7 +86,7 @@ import { renderSidebar } from "./components/sidebar.js";
 import { renderNotice, renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
 import { renderRecipeRail } from "./components/recipe-rail.js";
 import { renderContextMenu } from "./components/context-menu.js";
-import { renderChartArena } from "./components/chart-arena.js";
+import { renderChartArena, renderGhostNode } from "./components/chart-arena.js";
 import { renderWorkspace, renderEvidenceRail } from "./views/workspace.js";
 import { renderDataPrep } from "./views/dataprep.js";
 import { renderMethodLab } from "./views/methodlab.js";
@@ -1029,8 +1030,36 @@ root.addEventListener("keydown", (e) => {
 /* ═══ Divider drag — resize split panes ═══ */
 let dividerDrag = null;
 
-/* ═══ Header drag — reorder chart slots ═══ */
+/* ═══ Header drag — zone-inference + ghost preview ═══ */
 let dragState = null;
+let ghostOverlay = null;
+
+/** Compute which drop zone the cursor is in relative to a pane element */
+function getDropZone(paneEl, clientX, clientY) {
+  const r = paneEl.getBoundingClientRect();
+  if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) return null;
+  const relX = (clientX - r.left) / r.width;
+  const relY = (clientY - r.top) / r.height;
+  if (relY < 0.25) return "top";
+  if (relY > 0.75) return "bottom";
+  if (relX < 0.25) return "left";
+  if (relX > 0.75) return "right";
+  return "center";
+}
+
+function updateGhostOverlay(ghostTree, incomingId) {
+  if (!ghostOverlay || !ghostTree) return;
+  ghostOverlay.innerHTML = renderGhostNode(ghostTree, incomingId);
+  ghostOverlay.style.display = "flex";
+}
+
+function hideGhostOverlay() {
+  if (ghostOverlay) ghostOverlay.style.display = "none";
+}
+
+function removeGhostOverlay() {
+  if (ghostOverlay) { ghostOverlay.remove(); ghostOverlay = null; }
+}
 
 root.addEventListener("pointerdown", (e) => {
   // ── Divider resize drag ──
@@ -1046,66 +1075,79 @@ root.addEventListener("pointerdown", (e) => {
       containerId: divider.dataset.containerId,
       direction: divider.dataset.direction,
       containerEl: container,
-      rect: container.getBoundingClientRect(),
       firstChild: container.querySelector(".split-child"),
     };
     return;
   }
 
-  // ── Header drag to swap positions ──
+  // ── Header drag to move/split ──
   const handle = e.target.closest("[data-drag-handle]");
   if (!handle) return;
   if (state.chartOrder.length < 2) return;
   const pane = handle.closest(".chart-pane");
   if (!pane) return;
-
-  // Don't start drag if clicking a button inside the titlebar
-  if (e.target.closest("button")) return;
+  if (e.target.closest("button")) return; // don't drag when clicking split/close buttons
 
   e.preventDefault();
   const chartId = handle.dataset.dragHandle;
-  const ghost = pane.cloneNode(true);
-  ghost.classList.add("drag-ghost");
-  ghost.style.width = pane.offsetWidth + "px";
-  ghost.style.height = pane.offsetHeight + "px";
+
+  // Ghost cursor follower (small label showing the dragged chart)
+  const ghost = document.createElement("div");
+  ghost.className = "drag-ghost";
+  ghost.textContent = state.charts[chartId]?.context?.chartType?.label || "Chart";
   document.body.appendChild(ghost);
   pane.classList.add("dragging");
-  dragState = { chartId, pane, ghost, dropTarget: null };
+
+  // Ghost overlay on the arena (shows predicted layout)
+  const arenaEl = root.querySelector(".chart-arena");
+  if (arenaEl) {
+    ghostOverlay = document.createElement("div");
+    ghostOverlay.className = "arena-ghost-overlay";
+    ghostOverlay.style.display = "none";
+    arenaEl.appendChild(ghostOverlay);
+  }
+
+  dragState = { chartId, pane, ghost, dropTarget: null, dropZone: null };
 });
 
 root.addEventListener("pointermove", (e) => {
   // ── Divider resize ──
   if (dividerDrag) {
-    const { containerId, direction, firstChild, rect } = dividerDrag;
     const freshRect = dividerDrag.containerEl.getBoundingClientRect();
-    let ratio;
-    if (direction === "h") {
-      ratio = (e.clientX - freshRect.left) / freshRect.width;
-    } else {
-      ratio = (e.clientY - freshRect.top) / freshRect.height;
-    }
+    let ratio = dividerDrag.direction === "h"
+      ? (e.clientX - freshRect.left) / freshRect.width
+      : (e.clientY - freshRect.top) / freshRect.height;
     ratio = Math.max(0.1, Math.min(0.9, ratio));
     dividerDrag.pendingRatio = ratio;
-    // Update DOM immediately for smooth feedback
-    if (firstChild) firstChild.style.flex = `0 0 ${(ratio * 100).toFixed(2)}%`;
+    if (dividerDrag.firstChild) dividerDrag.firstChild.style.flex = `0 0 ${(ratio * 100).toFixed(2)}%`;
     return;
   }
 
-  // ── Header drag ──
+  // ── Header drag: zone inference + ghost preview ──
   if (!dragState) return;
-  const { ghost } = dragState;
-  ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + "px";
-  ghost.style.top = (e.clientY - 20) + "px";
-  root.querySelectorAll(".chart-pane.drop-target").forEach(p => p.classList.remove("drop-target"));
+  const { ghost, chartId } = dragState;
+
+  // Move cursor follower
+  ghost.style.left = (e.clientX + 12) + "px";
+  ghost.style.top = (e.clientY - 10) + "px";
+
+  // Find target pane and zone
+  let foundTarget = null;
+  let foundZone = null;
   for (const p of root.querySelectorAll(".chart-pane:not(.dragging)")) {
-    const r = p.getBoundingClientRect();
-    if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
-      p.classList.add("drop-target");
-      dragState.dropTarget = p.dataset.chartId;
-      return;
-    }
+    const zone = getDropZone(p, e.clientX, e.clientY);
+    if (zone) { foundTarget = p.dataset.chartId; foundZone = zone; break; }
   }
-  dragState.dropTarget = null;
+
+  dragState.dropTarget = foundTarget;
+  dragState.dropZone = foundZone;
+
+  if (foundTarget && foundZone) {
+    const ghostTree = computeDragResult(state.chartLayout.tree, chartId, foundTarget, foundZone);
+    updateGhostOverlay(ghostTree, chartId);
+  } else {
+    hideGhostOverlay();
+  }
 });
 
 function endDividerDrag() {
@@ -1115,12 +1157,9 @@ function endDividerDrag() {
   if (pendingRatio !== undefined) {
     state = setSplitRatio(state, containerId, pendingRatio);
     saveLayout();
-    // Re-render D3 charts with new sizes
     const visibleIds = collectChartIds(state.chartLayout);
     requestAnimationFrame(() => {
-      for (const id of visibleIds) {
-        if (charts[id]) charts[id].update(buildChartData(id));
-      }
+      for (const id of visibleIds) { if (charts[id]) charts[id].update(buildChartData(id)); }
     });
   }
   dividerDrag = null;
@@ -1128,20 +1167,24 @@ function endDividerDrag() {
 
 function endDrag() {
   if (!dragState) return;
-  const { pane, ghost, chartId, dropTarget } = dragState;
+  const { pane, ghost, chartId, dropTarget, dropZone } = dragState;
   pane.classList.remove("dragging");
   ghost.remove();
-  root.querySelectorAll(".chart-pane.drop-target").forEach(p => p.classList.remove("drop-target"));
-  if (dropTarget && dropTarget !== chartId) {
-    state = swapSlots(state, chartId, dropTarget);
-    commitLayout(state);
-    saveLayout();
+  removeGhostOverlay();
+
+  if (dropTarget && dropZone && dropTarget !== chartId) {
+    const newTree = computeDragResult(state.chartLayout.tree, chartId, dropTarget, dropZone);
+    if (newTree) {
+      state = { ...state, chartLayout: { tree: newTree } };
+      commitLayout(state);
+      saveLayout();
+    }
   }
   dragState = null;
 }
 
-root.addEventListener("pointerup", (e) => { endDividerDrag(); endDrag(); });
-root.addEventListener("pointercancel", (e) => { endDividerDrag(); endDrag(); });
+root.addEventListener("pointerup", () => { endDividerDrag(); endDrag(); });
+root.addEventListener("pointercancel", () => { endDividerDrag(); endDrag(); });
 
 /* ═══ Pane titlebar right-click — split/close context menu ═══ */
 let paneMenu = null;

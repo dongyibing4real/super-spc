@@ -73,13 +73,29 @@ function renderTreeNode(state, node) {
   `;
 }
 
+/* ═══ Ghost layout renderer (drag preview overlay) ═══ */
+
+export function renderGhostNode(node, incomingId) {
+  if (!node) return "";
+  if (node.type === "pane") {
+    const isIncoming = node.chartId === incomingId;
+    return `<div class="ghost-pane${isIncoming ? " ghost-pane-incoming" : ""}"></div>`;
+  }
+  const pct = (node.ratio * 100).toFixed(2);
+  return `
+    <div class="ghost-container ghost-${node.direction}">
+      <div class="ghost-child" style="flex: 0 0 ${pct}%">${renderGhostNode(node.children[0], incomingId)}</div>
+      <div class="ghost-divider-line ghost-divider-${node.direction}"></div>
+      <div class="ghost-child" style="flex: 1 1 0">${renderGhostNode(node.children[1], incomingId)}</div>
+    </div>`;
+}
+
 /* ═══ Layout template wireframe icons (SVG miniatures) ═══ */
 
 const TEMPLATE_ICONS = {
   "1":   '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="1" fill="currentColor" opacity="0.3"/></svg>',
   "2h":  '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="8.5" height="12" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="1" width="8.5" height="12" rx="1" fill="currentColor" opacity="0.3"/></svg>',
   "2v":  '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
-  "3h":  '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="5.3" height="12" rx="1" fill="currentColor" opacity="0.3"/><rect x="7.3" y="1" width="5.3" height="12" rx="1" fill="currentColor" opacity="0.3"/><rect x="13.6" y="1" width="5.3" height="12" rx="1" fill="currentColor" opacity="0.3"/></svg>',
   "2x2": '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
   "1+2": '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
   "2+1": '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',

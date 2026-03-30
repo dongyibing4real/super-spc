@@ -805,7 +805,57 @@ h1, h2, h3, h4, h5, h6 {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  position: relative; /* needed to anchor the ghost overlay */
 }
+
+/* ── Ghost overlay (drag preview for the whole arena) ── */
+.arena-ghost-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  display: flex;
+  padding: 6px;
+  gap: 4px;
+  background: rgba(17, 20, 24, 0.75);
+  border: 2px solid var(--blue, #2D72D2);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.ghost-container {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  gap: 4px;
+}
+.ghost-container.ghost-h { flex-direction: row; }
+.ghost-container.ghost-v { flex-direction: column; }
+.ghost-child {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+.ghost-pane {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg-3, #2F343C);
+  border-radius: 3px;
+  border: 1px solid var(--border-2, rgba(255,255,255,0.1));
+}
+.ghost-pane.ghost-pane-incoming {
+  background: rgba(45, 114, 210, 0.25);
+  border: 2px solid var(--blue, #2D72D2);
+  border-radius: 3px;
+}
+.ghost-divider-line {
+  flex: 0 0 3px;
+  background: var(--border-2, rgba(255,255,255,0.15));
+  border-radius: 2px;
+}
+.ghost-divider-h { /* vertical bar between horizontal children */ }
+.ghost-divider-v { /* horizontal bar between vertical children */ }
 
 /* Split containers (binary tree internal nodes) */
 .split-container {
@@ -941,16 +991,19 @@ h1, h2, h3, h4, h5, h6 {
   opacity: 0.5;
 }
 
-/* Drag ghost */
+/* Drag ghost — small label that follows the cursor */
 .drag-ghost {
   position: fixed;
   pointer-events: none;
   z-index: 9999;
-  opacity: 0.7;
-  border: 2px solid var(--blue, #2D72D2);
-  border-radius: 4px;
-  background: var(--chart-bg);
-  overflow: hidden;
+  background: var(--blue, #2D72D2);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
 
 .method-dot {

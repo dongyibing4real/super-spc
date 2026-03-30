@@ -270,7 +270,6 @@ export const LAYOUT_TEMPLATES = {
   "1":    { slots: 1, label: "Single" },
   "2h":   { slots: 2, label: "Side by side" },
   "2v":   { slots: 2, label: "Stacked" },
-  "3h":   { slots: 3, label: "Three columns" },
   "2x2":  { slots: 4, label: "Grid" },
   "1+2":  { slots: 3, label: "Wide + two" },
   "2+1":  { slots: 3, label: "Two + wide" },
@@ -1171,6 +1170,30 @@ export function setSplitRatio(state, containerId, ratio) {
 export function swapSlots(state, idA, idB) {
   const newTree = _swapPanes(state.chartLayout.tree, idA, idB);
   return { ...state, chartLayout: { tree: newTree } };
+}
+
+/**
+ * Compute the predicted tree after a drag-drop operation — does NOT modify state.
+ * zone: "top" | "bottom" | "left" | "right" | "center"
+ * Returns the new tree, or null if the operation is a no-op.
+ */
+export function computeDragResult(tree, draggingId, targetId, zone) {
+  if (!draggingId || !targetId || draggingId === targetId) return null;
+  if (zone === "center") {
+    return _swapPanes(tree, draggingId, targetId);
+  }
+  // Edge zones: remove dragged pane, then split target pane in the given direction
+  const reducedTree = _removePane(tree, draggingId);
+  if (!reducedTree) return null; // only pane — can't remove
+  const direction = (zone === "left" || zone === "right") ? "h" : "v";
+  const putFirst = (zone === "top" || zone === "left");
+  return _replace(
+    reducedTree,
+    n => n.type === "pane" && n.chartId === targetId,
+    n => putFirst
+      ? createContainerNode(direction, [createPaneNode(draggingId), n])
+      : createContainerNode(direction, [n, createPaneNode(draggingId)])
+  );
 }
 
 /** Apply a template layout as a quick-start (rearranges existing charts into template shape) */
