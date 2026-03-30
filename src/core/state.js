@@ -208,7 +208,7 @@ const DEFAULT_LIMITS = {
   version: "", scope: "Dataset"
 };
 
-const DEFAULT_PARAMS = {
+export const DEFAULT_PARAMS = {
   chart_type: "imr",
   sigma_method: "moving_range",
   k_sigma: 3.0,
@@ -274,10 +274,20 @@ function _collect(node) {
 
 /** Migrate legacy tree layout to row-grid on load */
 export function migrateTreeToRows(layout) {
-  if (layout.rows) return layout;
-  if (layout.tree) return { rows: [_collect(layout.tree)] };
-  if (layout.slots) return { rows: [[...layout.slots]] };
-  return { rows: [] };
+  if (layout.rows && layout.colWeights) return layout;
+  if (layout.rows) {
+    // Has rows but no weights — add default weights
+    return { rows: layout.rows, colWeights: layout.rows.map(r => r.map(() => 1)), rowWeights: layout.rows.map(() => 1) };
+  }
+  if (layout.tree) {
+    const ids = _collect(layout.tree);
+    return { rows: [ids], colWeights: [ids.map(() => 1)], rowWeights: [1] };
+  }
+  if (layout.slots) {
+    const ids = [...layout.slots];
+    return { rows: [ids], colWeights: [ids.map(() => 1)], rowWeights: [1] };
+  }
+  return { rows: [], colWeights: [], rowWeights: [] };
 }
 
 /** Get all chart IDs visible in the current layout */
@@ -294,14 +304,36 @@ export function collectChartIds(layout) {
 /** Insert a chart at a position relative to a target chart */
 export function insertChart(state, chartId, targetId, zone) {
   const rows = state.chartLayout.rows.map(r => [...r]);
+  const colWeights = state.chartLayout.colWeights.map(r => [...r]);
+  const rowWeights = [...state.chartLayout.rowWeights];
+
+  if (zone === "center") {
+    // Swap: exchange positions and weights
+    const aR = rows.findIndex(r => r.includes(chartId));
+    const aC = rows[aR].indexOf(chartId);
+    const bR = rows.findIndex(r => r.includes(targetId));
+    const bC = rows[bR].indexOf(targetId);
+    rows[aR][aC] = targetId;
+    rows[bR][bC] = chartId;
+    const tmpW = colWeights[aR][aC];
+    colWeights[aR][aC] = colWeights[bR][bC];
+    colWeights[bR][bC] = tmpW;
+    return { ...state, chartLayout: { rows, colWeights, rowWeights } };
+  }
+
   const tR = rows.findIndex(r => r.includes(targetId));
-  const tC = rows[tR].indexOf(targetId);
 
   // Remove chartId from current position
   const sR = rows.findIndex(r => r.includes(chartId));
   if (sR >= 0) {
-    rows[sR] = rows[sR].filter(id => id !== chartId);
-    if (rows[sR].length === 0) rows.splice(sR, 1);
+    const sC = rows[sR].indexOf(chartId);
+    rows[sR].splice(sC, 1);
+    colWeights[sR].splice(sC, 1);
+    if (rows[sR].length === 0) {
+      rows.splice(sR, 1);
+      colWeights.splice(sR, 1);
+      rowWeights.splice(sR, 1);
+    }
   }
 
   // Recompute target after removal
@@ -309,66 +341,72 @@ export function insertChart(state, chartId, targetId, zone) {
   const tC2 = rows[tR2].indexOf(targetId);
 
   switch (zone) {
-    case "right":  rows[tR2].splice(tC2 + 1, 0, chartId); break;
-    case "left":   rows[tR2].splice(tC2, 0, chartId); break;
-    case "bottom": rows.splice(tR2 + 1, 0, [chartId]); break;
-    case "top":    rows.splice(tR2, 0, [chartId]); break;
-    case "center": {
-      // Swap positions
-      const srcRow = rows.findIndex(r => r.includes(targetId));
-      const srcCol = rows[srcRow].indexOf(targetId);
-      rows[srcRow][srcCol] = chartId;
-      // Re-insert targetId at chartId's old position (already removed above)
-      // Since chartId was removed, we need to place targetId somewhere —
-      // the simplest swap puts it where chartId was, but chartId was already removed.
-      // For center/swap: remove target, insert target where source was, put source where target was.
-      // Re-do: undo the removal and do a proper swap instead.
+    case "right":
+      rows[tR2].splice(tC2 + 1, 0, chartId);
+      colWeights[tR2].splice(tC2 + 1, 0, 1);
       break;
-    }
+    case "left":
+      rows[tR2].splice(tC2, 0, chartId);
+      colWeights[tR2].splice(tC2, 0, 1);
+      break;
+    case "bottom":
+      rows.splice(tR2 + 1, 0, [chartId]);
+      colWeights.splice(tR2 + 1, 0, [1]);
+      rowWeights.splice(tR2 + 1, 0, 1);
+      break;
+    case "top":
+      rows.splice(tR2, 0, [chartId]);
+      colWeights.splice(tR2, 0, [1]);
+      rowWeights.splice(tR2, 0, 1);
+      break;
   }
 
-  // For center (swap), do it differently
-  if (zone === "center") {
-    const freshRows = state.chartLayout.rows.map(r => [...r]);
-    const aR = freshRows.findIndex(r => r.includes(chartId));
-    const aC = freshRows[aR].indexOf(chartId);
-    const bR = freshRows.findIndex(r => r.includes(targetId));
-    const bC = freshRows[bR].indexOf(targetId);
-    freshRows[aR][aC] = targetId;
-    freshRows[bR][bC] = chartId;
-    return { ...state, chartLayout: { rows: freshRows } };
-  }
-
-  return { ...state, chartLayout: { rows } };
+  return { ...state, chartLayout: { rows, colWeights, rowWeights } };
 }
 
 /** Compute a preview of the grid after a drag-drop — does NOT modify state */
-export function computeGridPreview(rows, draggingId, targetId, zone) {
-  if (!draggingId || !targetId || draggingId === targetId) return rows;
+export function computeGridPreview(layout, draggingId, targetId, zone) {
+  const { rows, colWeights, rowWeights } = layout;
+  if (!draggingId || !targetId || draggingId === targetId) return layout;
 
   if (zone === "center") {
-    // Swap preview
     const preview = rows.map(r => r.map(id =>
       id === draggingId ? targetId : id === targetId ? draggingId : id
     ));
-    return preview;
+    return { rows: preview, colWeights, rowWeights };
   }
 
-  // Remove dragging from current position
-  let preview = rows.map(r => r.filter(id => id !== draggingId)).filter(r => r.length > 0);
+  // Remove dragging from current position, keeping weights in sync
+  const pRows = [];
+  const pColW = [];
+  const pRowW = [];
+  for (let r = 0; r < rows.length; r++) {
+    const filtered = [];
+    const filteredW = [];
+    for (let c = 0; c < rows[r].length; c++) {
+      if (rows[r][c] !== draggingId) {
+        filtered.push(rows[r][c]);
+        filteredW.push(colWeights[r][c]);
+      }
+    }
+    if (filtered.length > 0) {
+      pRows.push(filtered);
+      pColW.push(filteredW);
+      pRowW.push(rowWeights[r]);
+    }
+  }
 
-  // Find target in the reduced grid
-  const tR = preview.findIndex(r => r.includes(targetId));
-  if (tR < 0) return rows; // target not found — no-op
-  const tC = preview[tR].indexOf(targetId);
+  const tR = pRows.findIndex(r => r.includes(targetId));
+  if (tR < 0) return layout;
+  const tC = pRows[tR].indexOf(targetId);
 
   switch (zone) {
-    case "right":  preview[tR].splice(tC + 1, 0, draggingId); break;
-    case "left":   preview[tR].splice(tC, 0, draggingId); break;
-    case "bottom": preview.splice(tR + 1, 0, [draggingId]); break;
-    case "top":    preview.splice(tR, 0, [draggingId]); break;
+    case "right":  pRows[tR].splice(tC + 1, 0, draggingId); pColW[tR].splice(tC + 1, 0, 1); break;
+    case "left":   pRows[tR].splice(tC, 0, draggingId); pColW[tR].splice(tC, 0, 1); break;
+    case "bottom": pRows.splice(tR + 1, 0, [draggingId]); pColW.splice(tR + 1, 0, [1]); pRowW.splice(tR + 1, 0, 1); break;
+    case "top":    pRows.splice(tR, 0, [draggingId]); pColW.splice(tR, 0, [1]); pRowW.splice(tR, 0, 1); break;
   }
-  return preview;
+  return { rows: pRows, colWeights: pColW, rowWeights: pRowW };
 }
 
 export function createInitialState() {
@@ -419,11 +457,14 @@ export function createInitialState() {
     focusedChartId: "chart-1",
     chartLayout: {
       rows: [["chart-1"]],
+      colWeights: [[1]],
+      rowWeights: [1],
     },
     ui: {
       notice: null,
       contextMenu: null,
-      layersExpanded: false
+      layersExpanded: false,
+      pendingNewChart: null,
     },
     auditLog: [],
     dataPrep: {
@@ -1137,16 +1178,19 @@ export function addChart(state, { chartType = "imr" } = {}) {
   });
 
   // Auto-placement: fill last row first, then new row below
-  const rows = state.chartLayout.rows;
+  const { rows, colWeights, rowWeights } = state.chartLayout;
   const lastRow = rows[rows.length - 1];
   const rowAbove = rows.length >= 2 ? rows[rows.length - 2] : null;
   const maxInRow = rowAbove ? rowAbove.length : 2;
-
-  let newRows;
+  let newRows, newColWeights, newRowWeights;
   if (lastRow.length < maxInRow) {
     newRows = [...rows.slice(0, -1), [...lastRow, newId]];
+    newColWeights = [...colWeights.slice(0, -1), [...colWeights[colWeights.length - 1], 1]];
+    newRowWeights = rowWeights;
   } else {
     newRows = [...rows, [newId]];
+    newColWeights = [...colWeights, [1]];
+    newRowWeights = [...rowWeights, 1];
   }
 
   return {
@@ -1155,7 +1199,7 @@ export function addChart(state, { chartType = "imr" } = {}) {
     chartOrder: [...state.chartOrder, newId],
     nextChartId: state.nextChartId + 1,
     focusedChartId: newId,
-    chartLayout: { rows: newRows },
+    chartLayout: { rows: newRows, colWeights: newColWeights, rowWeights: newRowWeights },
   };
 }
 
@@ -1164,9 +1208,26 @@ export function removeChart(state, chartId) {
   if (collectChartIds(state.chartLayout).length <= 1) return state;
   if (!state.charts[chartId]) return state;
 
-  const newRows = state.chartLayout.rows
-    .map(row => row.filter(id => id !== chartId))
-    .filter(row => row.length > 0);
+  const { rows, colWeights, rowWeights } = state.chartLayout;
+  const newRows = [];
+  const newColWeights = [];
+  const newRowWeights = [];
+  for (let r = 0; r < rows.length; r++) {
+    const filtered = [];
+    const filteredW = [];
+    for (let c = 0; c < rows[r].length; c++) {
+      if (rows[r][c] !== chartId) {
+        filtered.push(rows[r][c]);
+        filteredW.push(colWeights[r][c]);
+      }
+    }
+    if (filtered.length > 0) {
+      newRows.push(filtered);
+      newColWeights.push(filteredW);
+      newRowWeights.push(rowWeights[r]);
+    }
+  }
+
   const newCharts = { ...state.charts };
   delete newCharts[chartId];
   const newOrder = state.chartOrder.filter(id => id !== chartId);
@@ -1177,10 +1238,27 @@ export function removeChart(state, chartId) {
     charts: newCharts,
     chartOrder: newOrder,
     focusedChartId: newFocus,
-    chartLayout: { rows: newRows },
+    chartLayout: { rows: newRows, colWeights: newColWeights, rowWeights: newRowWeights },
   };
 }
 
+/** Set column weight ratio between two adjacent panes in a row */
+export function setColWeight(state, rowIndex, leftCol, ratio) {
+  const colWeights = state.chartLayout.colWeights.map(r => [...r]);
+  const total = colWeights[rowIndex][leftCol] + colWeights[rowIndex][leftCol + 1];
+  colWeights[rowIndex][leftCol] = total * ratio;
+  colWeights[rowIndex][leftCol + 1] = total * (1 - ratio);
+  return { ...state, chartLayout: { ...state.chartLayout, colWeights } };
+}
+
+/** Set row weight ratio between two adjacent rows */
+export function setRowWeight(state, topRow, ratio) {
+  const rowWeights = [...state.chartLayout.rowWeights];
+  const total = rowWeights[topRow] + rowWeights[topRow + 1];
+  rowWeights[topRow] = total * ratio;
+  rowWeights[topRow + 1] = total * (1 - ratio);
+  return { ...state, chartLayout: { ...state.chartLayout, rowWeights } };
+}
 
 export function setXDomainOverride(state, min, max, id) {
   if (!id) id = state.focusedChartId || state.chartOrder[0];

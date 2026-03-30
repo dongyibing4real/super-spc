@@ -32,8 +32,9 @@ function renderChartPane(state, chartId) {
     </div>`;
 
   const showTable = slot.showDataTable;
+  const accentIdx = state.chartOrder.indexOf(chartId) % 8;
   return `
-    <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}">
+    <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}" data-accent="${accentIdx}">
       ${titlebar}
       ${showTable
         ? `<div class="pane-data-table">${renderDataTable(state, chartId)}</div>`
@@ -48,26 +49,49 @@ function renderChartPane(state, chartId) {
 /* ═══ Row-grid renderer ═══ */
 
 function renderRows(state) {
-  const { rows } = state.chartLayout;
+  const { rows, colWeights, rowWeights } = state.chartLayout;
   if (!rows || rows.length === 0) return "";
-  return rows.map(row =>
-    `<div class="chart-row">
-      ${row.map(id => renderChartPane(state, id)).join("")}
-    </div>`
-  ).join("");
+  const totalRowWeight = rowWeights.reduce((a, b) => a + b, 0);
+
+  return rows.map((row, r) => {
+    const rowPct = (rowWeights[r] / totalRowWeight * 100).toFixed(2);
+    const totalColWeight = colWeights[r].reduce((a, b) => a + b, 0);
+
+    const cells = row.map((id, c) => {
+      const colPct = (colWeights[r][c] / totalColWeight * 100).toFixed(2);
+      const pane = `<div class="chart-pane-wrap" style="flex: 0 0 ${colPct}%">${renderChartPane(state, id)}</div>`;
+      const divider = c < row.length - 1
+        ? `<div class="grid-divider grid-divider-col" data-row="${r}" data-col="${c}"><span class="grid-divider-grip">::</span></div>`
+        : "";
+      return pane + divider;
+    }).join("");
+
+    const rowDiv = r < rows.length - 1
+      ? `<div class="grid-divider grid-divider-row" data-row="${r}"><span class="grid-divider-grip">::</span></div>`
+      : "";
+
+    return `<div class="chart-row" style="flex: 0 0 ${rowPct}%">${cells}</div>${rowDiv}`;
+  }).join("");
 }
 
 /* ═══ Ghost layout renderer (drag preview overlay) ═══ */
 
-export function renderGhostRows(rows, incomingId) {
+export function renderGhostRows(layout, incomingId) {
+  const { rows, colWeights, rowWeights } = layout;
   if (!rows || rows.length === 0) return "";
-  return rows.map(row =>
-    `<div class="ghost-row">
-      ${row.map(id =>
-        `<div class="ghost-pane${id === incomingId ? " ghost-pane-incoming" : ""}"></div>`
-      ).join("")}
-    </div>`
-  ).join("");
+  const totalRowWeight = rowWeights.reduce((a, b) => a + b, 0);
+
+  return rows.map((row, r) => {
+    const rowPct = (rowWeights[r] / totalRowWeight * 100).toFixed(2);
+    const totalColWeight = colWeights[r].reduce((a, b) => a + b, 0);
+
+    const cells = row.map((id, c) => {
+      const colPct = (colWeights[r][c] / totalColWeight * 100).toFixed(2);
+      return `<div class="ghost-pane${id === incomingId ? " ghost-pane-incoming" : ""}" style="flex: 0 0 ${colPct}%"></div>`;
+    }).join("");
+
+    return `<div class="ghost-row" style="flex: 0 0 ${rowPct}%">${cells}</div>`;
+  }).join("");
 }
 
 

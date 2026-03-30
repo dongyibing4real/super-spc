@@ -65,6 +65,9 @@ import {
   computeGridPreview,
   migrateTreeToRows,
   togglePaneDataTable,
+  setColWeight,
+  setRowWeight,
+  DEFAULT_PARAMS,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
 import {
@@ -275,6 +278,11 @@ function commitRecipeRail(next) {
   const rail = root.querySelector(".recipe-rail");
   if (!rail) return;
   morphEl(rail, renderRecipeRail(state));
+  // Trigger expand-enter animation on focused card after morph
+  requestAnimationFrame(() => {
+    const focused = rail.querySelector('.rail-card--focused');
+    if (focused) focused.classList.add('rail-card--expanded-enter');
+  });
 }
 
 /* ═══ Targeted commit — notice bar ═══ */
@@ -445,8 +453,8 @@ root.addEventListener("click", async (e) => {
   if (!t) {
     if (state.activeChipEditor) commitRecipeRail(setActiveChipEditor(state, state.activeChipEditor));
     if (state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
-    if (state.ui.addChartPickerOpen && !e.target.closest('.add-chart-picker')) {
-      state = { ...state, ui: { ...state.ui, addChartPickerOpen: false } };
+    if (state.ui.pendingNewChart && !e.target.closest('.rail-card--pending')) {
+      state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
       commitRecipeRail(state);
     }
     if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-tool-btn')) {
@@ -513,20 +521,38 @@ root.addEventListener("click", async (e) => {
       }
       break;
     }
-    case "toggle-add-chart-picker": {
-      state = { ...state, ui: { ...state.ui, addChartPickerOpen: !state.ui.addChartPickerOpen } };
-      commitRecipeRail(state);
-      break;
-    }
-    case "add-chart-type": {
-      const chartType = t.dataset.type || "imr";
-      state = { ...state, ui: { ...state.ui, addChartPickerOpen: false } };
+    case "open-add-chart": {
       if (isWorkspaceFull()) {
         state = { ...state, ui: { ...state.ui, notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." } } };
         commit(state);
         break;
       }
-      state = addChart(state, { chartType });
+      const focused = getFocused(state);
+      state = { ...state, ui: { ...state.ui, pendingNewChart: {
+        ...DEFAULT_PARAMS,
+        chart_type: focused.params.chart_type,
+        value_column: focused.params.value_column,
+        subgroup_column: focused.params.subgroup_column,
+        phase_column: focused.params.phase_column,
+      } } };
+      commitRecipeRail(state);
+      break;
+    }
+    case "cancel-add-chart": {
+      state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
+      commitRecipeRail(state);
+      break;
+    }
+    case "confirm-add-chart": {
+      const pending = state.ui.pendingNewChart;
+      if (!pending) break;
+      state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
+      state = addChart(state, { chartType: pending.chart_type });
+      // Apply pending params to the newly created chart
+      const newId = `chart-${state.nextChartId - 1}`;
+      if (state.charts[newId]) {
+        state = { ...state, charts: { ...state.charts, [newId]: { ...state.charts[newId], params: { ...pending } } } };
+      }
       commit(state);
       saveLayout();
       if (state.activeDatasetId) reanalyze();
@@ -1015,6 +1041,10 @@ root.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.matches("[data-action='select-point']")) { e.preventDefault(); commitChart(selectPoint(state, Number(e.target.dataset.index))); }
   if (e.key === "F10" && e.shiftKey) { e.preventDefault(); commitContextMenu(openContextMenu(state, 400, 200)); }
   if (e.key === "Escape" && state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
+  if (e.key === "Escape" && state.ui.pendingNewChart) {
+    state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
+    commitRecipeRail(state);
+  }
 });
 
 /* ═══ Header drag — zone-inference + ghost preview ═══ */
@@ -1074,7 +1104,26 @@ function removeGhostOverlay() {
   if (ghostOverlay) { ghostOverlay.remove(); ghostOverlay = null; }
 }
 
+let dividerDrag = null; // { type: "col"|"row", row: number, col?: number, arenaRect }
+
 root.addEventListener("pointerdown", (e) => {
+  // ── Grid divider drag ──
+  const div = e.target.closest(".grid-divider");
+  if (div) {
+    e.preventDefault();
+    e.stopPropagation();
+    div.setPointerCapture(e.pointerId);
+    div.classList.add("grid-divider-active");
+
+    const arenaRect = root.querySelector(".chart-arena").getBoundingClientRect();
+    if (div.classList.contains("grid-divider-col")) {
+      dividerDrag = { type: "col", row: +div.dataset.row, col: +div.dataset.col, arenaRect };
+    } else {
+      dividerDrag = { type: "row", row: +div.dataset.row, arenaRect };
+    }
+    return;
+  }
+
   // ── Header drag — record pending, promote after 4px threshold (DRAG-003) ──
   const handle = e.target.closest("[data-drag-handle]");
   if (!handle) return;
@@ -1088,6 +1137,40 @@ root.addEventListener("pointerdown", (e) => {
 });
 
 root.addEventListener("pointermove", (e) => {
+  // ── Grid divider live resize ──
+  if (dividerDrag) {
+    if (dividerDrag.type === "col") {
+      const rowEl = root.querySelectorAll(".chart-row")[dividerDrag.row];
+      if (!rowEl) return;
+      const wraps = rowEl.querySelectorAll(":scope > .chart-pane-wrap");
+      const leftW = wraps[dividerDrag.col];
+      const rightW = wraps[dividerDrag.col + 1];
+      if (leftW && rightW) {
+        const totalPct = parseFloat(leftW.style.flex.split(" ")[2]) + parseFloat(rightW.style.flex.split(" ")[2]);
+        const paneLeftEdge = leftW.getBoundingClientRect().left;
+        const combinedWidth = leftW.getBoundingClientRect().width + rightW.getBoundingClientRect().width;
+        const localRatio = Math.max(0.1, Math.min(0.9, (e.clientX - paneLeftEdge) / combinedWidth));
+        leftW.style.flex = `0 0 ${(totalPct * localRatio).toFixed(2)}%`;
+        rightW.style.flex = `0 0 ${(totalPct * (1 - localRatio)).toFixed(2)}%`;
+        dividerDrag.pendingRatio = localRatio;
+      }
+    } else {
+      const rowEls = root.querySelectorAll(".chart-row");
+      const topEl = rowEls[dividerDrag.row];
+      const botEl = rowEls[dividerDrag.row + 1];
+      if (topEl && botEl) {
+        const topEdge = topEl.getBoundingClientRect().top;
+        const combinedHeight = topEl.getBoundingClientRect().height + botEl.getBoundingClientRect().height;
+        const localRatio = Math.max(0.1, Math.min(0.9, (e.clientY - topEdge) / combinedHeight));
+        const totalPct = parseFloat(topEl.style.flex.split(" ")[2]) + parseFloat(botEl.style.flex.split(" ")[2]);
+        topEl.style.flex = `0 0 ${(totalPct * localRatio).toFixed(2)}%`;
+        botEl.style.flex = `0 0 ${(totalPct * (1 - localRatio)).toFixed(2)}%`;
+        dividerDrag.pendingRatio = localRatio;
+      }
+    }
+    return;
+  }
+
   // ── Promote pending drag once 4px threshold is crossed (DRAG-003) ──
   if (pendingDrag && !dragState) {
     const dx = e.clientX - pendingDrag.startX;
@@ -1121,7 +1204,7 @@ root.addEventListener("pointermove", (e) => {
     dragState = { chartId, pane, ghost, dropTarget: null, dropZone: null };
 
     // DRAG-004: show overlay immediately over source pane
-    updateGhostOverlay(state.chartLayout.rows, chartId);
+    updateGhostOverlay(state.chartLayout, chartId);
   }
 
   // ── Header drag: zone inference + ghost preview ──
@@ -1144,11 +1227,11 @@ root.addEventListener("pointermove", (e) => {
   dragState.dropZone = foundZone;
 
   if (foundTarget && foundZone) {
-    const previewRows = computeGridPreview(state.chartLayout.rows, chartId, foundTarget, foundZone);
-    updateGhostOverlay(previewRows, chartId);
+    const previewLayout = computeGridPreview(state.chartLayout, chartId, foundTarget, foundZone);
+    updateGhostOverlay(previewLayout, chartId);
   } else {
     // Back over source pane — show current layout with source highlighted
-    updateGhostOverlay(state.chartLayout.rows, chartId);
+    updateGhostOverlay(state.chartLayout, chartId);
   }
 });
 
@@ -1169,9 +1252,41 @@ function endDrag() {
   dragState = null;
 }
 
+function endDividerDrag() {
+  if (!dividerDrag) return;
+  root.querySelectorAll(".grid-divider-active").forEach(el => el.classList.remove("grid-divider-active"));
+  if (dividerDrag.pendingRatio !== undefined) {
+    if (dividerDrag.type === "col") {
+      state = setColWeight(state, dividerDrag.row, dividerDrag.col, dividerDrag.pendingRatio);
+    } else {
+      state = setRowWeight(state, dividerDrag.row, dividerDrag.pendingRatio);
+    }
+    saveLayout();
+    // Trigger ECharts resize on affected panes
+    const visibleIds = collectChartIds(state.chartLayout);
+    requestAnimationFrame(() => {
+      for (const id of visibleIds) { if (charts[id]) charts[id].update(buildChartData(id)); }
+    });
+  }
+  dividerDrag = null;
+}
+
 // DRAG-002: bind to document so release outside root is always caught
-document.addEventListener("pointerup", () => { endDrag(); });
-document.addEventListener("pointercancel", () => { endDrag(); });
+document.addEventListener("pointerup", () => { endDividerDrag(); endDrag(); });
+document.addEventListener("pointercancel", () => { endDividerDrag(); endDrag(); });
+
+// Double-click divider to reset weights
+root.addEventListener("dblclick", (e) => {
+  const div = e.target.closest(".grid-divider");
+  if (!div) return;
+  if (div.classList.contains("grid-divider-col")) {
+    state = setColWeight(state, +div.dataset.row, +div.dataset.col, 0.5);
+  } else {
+    state = setRowWeight(state, +div.dataset.row, 0.5);
+  }
+  commitLayout(state);
+  saveLayout();
+});
 
 /* ═══ Pane titlebar right-click — split/close context menu ═══ */
 let paneMenu = null;
@@ -1332,6 +1447,30 @@ root.addEventListener("change", async (e) => {
   const dsId = state.activeDatasetId;
   const cols = state.columnConfig.columns;
 
+  // Handle pending new chart chip edits
+  if (action.startsWith("_pending-") && state.ui.pendingNewChart) {
+    const pendingAction = action.slice("_pending-".length);
+    const p = { ...state.ui.pendingNewChart };
+    if (pendingAction === "set-metric-column") p.value_column = e.target.value || null;
+    else if (pendingAction === "set-subgroup-column") p.subgroup_column = e.target.value || null;
+    else if (pendingAction === "set-phase-column") p.phase_column = e.target.value || null;
+    else if (pendingAction === "set-chart-type") p.chart_type = e.target.value;
+    else if (pendingAction === "set-sigma-method") p.sigma_method = e.target.value;
+    else if (pendingAction === "set-k-sigma") { const k = parseFloat(e.target.value); if (k > 0 && k <= 6) p.k_sigma = k; }
+    else if (pendingAction === "toggle-nelson") {
+      const ruleId = Number(e.target.dataset.value);
+      const cur = p.nelson_tests || [];
+      p.nelson_tests = e.target.checked ? [...cur, ruleId] : cur.filter(r => r !== ruleId);
+    }
+    else if (pendingAction === "set-usl") { const v = e.target.value.trim(); p.usl = v !== '' ? parseFloat(v) : null; }
+    else if (pendingAction === "set-lsl") { const v = e.target.value.trim(); p.lsl = v !== '' ? parseFloat(v) : null; }
+    else if (pendingAction === "set-target") { const v = e.target.value.trim(); p.target = v !== '' ? parseFloat(v) : null; }
+    state = { ...state, ui: { ...state.ui, pendingNewChart: p } };
+    if (pendingAction !== "toggle-nelson" && pendingAction !== "set-k-sigma") state = setActiveChipEditor(state, null);
+    commitRecipeRail(state);
+    return;
+  }
+
   // Determine which chart this action targets by prefix (e.g. "chart-1-set-chart-type")
   let chartId = null;
   let baseAction = action;
@@ -1433,6 +1572,8 @@ function saveLayout() {
   try {
     const data = {
       rows: state.chartLayout.rows,
+      colWeights: state.chartLayout.colWeights,
+      rowWeights: state.chartLayout.rowWeights,
       chartOrder: state.chartOrder,
       focusedChartId: state.focusedChartId,
       nextChartId: state.nextChartId,
@@ -1453,10 +1594,22 @@ function restoreLayout() {
     if (!data.chartOrder || !data.chartParams) return null;
     // Migrate legacy tree/flat formats to row-grid
     if (!data.rows) {
-      data.rows = migrateTreeToRows(data).rows;
+      const migrated = migrateTreeToRows(data);
+      data.rows = migrated.rows;
+      data.colWeights = migrated.colWeights;
+      data.rowWeights = migrated.rowWeights;
       if (!data.rows || data.rows.length === 0) {
         data.rows = [data.chartOrder];
+        data.colWeights = [data.chartOrder.map(() => 1)];
+        data.rowWeights = [1];
       }
+    }
+    // Ensure weights exist (older saves may lack them)
+    if (!data.colWeights) {
+      data.colWeights = data.rows.map(r => r.map(() => 1));
+    }
+    if (!data.rowWeights) {
+      data.rowWeights = data.rows.map(() => 1);
     }
     return data;
   } catch { return null; }
@@ -1486,7 +1639,7 @@ async function main() {
         chartOrder: saved.chartOrder,
         nextChartId: saved.nextChartId || saved.chartOrder.length + 1,
         focusedChartId: saved.focusedChartId || saved.chartOrder[0],
-        chartLayout: { rows: saved.rows },
+        chartLayout: { rows: saved.rows, colWeights: saved.colWeights, rowWeights: saved.rowWeights },
       };
     }
 

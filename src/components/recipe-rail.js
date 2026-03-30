@@ -1,4 +1,5 @@
-import { getFocused, collectChartIds } from "../core/state.js";
+import { getFocused, collectChartIds, DEFAULT_PARAMS } from "../core/state.js";
+import { applyParamsToContext } from "../helpers.js";
 
 function chipSelect(action, options, current) {
   return `<select class="chip-select" data-action="${action}" onclick="event.stopPropagation()">${options.map(([val, label]) =>
@@ -117,10 +118,11 @@ function renderCollapsedChartCard(state, chartId) {
   if (!slot) return "";
   const chartLabel = slot.context.chartType?.label || "\u2014";
   const idx = state.chartOrder.indexOf(chartId) + 1;
+  const accentIdx = state.chartOrder.indexOf(chartId) % 8;
   const summary = collapsedSummary(slot);
 
   return `
-    <div class="rail-card rail-card--collapsed" data-action="focus-chart" data-chart-id="${chartId}">
+    <div class="rail-card rail-card--collapsed" data-action="focus-chart" data-chart-id="${chartId}" data-accent="${accentIdx}">
       <div class="rail-card-header rail-card-header--collapsed">
         <span class="rail-card-dot"></span>
         <span class="rail-card-label">${chartLabel}</span>
@@ -134,9 +136,10 @@ function renderCollapsedChartCard(state, chartId) {
 function renderExpandedChartCard(state, chartId, slot, ae, cols) {
   const chartLabel = slot.context.chartType?.label || "\u2014";
   const idx = state.chartOrder.indexOf(chartId) + 1;
+  const accentIdx = state.chartOrder.indexOf(chartId) % 8;
 
   return `
-    <div class="rail-card rail-card--focused" data-chart-id="${chartId}">
+    <div class="rail-card rail-card--focused" data-chart-id="${chartId}" data-accent="${accentIdx}">
       <div class="rail-card-header rail-card-header--focused">
         <span class="rail-card-dot"></span>
         <span class="rail-card-label">${chartLabel}</span>
@@ -152,21 +155,42 @@ function renderExpandedChartCard(state, chartId, slot, ae, cols) {
   `;
 }
 
-const ADD_CHART_TYPES = [
-  ["imr", "IMR"], ["xbar_s", "X\u0304-S"], ["xbar_r", "X\u0304-R"],
-  ["p", "P"], ["np", "NP"], ["c", "C"], ["u", "U"],
-  ["cusum", "CUSUM"], ["ewma", "EWMA"], ["run", "Run"],
-];
+function renderPendingChartCard(state) {
+  const pending = state.ui.pendingNewChart;
+  if (!pending) return "";
+  const ae = state.activeChipEditor;
+  const cols = state.columnConfig.columns || [];
+  const focusedSlot = state.charts[state.focusedChartId];
+  const baseContext = focusedSlot ? focusedSlot.context : { metric: { id: "", label: "Value", unit: "" }, subgroup: { id: "", label: "Individual (n=1)", detail: "" }, phase: { id: "", label: "No phases", detail: "" }, chartType: { id: "imr", label: "IMR", detail: "" }, sigma: { label: "3 Sigma", detail: "Moving Range" }, tests: { label: "R1,R2,R5", detail: "" }, methodBadge: "IMR" };
+  const context = applyParamsToContext(baseContext, pending);
+  // Build tests context
+  const activeTests = pending.nelson_tests || [];
+  context.tests = { label: activeTests.map(id => `R${id}`).join(",") || "None", detail: "" };
 
-function renderAddChartPicker(state) {
-  const focusedType = state.charts[state.focusedChartId]?.params?.chart_type || "imr";
   return `
-    <div class="add-chart-picker">
-      ${ADD_CHART_TYPES.map(([type, label]) =>
-        `<button class="add-chart-option ${type === focusedType ? "selected" : ""}"
-                data-action="add-chart-type" data-type="${type}" type="button">${label}</button>`
-      ).join("")}
+    <div class="rail-card rail-card--pending">
+      <div class="rail-card-header rail-card-header--pending">
+        <span class="rail-card-dot"></span>
+        <span class="rail-card-label">New Chart</span>
+      </div>
+      ${renderChartChips(state, "_pending", pending, context, ae, cols)}
+      <div class="rail-card-actions">
+        <button class="rail-card-btn rail-card-btn--cancel" data-action="cancel-add-chart" type="button">Cancel</button>
+        <button class="rail-card-btn rail-card-btn--confirm" data-action="confirm-add-chart" type="button">Add Chart</button>
+      </div>
     </div>
+  `;
+}
+
+function renderAddChartSection(state) {
+  if (state.ui.pendingNewChart) {
+    return renderPendingChartCard(state);
+  }
+  return `
+    <button class="rail-add-chart" data-action="open-add-chart" type="button">
+      <span class="rail-add-icon">+</span>
+      <span class="rail-add-label">Add Chart</span>
+    </button>
   `;
 }
 
@@ -199,8 +223,11 @@ export function renderRecipeRail(state) {
     : "";
 
   // Collapsed cards for non-focused charts
-  const collapsedCards = state.chartOrder
-    .filter(id => id !== focusedId)
+  const otherIds = state.chartOrder.filter(id => id !== focusedId);
+  const countBadge = otherIds.length > 0
+    ? `<div class="rail-collapsed-count">${otherIds.length} other chart${otherIds.length > 1 ? "s" : ""}</div>`
+    : "";
+  const collapsedCards = otherIds
     .map(id => renderCollapsedChartCard(state, id))
     .join("");
 
@@ -209,15 +236,10 @@ export function renderRecipeRail(state) {
       ${datasetCard}
       <div class="recipe-divider"></div>
       ${focusedCard}
+      ${countBadge}
       ${collapsedCards}
       <div class="recipe-divider"></div>
-      <div class="rail-add-chart-wrap">
-        <button class="rail-add-chart" data-action="toggle-add-chart-picker" type="button">
-          <span class="rail-add-icon">+</span>
-          <span class="rail-add-label">Add Chart</span>
-        </button>
-        ${state.ui.addChartPickerOpen ? renderAddChartPicker(state) : ""}
-      </div>
+      ${renderAddChartSection(state)}
     </div>
   `;
 }
