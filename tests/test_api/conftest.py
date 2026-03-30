@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from api.models import Base, Dataset, Measurement
+from api.models import Base, Dataset, DataRow, DatasetColumn
 
 
 SEED_DATASET_ID = "test-dataset-001"
@@ -50,7 +50,13 @@ async def seeded_db(db: AsyncSession):
         metadata_json=json.dumps({"source": "test"}),
     )
 
-    # 20 individual measurements with known values for verification
+    # Add columns (value + subgroup)
+    db.add_all([
+        DatasetColumn(dataset_id=SEED_DATASET_ID, name="value", ordinal=0, dtype="numeric", role="value"),
+        DatasetColumn(dataset_id=SEED_DATASET_ID, name="subgroup", ordinal=1, dtype="text", role="subgroup"),
+    ])
+
+    # 20 individual data rows with known values for verification
     values = [
         10.0, 10.2, 10.1, 10.3, 10.0,
         10.2, 10.4, 10.1, 10.3, 10.2,
@@ -58,11 +64,10 @@ async def seeded_db(db: AsyncSession):
         10.3, 10.5, 10.4, 10.7, 10.5,
     ]
     for i, v in enumerate(values):
-        dataset.measurements.append(
-            Measurement(
-                value=v,
-                subgroup=str((i // 5) + 1),
+        dataset.data_rows.append(
+            DataRow(
                 sequence_index=i,
+                raw_json=json.dumps({"value": str(v), "subgroup": str((i // 5) + 1)}),
             )
         )
 

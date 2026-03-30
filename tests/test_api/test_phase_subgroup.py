@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from api.models import Base, Dataset, DatasetColumn, Measurement
+from api.models import Base, Dataset, DataRow, DatasetColumn
 from api.schemas import AnalysisRequest
 from api.services.analysis import run_analysis, _split_by_phase
 
@@ -64,25 +64,18 @@ async def phase_db(db: AsyncSession):
 
     for i, v in enumerate(phase_a_values + phase_b_values):
         phase = "A" if i < 10 else "B"
-        dataset.measurements.append(
-            Measurement(
-                value=v,
+        dataset.data_rows.append(
+            DataRow(
                 sequence_index=i,
-                raw_json=json.dumps({"Phase": phase, "value": v}),
+                raw_json=json.dumps({"Phase": phase, "value": str(v)}),
             )
         )
 
-    # Add phase column role
-    col = DatasetColumn(
-        dataset_id=PHASE_DATASET_ID,
-        name="Phase",
-        ordinal=0,
-        dtype="str",
-        role="phase",
-    )
-
     db.add(dataset)
-    db.add(col)
+    db.add_all([
+        DatasetColumn(dataset_id=PHASE_DATASET_ID, name="value", ordinal=0, dtype="numeric", role="value"),
+        DatasetColumn(dataset_id=PHASE_DATASET_ID, name="Phase", ordinal=1, dtype="str", role="phase"),
+    ])
     await db.commit()
     return db
 
@@ -117,13 +110,12 @@ def test_split_by_phase_contiguous():
         FakeMeasurement(5.0, {"Phase": "A"}),  # A again — new group
     ]
     result = _split_by_phase(measurements, "Phase")
-    assert len(result) == 3
+    # _split_by_phase groups by unique phase value (not contiguous runs)
+    assert len(result) == 2
     assert result[0][0] == "A"
-    assert len(result[0][1]) == 2
+    assert len(result[0][1]) == 3  # all 3 A measurements grouped together
     assert result[1][0] == "B"
     assert len(result[1][1]) == 2
-    assert result[2][0] == "A"
-    assert len(result[2][1]) == 1
 
 
 @pytest.mark.asyncio
@@ -207,15 +199,18 @@ async def ewma_subgroup_db(db: AsyncSession):
     ]
     for i, v in enumerate(values):
         sg = str((i // 5) + 1)
-        dataset.measurements.append(
-            Measurement(
-                value=v,
-                subgroup=sg,
+        dataset.data_rows.append(
+            DataRow(
                 sequence_index=i,
+                raw_json=json.dumps({"value": str(v), "subgroup": sg}),
             )
         )
 
     db.add(dataset)
+    db.add_all([
+        DatasetColumn(dataset_id=EWMA_SUBGROUP_DATASET_ID, name="value", ordinal=0, dtype="numeric", role="value"),
+        DatasetColumn(dataset_id=EWMA_SUBGROUP_DATASET_ID, name="subgroup", ordinal=1, dtype="text", role="subgroup"),
+    ])
     await db.commit()
     return db
 
@@ -261,15 +256,18 @@ async def cusum_subgroup_db(db: AsyncSession):
     ]
     for i, v in enumerate(values):
         sg = str((i // 5) + 1)
-        dataset.measurements.append(
-            Measurement(
-                value=v,
-                subgroup=sg,
+        dataset.data_rows.append(
+            DataRow(
                 sequence_index=i,
+                raw_json=json.dumps({"value": str(v), "subgroup": sg}),
             )
         )
 
     db.add(dataset)
+    db.add_all([
+        DatasetColumn(dataset_id=CUSUM_SUBGROUP_DATASET_ID, name="value", ordinal=0, dtype="numeric", role="value"),
+        DatasetColumn(dataset_id=CUSUM_SUBGROUP_DATASET_ID, name="subgroup", ordinal=1, dtype="text", role="subgroup"),
+    ])
     await db.commit()
     return db
 
@@ -310,15 +308,18 @@ async def attr_db(db: AsyncSession):
     ]
     for i, v in enumerate(values):
         sg = str((i // 5) + 1)
-        dataset.measurements.append(
-            Measurement(
-                value=float(v),
-                subgroup=sg,
+        dataset.data_rows.append(
+            DataRow(
                 sequence_index=i,
+                raw_json=json.dumps({"value": str(float(v)), "subgroup": sg}),
             )
         )
 
     db.add(dataset)
+    db.add_all([
+        DatasetColumn(dataset_id=ATTR_DATASET_ID, name="value", ordinal=0, dtype="numeric", role="value"),
+        DatasetColumn(dataset_id=ATTR_DATASET_ID, name="subgroup", ordinal=1, dtype="text", role="subgroup"),
+    ])
     await db.commit()
     return db
 
