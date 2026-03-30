@@ -811,7 +811,7 @@ root.addEventListener("pointermove", (e) => {
   ghost.style.top = (e.clientY - 20) + "px";
 
   // Remove previous drop highlight
-  root.querySelectorAll(".pane-drop-highlight").forEach(el => el.remove());
+  root.querySelectorAll(".pane-drop-preview").forEach(el => el.remove());
 
   // Find which pane the cursor is over (not the dragged one)
   const allPanes = [...root.querySelectorAll(".chart-pane:not(.dragging)")];
@@ -836,13 +836,33 @@ root.addEventListener("pointermove", (e) => {
   }
 
   if (targetPane && targetPos) {
-    // Show drop highlight on the target pane edge
-    const hl = document.createElement("div");
-    hl.classList.add("pane-drop-highlight");
-    hl.dataset.position = targetPos;
+    // Show VS Code-style layout preview wireframe
+    const overlay = document.createElement("div");
+    overlay.classList.add("pane-drop-preview");
+    overlay.dataset.position = targetPos;
+
+    const targetId = targetPane.dataset.chartId;
+    const dragLabel = state.charts[chartId]?.context?.chartType?.label || chartId;
+    const targetLabel = state.charts[targetId]?.context?.chartType?.label || targetId;
+
+    if (targetPos === "center") {
+      overlay.innerHTML = `<div class="drop-preview-cell swap">${dragLabel} \u21c4 ${targetLabel}</div>`;
+    } else {
+      const isHoriz = targetPos === "left" || targetPos === "right";
+      const first = (targetPos === "left" || targetPos === "top") ? dragLabel : targetLabel;
+      const second = (targetPos === "left" || targetPos === "top") ? targetLabel : dragLabel;
+      const firstIsDropped = (targetPos === "left" || targetPos === "top");
+      overlay.classList.add(isHoriz ? "preview-row" : "preview-col");
+      overlay.innerHTML = `
+        <div class="drop-preview-cell ${firstIsDropped ? "dropped" : "existing"}">${first}</div>
+        <div class="drop-preview-divider ${isHoriz ? "v" : "h"}"></div>
+        <div class="drop-preview-cell ${firstIsDropped ? "existing" : "dropped"}">${second}</div>
+      `;
+    }
+
     targetPane.style.position = "relative";
-    targetPane.appendChild(hl);
-    dragState.dropTarget = targetPane.dataset.chartId;
+    targetPane.appendChild(overlay);
+    dragState.dropTarget = targetId;
     dragState.dropPos = targetPos;
   } else {
     dragState.dropTarget = null;
@@ -855,7 +875,7 @@ function endDrag() {
   const { pane, ghost, chartId, dropTarget, dropPos } = dragState;
   pane.classList.remove("dragging");
   ghost.remove();
-  root.querySelectorAll(".pane-drop-highlight").forEach(el => el.remove());
+  root.querySelectorAll(".pane-drop-preview").forEach(el => el.remove());
 
   if (dropTarget && dropPos && dropTarget !== chartId) {
     if (dropPos === "center") {
