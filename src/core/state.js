@@ -324,6 +324,17 @@ function _swapPanes(node, idA, idB) {
   return { ...node, children: node.children.map(c => _swapPanes(c, idA, idB)) };
 }
 
+/** Return the direct parent container of the pane with chartId, or null if root/not found */
+function _findParent(node, chartId, parent = null) {
+  if (!node) return null;
+  if (node.type === "pane") return node.chartId === chartId ? parent : null;
+  for (const child of node.children) {
+    const result = _findParent(child, chartId, node);
+    if (result !== null) return result;
+  }
+  return null;
+}
+
 
 /** Get all chart IDs visible in the current layout */
 export function collectChartIds(layout) {
@@ -1149,17 +1160,52 @@ export function swapSlots(state, idA, idB) {
  * Compute the predicted tree after a drag-drop operation — does NOT modify state.
  * zone: "top" | "bottom" | "left" | "right" | "center"
  * Returns the new tree, or null if the operation is a no-op.
+ *
+ * Smart insert: when the drop zone direction matches the target's parent container
+ * direction, wrap the sibling instead of the target — preserving the target's
+ * proportions and avoiding unnecessary same-direction nesting.
+ *
+ * Example: [A | [B/C]], drag B → right of A
+ *   Naive:  [[A|B] | C]   A gets split, nested h-in-h
+ *   Smart:  [A | [B|C]]   A keeps its space, B slots between A and C
  */
 export function computeDragResult(tree, draggingId, targetId, zone) {
   if (!draggingId || !targetId || draggingId === targetId) return null;
-  if (zone === "center") {
-    return _swapPanes(tree, draggingId, targetId);
-  }
-  // Edge zones: remove dragged pane, then split target pane in the given direction
+  if (zone === "center") return _swapPanes(tree, draggingId, targetId);
+
   const reducedTree = _removePane(tree, draggingId);
-  if (!reducedTree) return null; // only pane — can't remove
+  if (!reducedTree) return null;
+
   const direction = (zone === "left" || zone === "right") ? "h" : "v";
   const putFirst = (zone === "top" || zone === "left");
+
+  // Smart insert: if target's direct parent has the same direction as the drop zone,
+  // insert between target and its sibling (wrap sibling, preserve target's space).
+  const parentNode = _findParent(reducedTree, targetId);
+  if (parentNode && parentNode.direction === direction) {
+    const idx = parentNode.children.findIndex(c =>
+      c.type === "pane" && c.chartId === targetId
+    );
+    if (idx !== -1) {
+      const siblingIdx = putFirst ? idx - 1 : idx + 1;
+      if (siblingIdx >= 0 && siblingIdx < parentNode.children.length) {
+        const sibling = parentNode.children[siblingIdx];
+        // Dragging goes on the target-facing side of the sibling:
+        //   zone=right (putFirst=false): [dragging | sibling]
+        //   zone=left  (putFirst=true):  [sibling | dragging]
+        const dragFirst = !putFirst;
+        return _replace(
+          reducedTree,
+          n => n === sibling,
+          n => dragFirst
+            ? createContainerNode(direction, [createPaneNode(draggingId), n])
+            : createContainerNode(direction, [n, createPaneNode(draggingId)])
+        );
+      }
+    }
+  }
+
+  // Standard fallback: wrap the target itself
   return _replace(
     reducedTree,
     n => n.type === "pane" && n.chartId === targetId,
