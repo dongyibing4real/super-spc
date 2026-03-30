@@ -262,18 +262,6 @@ export function getFocused(state) {
 
 /* ═══ Freeform Split Layout (binary split tree) ═══ */
 
-/**
- * Layout templates for quick-start arrangements.
- * Under the hood these build a binary split tree, not a CSS grid.
- */
-export const LAYOUT_TEMPLATES = {
-  "1":    { slots: 1, label: "Single" },
-  "2h":   { slots: 2, label: "Side by side" },
-  "2v":   { slots: 2, label: "Stacked" },
-  "2x2":  { slots: 4, label: "Grid" },
-  "1+2":  { slots: 3, label: "Wide + two" },
-  "2+1":  { slots: 3, label: "Two + wide" },
-};
 
 /* ── Tree node constructors ─────────────────────────────────── */
 
@@ -336,21 +324,6 @@ function _swapPanes(node, idA, idB) {
   return { ...node, children: node.children.map(c => _swapPanes(c, idA, idB)) };
 }
 
-/* ── Template → tree builder ────────────────────────────────── */
-
-function _buildTree(templateId, ids) {
-  const q = [...ids];
-  const p = () => createPaneNode(q.shift());
-  switch (templateId) {
-    case "2h":  return createContainerNode("h", [p(), p()]);
-    case "2v":  return createContainerNode("v", [p(), p()]);
-    case "3h":  return createContainerNode("h", [p(), createContainerNode("h", [p(), p()])]);
-    case "2x2": return createContainerNode("v", [createContainerNode("h", [p(), p()]), createContainerNode("h", [p(), p()])]);
-    case "1+2": return createContainerNode("v", [p(), createContainerNode("h", [p(), p()])]);
-    case "2+1": return createContainerNode("v", [createContainerNode("h", [p(), p()]), p()]);
-    default:    return p(); // "1" and fallback
-  }
-}
 
 /** Get all chart IDs visible in the current layout */
 export function collectChartIds(layout) {
@@ -1196,54 +1169,6 @@ export function computeDragResult(tree, draggingId, targetId, zone) {
   );
 }
 
-/** Apply a template layout as a quick-start (rearranges existing charts into template shape) */
-export function applyLayoutTemplate(state, templateId) {
-  const tpl = LAYOUT_TEMPLATES[templateId];
-  if (!tpl) return state;
-  const needed = tpl.slots;
-  const existing = collectChartIds(state.chartLayout);
-
-  // Add new chart slots if the template needs more than we have
-  let s = state;
-  while (collectChartIds(s.chartLayout).length < needed) {
-    const newId = `chart-${s.nextChartId}`;
-    const focusedSlot = getFocused(s);
-    const newSlot = createSlot({ params: { ...DEFAULT_PARAMS, value_column: focusedSlot.params.value_column, subgroup_column: focusedSlot.params.subgroup_column, phase_column: focusedSlot.params.phase_column } });
-    s = {
-      ...s,
-      charts: { ...s.charts, [newId]: newSlot },
-      chartOrder: [...s.chartOrder, newId],
-      nextChartId: s.nextChartId + 1,
-      chartLayout: { tree: s.chartLayout.tree }, // tree unchanged here; we rebuild below
-    };
-  }
-
-  // Use first `needed` chart IDs from current order
-  const allIds = collectChartIds(s.chartLayout);
-  const usedIds = allIds.slice(0, needed);
-  const tree = _buildTree(templateId, usedIds);
-
-  // Remove charts excluded from the new layout
-  const usedSet = new Set(usedIds);
-  const newCharts = {};
-  const newOrder = [];
-  for (const id of s.chartOrder) {
-    if (usedSet.has(id)) { newCharts[id] = s.charts[id]; newOrder.push(id); }
-  }
-
-  return {
-    ...s,
-    charts: newCharts,
-    chartOrder: newOrder,
-    focusedChartId: usedSet.has(s.focusedChartId) ? s.focusedChartId : newOrder[0],
-    chartLayout: { tree },
-  };
-}
-
-/** @deprecated kept for backward compat — use applyLayoutTemplate */
-export function setChartLayout(state, template) {
-  return applyLayoutTemplate(state, template);
-}
 
 export function setXDomainOverride(state, min, max, id) {
   if (!id) id = state.focusedChartId || state.chartOrder[0];

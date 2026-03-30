@@ -1,6 +1,5 @@
 import { getCapability, capClass, CHART_TYPE_LABELS } from "../helpers.js";
 import { renderContextMenu } from "./context-menu.js";
-import { LAYOUT_TEMPLATES } from "../core/state.js";
 
 /* ═══ Chart pane renderer ═══ */
 
@@ -90,33 +89,6 @@ export function renderGhostNode(node, incomingId) {
     </div>`;
 }
 
-/* ═══ Layout template wireframe icons (SVG miniatures) ═══ */
-
-const TEMPLATE_ICONS = {
-  "1":   '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="1" fill="currentColor" opacity="0.3"/></svg>',
-  "2h":  '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="8.5" height="12" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="1" width="8.5" height="12" rx="1" fill="currentColor" opacity="0.3"/></svg>',
-  "2v":  '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
-  "2x2": '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
-  "1+2": '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="7.5" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
-  "2+1": '<svg viewBox="0 0 20 14"><rect x="1" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="10.5" y="1" width="8.5" height="5.5" rx="1" fill="currentColor" opacity="0.3"/><rect x="1" y="7.5" width="18" height="5.5" rx="1" fill="currentColor" opacity="0.3"/></svg>',
-};
-
-function renderLayoutPicker(state) {
-  const count = state.chartOrder.length;
-  if (count < 2) return "";
-
-  const available = Object.entries(LAYOUT_TEMPLATES)
-    .filter(([, tpl]) => tpl.slots >= 2 && tpl.slots <= Math.max(count, 4))
-    .map(([id, tpl]) => {
-      const icon = TEMPLATE_ICONS[id] || "";
-      return `<button class="layout-btn layout-template-btn"
-        data-action="set-snap-layout" data-template="${id}" title="${tpl.label}">
-        ${icon}
-      </button>`;
-    });
-
-  return `<span class="layout-divider"></span>${available.join("")}`;
-}
 
 /* ═══ Data table renderer ═══ */
 
@@ -193,7 +165,6 @@ export function renderChartArena(state) {
         </div>
         <div class="layout-controls">
           <button class="layout-btn ${state.showDataTable ? "active" : ""}" data-action="toggle-data-table" title="Data Table">☰</button>
-          ${renderLayoutPicker(state)}
         </div>
       </div>
       ${state.showDataTable ? renderDataTable(state) : `

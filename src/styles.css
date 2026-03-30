@@ -817,7 +817,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   padding: 6px;
   gap: 4px;
-  background: rgba(17, 20, 24, 0.75);
+  background: rgba(17, 20, 24, 0.45);
   border: 2px solid var(--blue, #2D72D2);
   border-radius: 4px;
   box-sizing: border-box;
@@ -840,7 +840,7 @@ h1, h2, h3, h4, h5, h6 {
   flex: 1 1 0;
   min-height: 0;
   min-width: 0;
-  background: var(--bg-3, #2F343C);
+  background: rgba(47, 52, 60, 0.45);
   border-radius: 3px;
   border: 1px solid var(--border-2, rgba(255,255,255,0.1));
 }
@@ -1105,35 +1105,12 @@ h1, h2, h3, h4, h5, h6 {
   border-color: var(--chart-text-3);
 }
 
-.layout-divider {
-  width: 1px;
-  height: 16px;
-  background: var(--chart-border);
-  margin: 0 2px;
-}
-
 /* Drag-to-reorder: drop target highlight */
 .chart-pane.drop-target {
   outline: 2px solid var(--blue, #2D72D2);
   outline-offset: -2px;
 }
 
-/* Layout template picker wireframe icons */
-.layout-template-btn {
-  padding: 3px 5px;
-}
-.layout-template-btn svg {
-  width: 20px;
-  height: 14px;
-  color: var(--chart-text-3);
-  display: block;
-}
-.layout-template-btn.active svg {
-  color: var(--chart-text);
-}
-.layout-template-btn:hover svg {
-  color: var(--blue-bright, #4C90F0);
-}
 
 .chart-stage {
   position: relative;

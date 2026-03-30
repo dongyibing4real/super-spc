@@ -63,12 +63,10 @@ import {
   removeChart,
   splitPane,
   setSplitRatio,
-  applyLayoutTemplate,
   collectChartIds,
   createSlot,
   swapSlots,
   computeDragResult,
-  setChartLayout,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
 import {
@@ -512,7 +510,6 @@ root.addEventListener("click", async (e) => {
     case "toggle-export-failure": commit(toggleReportFailureMode(state)); break;
     case "clear-notice":       commitNotice(clearNotice(state)); break;
     case "toggle-data-table":  commit(toggleDataTable(state)); break;
-    // "set-layout" removed — replaced by "set-snap-layout"
     case "add-chart-from-rail": {
       // Split focused pane horizontally, clone focused chart type
       const focusedType = getFocused(state).params.chart_type;
@@ -529,22 +526,6 @@ root.addEventListener("click", async (e) => {
         const focusedType = state.charts[chartId]?.params?.chart_type || "imr";
         state = splitPane(state, chartId, direction, { chartType: focusedType });
         commit(state);
-        saveLayout();
-        if (state.activeDatasetId) reanalyze();
-      }
-      break;
-    }
-    case "set-snap-layout": {
-      const template = t.dataset.template;
-      if (template) {
-        const prev = collectChartIds(state.chartLayout);
-        state = applyLayoutTemplate(state, template);
-        // Destroy D3 instances for charts removed by template change
-        const next = new Set(collectChartIds(state.chartLayout));
-        for (const id of prev) {
-          if (!next.has(id) && charts[id]) { charts[id].destroy(); delete charts[id]; }
-        }
-        commitLayout(state);
         saveLayout();
         if (state.activeDatasetId) reanalyze();
       }
