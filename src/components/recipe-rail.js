@@ -28,6 +28,22 @@ const NELSON_RULES = [[1,"1: Beyond 3\u03c3"],[2,"2: 9 same side"],[3,"3: 6 tren
 const SIGMA_METHOD_CHARTS = new Set(["imr"]);
 const NO_SIGMA_CHARTS = new Set(["p","np","c","u","laney_p","laney_u","cusum","ewma","cusum_vmask","hotelling_t2","mewma","run"]);
 
+function specSummary(params) {
+  const parts = [];
+  if (params.lsl != null) parts.push(`LSL ${params.lsl}`);
+  if (params.target != null) parts.push(`T ${params.target}`);
+  if (params.usl != null) parts.push(`USL ${params.usl}`);
+  return parts.length > 0 ? parts.join(' \u2013 ') : 'Not set';
+}
+
+function renderSpecEditor(prefix, params) {
+  return `<span class="chip-sigma-editor">
+    <label class="chip-sigma-row"><span class="chip-sigma-label">LSL</span><input type="number" class="chip-k-input" data-action="${prefix}-set-lsl" value="${params.lsl ?? ''}" step="any" onclick="event.stopPropagation()" placeholder="\u2014" /></label>
+    <label class="chip-sigma-row"><span class="chip-sigma-label">Target</span><input type="number" class="chip-k-input" data-action="${prefix}-set-target" value="${params.target ?? ''}" step="any" onclick="event.stopPropagation()" placeholder="\u2014" /></label>
+    <label class="chip-sigma-row"><span class="chip-sigma-label">USL</span><input type="number" class="chip-k-input" data-action="${prefix}-set-usl" value="${params.usl ?? ''}" step="any" onclick="event.stopPropagation()" placeholder="\u2014" /></label>
+  </span>`;
+}
+
 function renderSigmaEditor(prefix, params) {
   const showMethod = SIGMA_METHOD_CHARTS.has(params.chart_type);
   const kInput = `<input type="number" class="chip-k-input" data-action="${prefix}-set-k-sigma"
@@ -72,6 +88,9 @@ function renderChartChips(state, prefix, params, context, ae, cols) {
           `<label class="chip-test-toggle" onclick="event.stopPropagation()"><input type="checkbox" data-action="${prefix}-toggle-nelson" data-value="${id}" ${activeTests.includes(id) ? "checked" : ""} />${id}</label>`
         ).join("")}</span>`
       : context.tests.label, ae === `${prefix}-tests` ? "" : context.tests.detail],
+    [`${prefix}-specs`, "Specs", ae === `${prefix}-specs`
+      ? renderSpecEditor(prefix, params)
+      : specSummary(params), ""],
   ];
 
   return chips.map(([id, label, value, detail]) => `

@@ -9,6 +9,7 @@ function computeYRange(data, seriesKey) {
   const limitsArr = [data.limits.ucl, data.limits.lcl, data.limits.center];
   if (data.limits.usl != null) limitsArr.push(data.limits.usl);
   if (data.limits.lsl != null) limitsArr.push(data.limits.lsl);
+  if (data.limits.target != null) limitsArr.push(data.limits.target);
 
   const allValues = [...values, ...limitsArr];
   const dataMin = Math.min(...allValues);

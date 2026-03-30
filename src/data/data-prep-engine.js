@@ -321,3 +321,295 @@ export function columnStats(table, column) {
     missing: d => op.sum(d[column] == null ? 1 : 0),
   }).object();
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — Column Operations
+// ═══════════════════════════════════════════════════════════════════
+
+import { compileExpression } from './expression-eval.js';
+
+/**
+ * Rename a column.
+ * @param {import('arquero').ColumnTable} table
+ * @param {string} oldName
+ * @param {string} newName
+ * @returns {import('arquero').ColumnTable}
+ */
+export function renameColumn(table, oldName, newName) {
+  return table.rename({ [oldName]: newName });
+}
+
+/**
+ * Change column data type (numeric↔text).
+ * @param {import('arquero').ColumnTable} table
+ * @param {string} column
+ * @param {'numeric'|'text'} targetType
+ * @returns {import('arquero').ColumnTable}
+ */
+export function changeColumnType(table, column, targetType) {
+  if (targetType === 'numeric') {
+    return table.derive({
+      [column]: escape(d => {
+        const v = d[column];
+        if (v == null) return null;
+        const n = Number(v);
+        return isNaN(n) ? null : n;
+      }),
+    });
+  }
+  // text
+  return table.derive({
+    [column]: escape(d => d[column] == null ? null : String(d[column])),
+  });
+}
+
+/**
+ * Preview how many values in a column can convert to a target type.
+ * @param {import('arquero').ColumnTable} table
+ * @param {string} column
+ * @param {'numeric'|'text'} targetType
+ * @returns {{ convertible: number, total: number }}
+ */
+export function previewTypeConversion(table, column, targetType) {
+  const arr = table.array(column);
+  let convertible = 0;
+  let total = 0;
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i] == null) continue;
+    total++;
+    if (targetType === 'numeric') {
+      if (!isNaN(Number(arr[i]))) convertible++;
+    } else {
+      convertible++; // everything can become text
+    }
+  }
+  return { convertible, total };
+}
+
+/**
+ * Add a calculated column using a simple arithmetic expression.
+ * Expression syntax: [ColName] for column refs, +,-,*,/,() for math,
+ * round/abs/log/sqrt/pow/min/max for functions.
+ *
+ * @param {import('arquero').ColumnTable} table
+ * @param {string} newColName
+ * @param {string} expression
+ * @param {string[]} columnNames - valid column names for validation
+ * @returns {import('arquero').ColumnTable}
+ */
+export function addCalculatedColumn(table, newColName, expression, columnNames) {
+  const { fn, error } = compileExpression(expression, columnNames);
+  if (error) throw new Error(error);
+  return table.derive({
+    [newColName]: escape(d => {
+      try { return fn(d); }
+      catch { return null; }
+    }),
+  });
+}
+
+/**
+ * Recode values in a column using a mapping.
+ * @param {import('arquero').ColumnTable} table
+ * @param {string} column - source column
+ * @param {Object<string, string>} mapping - { oldValue: newValue }
+ * @param {string|null} newColName - if provided, write to new column
+ * @returns {import('arquero').ColumnTable}
+ */
+export function recodeValues(table, column, mapping, newColName = null) {
+  const target = newColName || column;
+  return table.derive({
+    [target]: escape(d => {
+      const v = d[column];
+      const key = v == null ? null : String(v);
+      return key != null && key in mapping ? mapping[key] : v;
+    }),
+  });
+}
+
+/**
+ * Bin a numeric column into categorical bins.
+ * @param {import('arquero').ColumnTable} table
+ * @param {string} column
+ * @param {number} binCount
+ * @param {string} newColName
+ * @param {number[]|null} customBreaks - sorted breakpoints; if null, equal-width
+ * @returns {import('arquero').ColumnTable}
+ */
+export function binColumn(table, column, binCount, newColName, customBreaks = null) {
+  let breaks = customBreaks;
+  if (!breaks) {
+    const stats = table.rollup({ _min: op.min(column), _max: op.max(column) }).object();
+    const range = stats._max - stats._min;
+    const width = range / binCount;
+    breaks = Array.from({ length: binCount - 1 }, (_, i) =>
+      Math.round((stats._min + width * (i + 1)) * 1e6) / 1e6
+    );
+  }
+  const b = breaks; // closure-safe copy
+  return table.derive({
+    [newColName]: escape(d => {
+      const v = d[column];
+      if (v == null) return null;
+      for (let i = 0; i < b.length; i++) {
+        if (v <= b[i]) return `bin_${i + 1}`;
+      }
+      return `bin_${b.length + 1}`;
+    }),
+  });
+}
+
+/**
+ * Split a column by delimiter into multiple new columns.
+ * @param {import('arquero').ColumnTable} table
+ * @param {string} column
+ * @param {string} delimiter
+ * @param {number} maxParts
+ * @returns {import('arquero').ColumnTable}
+ */
+export function splitColumn(table, column, delimiter, maxParts = 2) {
+  const derived = {};
+  for (let i = 0; i < maxParts; i++) {
+    const name = `${column}_${i + 1}`;
+    const idx = i;
+    const delim = delimiter;
+    derived[name] = escape(d => {
+      const v = d[column];
+      if (v == null) return null;
+      const parts = String(v).split(delim);
+      return idx < parts.length ? parts[idx].trim() : null;
+    });
+  }
+  return table.derive(derived);
+}
+
+/**
+ * Concatenate multiple columns into a new column.
+ * @param {import('arquero').ColumnTable} table
+ * @param {string[]} columns - columns to concatenate
+ * @param {string} separator
+ * @param {string} newColName
+ * @returns {import('arquero').ColumnTable}
+ */
+export function concatColumns(table, columns, separator, newColName) {
+  const cols = columns; // closure-safe copy
+  const sep = separator;
+  return table.derive({
+    [newColName]: escape(d => {
+      return cols.map(c => d[c] ?? '').join(sep);
+    }),
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 3 — Data Validation & Quality
+// ═══════════════════════════════��═══════════════════════════════════
+
+/**
+ * Validate a single column against a rule.
+ * @param {import('arquero').ColumnTable} table
+ * @param {string} colName
+ * @param {{type: 'range'|'allowed'|'regex', min?: number, max?: number, values?: string[], pattern?: string}} rule
+ * @returns {Set<number>} Set of invalid row indices
+ */
+export function validateColumn(table, colName, rule) {
+  const arr = table.array(colName);
+  const invalid = new Set();
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    if (v == null) continue;
+    if (rule.type === 'range') {
+      const num = Number(v);
+      if (isNaN(num)) { invalid.add(i); continue; }
+      if (rule.min != null && num < rule.min) invalid.add(i);
+      if (rule.max != null && num > rule.max) invalid.add(i);
+    } else if (rule.type === 'allowed') {
+      if (!rule.values.includes(String(v))) invalid.add(i);
+    } else if (rule.type === 'regex') {
+      try {
+        if (!new RegExp(rule.pattern).test(String(v))) invalid.add(i);
+      } catch { invalid.add(i); }
+    }
+  }
+  return invalid;
+}
+
+/**
+ * Validate all columns that have validation rules.
+ * @param {import('arquero').ColumnTable} table
+ * @param {Array<{name: string, validation?: object}>} columns
+ * @returns {Map<string, Set<number>>} column name → invalid row indices
+ */
+export function validateAllColumns(table, columns) {
+  const result = new Map();
+  for (const col of columns) {
+    if (col.validation) {
+      result.set(col.name, validateColumn(table, col.name, col.validation));
+    }
+  }
+  return result;
+}
+
+/**
+ * Profile a column — compute stats, histogram, top values.
+ * @param {import('arquero').ColumnTable} table
+ * @param {string} colName
+ * @param {string} dtype - 'numeric' or 'text'
+ * @returns {Object} profile result
+ */
+export function profileColumn(table, colName, dtype) {
+  const arr = table.array(colName);
+  const n = arr.length;
+  let missing = 0;
+  const values = [];
+  for (let i = 0; i < n; i++) {
+    if (arr[i] == null || arr[i] === '') missing++;
+    else values.push(arr[i]);
+  }
+  const distinct = new Set(values.map(String)).size;
+  const base = { count: n, missing, missingPct: n > 0 ? (missing / n * 100) : 0, distinct };
+
+  if (dtype === 'numeric') {
+    const nums = values.map(Number).filter(v => !isNaN(v)).sort((a, b) => a - b);
+    if (nums.length === 0) return { ...base, mean: 0, std: 0, min: 0, max: 0, q1: 0, q3: 0, histogram: [] };
+    const sum = nums.reduce((s, v) => s + v, 0);
+    const mean = sum / nums.length;
+    const variance = nums.reduce((s, v) => s + (v - mean) ** 2, 0) / nums.length;
+    const std = Math.sqrt(variance);
+    const min = nums[0];
+    const max = nums[nums.length - 1];
+    const q1 = nums[Math.floor(nums.length * 0.25)];
+    const q3 = nums[Math.floor(nums.length * 0.75)];
+
+    // 8-bin equal-width histogram, normalized to max=1.0
+    const bins = 8;
+    const range = max - min || 1;
+    const width = range / bins;
+    const counts = new Array(bins).fill(0);
+    for (const v of nums) {
+      const idx = Math.min(Math.floor((v - min) / width), bins - 1);
+      counts[idx]++;
+    }
+    const maxCount = Math.max(...counts, 1);
+    const histogram = counts.map(c => c / maxCount);
+
+    return { ...base, mean, std, min, max, q1, q3, histogram };
+  }
+
+  // Text dtype
+  const freq = {};
+  for (const v of values) { const s = String(v); freq[s] = (freq[s] || 0) + 1; }
+  const topValues = Object.entries(freq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([value, count]) => ({ value, count }));
+  const lengths = values.map(v => String(v).length);
+  const minLength = lengths.length > 0 ? Math.min(...lengths) : 0;
+  const maxLength = lengths.length > 0 ? Math.max(...lengths) : 0;
+
+  // Top-3 proportion bars for text sparkline
+  const total = values.length || 1;
+  const histogram = topValues.slice(0, 3).map(t => t.count / total);
+
+  return { ...base, topValues, minLength, maxLength, histogram };
+}
