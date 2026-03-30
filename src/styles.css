@@ -470,60 +470,30 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: 0.1em;
 }
 
-.rail-card-header--primary {
+/* Focused chart rail card */
+.rail-card-header--focused {
   background: var(--blue-dim);
   border-bottom: 1px solid rgba(45,114,210,0.2);
 }
-.rail-card-header--primary .rail-card-dot {
+.rail-card-header--focused .rail-card-dot {
   width: 6px; height: 6px;
   border-radius: 50%;
   background: var(--blue-bright);
   flex-shrink: 0;
 }
-.rail-card-header--primary .rail-card-label {
+.rail-card-header--focused .rail-card-label {
   color: var(--blue-bright);
   text-transform: uppercase;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.1em;
 }
-.rail-card-header--primary .rail-card-method {
-  color: var(--t-2);
+.rail-card-header--focused .rail-card-id {
+  color: var(--t-3);
   margin-left: auto;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.rail-card-header--challenger {
-  background: var(--teal-dim);
-  border-bottom: 1px solid rgba(28,110,66,0.2);
-}
-.rail-card-header--challenger .rail-card-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--teal-bright);
-  flex-shrink: 0;
-}
-.rail-card-header--challenger .rail-card-label {
-  color: var(--teal-bright);
-  text-transform: uppercase;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-.rail-card-header--challenger .rail-card-method {
-  color: var(--t-2);
-  margin-left: auto;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-/* Dimmed state for unconfigured challenger */
-.rail-card--dimmed {
-  opacity: 0.5;
-  border-color: var(--border-1);
+  font-size: 10px;
+  font-weight: 500;
 }
 .rail-card--dimmed:hover {
   opacity: 0.75;
@@ -799,31 +769,34 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--chart-text-3);
 }
 
-/* ═══ Chart Arena — Split-View Layout ═══ */
+/* ═══ Chart Arena — Multi-Pane Split-View Layout ═══ */
 .chart-arena {
-  display: grid;
+  display: flex;
   flex: 1;
-  gap: 0;
-  min-height: 0;       /* flex to fill available space, don't force overflow */
+  min-height: 0;
   position: relative;
 }
 
-/* Layout fallback for single mode (inline style handles split ratios) */
-.chart-arena[data-layout="single"] {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
+/* Recursive split container */
+.split-container {
+  display: grid;
+  gap: 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
 }
 
-/* Resize Divider */
-.chart-divider {
+/* Split divider (replaces old .chart-divider) */
+.split-divider {
   position: relative;
   z-index: 10;
   background: var(--chart-border, #DCE0E5);
   transition: background 100ms ease;
 }
 
-.chart-divider::after {
-  content: "⠿";
+.split-divider::after {
+  content: "\283F";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -833,22 +806,22 @@ h1, h2, h3, h4, h5, h6 {
   pointer-events: none;
 }
 
-.chart-divider[data-divider="horizontal"] {
+.split-divider[data-direction="horizontal"] {
   width: 6px;
   cursor: col-resize;
 }
 
-.chart-divider[data-divider="vertical"] {
+.split-divider[data-direction="vertical"] {
   height: 6px;
   cursor: row-resize;
 }
 
-.chart-divider:hover,
-.chart-divider.active {
+.split-divider:hover,
+.split-divider.active {
   background: var(--blue, #2D72D2);
 }
-.chart-divider:hover::after,
-.chart-divider.active::after {
+.split-divider:hover::after,
+.split-divider.active::after {
   color: #fff;
 }
 
@@ -859,10 +832,77 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--chart-bg);
   overflow: hidden;
   min-height: 0;
+  min-width: 0;
+  border: 2px solid transparent;
+  transition: border-color 100ms ease;
 }
 
-.chart-pane.dragging {
-  opacity: 0.3;
+/* Focused pane indicator */
+.chart-pane.pane-focused {
+  border-top-color: var(--blue, #2D72D2);
+}
+
+/* Pane close button */
+.pane-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--chart-text-3);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.chart-pane-titlebar:hover .pane-close {
+  opacity: 1;
+}
+
+.pane-close:hover {
+  background: rgba(205,66,70,0.15);
+  color: var(--red, #CD4246);
+}
+
+/* Chart picker (inline panel below toolbar) */
+.chart-picker {
+  padding: 8px 12px;
+  background: var(--chart-surface, #EDEFF2);
+  border-bottom: 1px solid var(--chart-border, #DCE0E5);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.picker-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--chart-text-3);
+}
+
+.picker-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--chart-border, #DCE0E5);
+  border-radius: 3px;
+  background: var(--chart-bg, #F6F7F9);
+  font-size: 11px;
+  color: var(--chart-text, #1C2127);
+  cursor: pointer;
+}
+
+.picker-btn.primary {
+  background: var(--blue, #2D72D2);
+  border-color: var(--blue, #2D72D2);
+  color: #fff;
+}
+
+.picker-btn:hover {
+  opacity: 0.9;
 }
 
 /* Pane Title Bar (draggable) */
@@ -892,8 +932,11 @@ h1, h2, h3, h4, h5, h6 {
   flex-shrink: 0;
 }
 
-.method-dot.primary { background: var(--blue); }
-.method-dot.challenger { background: var(--teal-bright); }
+/* Dynamic chart colors — first chart gets blue, subsequent get teal, gold, purple */
+.method-dot { background: var(--blue); }
+.method-dot.chart-2 { background: var(--teal-bright); }
+.method-dot.chart-3 { background: var(--gold); }
+.method-dot.chart-4 { background: var(--purple); }
 
 .pane-role {
   font-size: 10px;
@@ -2019,12 +2062,66 @@ button:focus-visible { outline-offset: 0; }
 .findings-count-badge .danger { color: var(--red); }
 .findings-count-badge .warning { color: var(--amber); }
 
-/* Dashboard grid: cards left, detail right */
+/* 3-column layout: chart rail | main content */
+.findings-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 8px;
+  height: calc(100vh - 120px);
+}
+
+/* Chart rail (left panel, like Data Prep dataset list) */
+.findings-chart-rail {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.findings-chart-rail h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--t-4); margin: 0 0 6px; }
+.chart-rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+.chart-rail-card {
+  padding: 8px 10px;
+  text-align: left;
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  background: var(--bg-2);
+  cursor: pointer;
+  font: inherit;
+  color: var(--t-1);
+  width: 100%;
+  transition: border-color 0.1s, background 0.1s;
+}
+.chart-rail-card:hover { border-color: var(--border-3); background: var(--bg-3); }
+.chart-rail-card.active { background: var(--blue-dim); border-color: var(--blue); }
+.chart-rail-card .eyebrow { margin: 0; }
+.chart-rail-card-name { font-size: 13px; font-weight: 700; margin: 2px 0; }
+.chart-rail-card-stats {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--t-3);
+}
+.chart-rail-card-stats .danger { color: var(--red); }
+.chart-rail-card-stats .good { color: var(--green); }
+
+/* Main content area (scrollable) */
+.findings-main {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Dashboard grid: finding cards + detail panel */
 .findings-dashboard-grid {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 8px;
-  margin-bottom: 8px;
 }
 
 /* Left column: finding cards grouped by category */
@@ -2205,6 +2302,10 @@ button:focus-visible { outline-offset: 0; }
 
 /* Responsive */
 @media (max-width: 1200px) {
+  .findings-layout { grid-template-columns: 1fr; height: auto; }
+  .findings-chart-rail { flex-direction: row; }
+  .chart-rail-list { flex-direction: row; overflow-x: auto; }
+  .chart-rail-card { min-width: 140px; }
   .findings-dashboard-grid { grid-template-columns: 1fr; }
   .findings-ai-cards { grid-template-columns: 1fr; }
 }

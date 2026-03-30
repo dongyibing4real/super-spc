@@ -1,3 +1,5 @@
+import { getFocused } from "../core/state.js";
+
 function chipSelect(action, options, current) {
   return `<select class="chip-select" data-action="${action}" onclick="event.stopPropagation()">${options.map(([val, label]) =>
     `<option value="${val}" ${val === current ? "selected" : ""}>${label}</option>`
@@ -87,23 +89,13 @@ export function renderRecipeRail(state) {
   const cols = state.columnConfig.columns || [];
   const activeDs = state.datasets.find(ds => ds.id === state.activeDatasetId);
   const datasetVal = activeDs ? activeDs.name : "No dataset";
-  const primarySlot = state.charts[state.chartOrder[0]];
 
-  const chartSections = state.chartOrder.map((id, i) => {
-    const slot = state.charts[id];
-    const isPrimary = i === 0;
-    const isConfigured = !isPrimary && (slot.params.chart_type !== primarySlot.params.chart_type
-      || slot.params.sigma_method !== primarySlot.params.sigma_method);
-    return `
-      <div class="rail-card rail-card--${id} ${!isPrimary && !isConfigured ? "rail-card--dimmed" : ""}">
-        <div class="rail-card-header rail-card-header--${id}">
-          <span class="rail-card-dot"></span>
-          <span class="rail-card-label">${isPrimary ? "Primary" : "Challenger"}</span>
-          <span class="rail-card-method">${slot.context.chartType?.label || "\u2014"}</span>
-        </div>
-        ${renderChartChips(state, id, slot.params, slot.context, ae, cols)}
-      </div>`;
-  }).join('<div class="recipe-divider"></div>');
+  // Use focused chart for the rail
+  const focusedId = state.focusedChartId;
+  const focusedSlot = state.charts[focusedId];
+  if (!focusedSlot) return `<div class="recipe-rail"><div class="rail-card">No chart selected</div></div>`;
+
+  const chartLabel = focusedSlot.context.chartType?.label || "\u2014";
 
   return `
     <div class="recipe-rail">
@@ -120,7 +112,14 @@ export function renderRecipeRail(state) {
         </button>
       </div>
       <div class="recipe-divider"></div>
-      ${chartSections}
+      <div class="rail-card rail-card--${focusedId}">
+        <div class="rail-card-header rail-card-header--focused">
+          <span class="rail-card-dot"></span>
+          <span class="rail-card-label">${chartLabel}</span>
+          <span class="rail-card-id">${focusedId}</span>
+        </div>
+        ${renderChartChips(state, focusedId, focusedSlot.params, focusedSlot.context, ae, cols)}
+      </div>
     </div>
   `;
 }

@@ -1,5 +1,5 @@
 import { deriveFindings } from "../core/findings-engine.js";
-import { getPrimary } from "../core/state.js";
+import { CHART_TYPE_LABELS } from "../helpers.js";
 
 const CATEGORY_LABELS = {
   stability: "Stability",
@@ -7,6 +7,36 @@ const CATEGORY_LABELS = {
   statistical: "Statistical",
   pattern: "Pattern",
 };
+
+function renderChartRail(state, activeChartId) {
+  const cards = state.chartOrder.map(id => {
+    const s = state.charts[id];
+    const label = s?.context?.chartType?.label || CHART_TYPE_LABELS[s?.params?.chart_type] || id;
+    const roleLabel = CHART_TYPE_LABELS[s?.params?.chart_type] || id;
+    const isActive = id === activeChartId;
+    const violations = s?.violations || [];
+    const oocCount = violations.reduce((sum, v) => sum + v.indices.length, 0);
+    const cap = s?.capability;
+    const cpkStr = cap?.cpk != null ? cap.cpk.toFixed(2) : "\u2014";
+
+    return `
+      <button class="chart-rail-card ${isActive ? "active" : ""}"
+        data-action="switch-findings-chart" data-chart-id="${id}" type="button">
+        <p class="eyebrow">${roleLabel}</p>
+        <div class="chart-rail-card-name">${label}</div>
+        <div class="chart-rail-card-stats">
+          <span class="${oocCount > 0 ? "danger" : "good"}">OOC ${oocCount}</span>
+          <span>Cpk ${cpkStr}</span>
+        </div>
+      </button>`;
+  }).join("");
+
+  return `
+    <div class="panel-card findings-chart-rail">
+      <h4>Charts</h4>
+      <div class="chart-rail-list">${cards}</div>
+    </div>`;
+}
 
 function renderHealthBar(health, slot) {
   const chartLabel = slot?.context?.chartType?.label || "\u2014";
@@ -146,7 +176,8 @@ function renderAISection() {
 
 export function renderFindings(state) {
   const derived = deriveFindings(state);
-  const slot = getPrimary(state);
+  const activeChartId = state.findingsChartId || state.chartOrder[0];
+  const slot = state.charts[activeChartId];
   const categories = ["stability", "capability", "statistical", "pattern"];
 
   return `
@@ -161,29 +192,35 @@ export function renderFindings(state) {
         </div>
       </div>
 
-      ${renderHealthBar(derived.health, slot)}
+      <div class="findings-layout">
+        ${renderChartRail(state, activeChartId)}
 
-      <div class="findings-dashboard-grid">
-        <div class="findings-card-column">
-          ${categories.map(cat => {
-            const items = derived.grouped[cat] || [];
-            if (items.length === 0) return "";
-            return `
-              <div class="finding-category-group">
-                <span class="eyebrow">${CATEGORY_LABELS[cat]}</span>
-                ${items.map(f => renderFindingCard(f, derived.selected?.id === f.id)).join("")}
-              </div>
-            `;
-          }).join("")}
-        </div>
+        <div class="findings-main">
+          ${renderHealthBar(derived.health, slot)}
 
-        <div class="findings-detail-column">
-          ${renderDetailPanel(derived.selected)}
+          <div class="findings-dashboard-grid">
+            <div class="findings-card-column">
+              ${categories.map(cat => {
+                const items = derived.grouped[cat] || [];
+                if (items.length === 0) return "";
+                return `
+                  <div class="finding-category-group">
+                    <span class="eyebrow">${CATEGORY_LABELS[cat]}</span>
+                    ${items.map(f => renderFindingCard(f, derived.selected?.id === f.id)).join("")}
+                  </div>
+                `;
+              }).join("")}
+            </div>
+
+            <div class="findings-detail-column">
+              ${renderDetailPanel(derived.selected)}
+            </div>
+          </div>
+
+          ${renderAISection()}
+          ${renderStatsSummary(state)}
         </div>
       </div>
-
-      ${renderAISection()}
-      ${renderStatsSummary(state)}
     </section>
   `;
 }

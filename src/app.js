@@ -23,6 +23,7 @@ import {
   selectPoint,
   selectPrepDataset,
   selectStructuralFinding,
+  setFindingsChart,
   setStructuralFindings,
   setPrepError,
   setPrepSort,
@@ -43,6 +44,7 @@ import {
   setChartParams,
   setActiveChipEditor,
   getPrimary,
+  getFocused,
   setPrepParsedData,
   setPrepTable,
   addPrepTransform,
@@ -51,6 +53,13 @@ import {
   undoPrepTransform,
   setActivePanel,
   closeActivePanel,
+  focusChart,
+  addChart,
+  removeChart,
+  resizeSplit,
+  openChartPicker,
+  closeChartPicker,
+  collectChartIds,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
 import {
@@ -68,7 +77,7 @@ import { renderSidebar } from "./components/sidebar.js";
 import { renderNotice, renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
 import { renderRecipeRail } from "./components/recipe-rail.js";
 import { renderContextMenu } from "./components/context-menu.js";
-import { CHART_MOUNT_PRIMARY, CHART_MOUNT_CHALLENGER, renderChartArena } from "./components/chart-arena.js";
+import { renderChartArena } from "./components/chart-arena.js";
 import { renderWorkspace, renderEvidenceRail } from "./views/workspace.js";
 import { renderDataPrep } from "./views/dataprep.js";
 import { renderMethodLab } from "./views/methodlab.js";
@@ -156,10 +165,11 @@ function render() {
   `);
 
   if (state.route === "workspace") {
-    const activeIds = state.chartOrder;
+    // Collect visible chart IDs from the layout tree
+    const visibleIds = collectChartIds(state.chartLayout.tree);
 
-    for (const id of activeIds) {
-      const mount = document.getElementById(id === "primary" ? CHART_MOUNT_PRIMARY : CHART_MOUNT_CHALLENGER);
+    for (const id of visibleIds) {
+      const mount = document.getElementById(`chart-mount-${id}`);
       if (!mount) continue;
 
       // Recreate chart if instance is missing or SVG is stale (e.g. after data table toggle)
@@ -167,9 +177,16 @@ function render() {
       if (!charts[id] || svgStale) {
         if (charts[id]) { charts[id].destroy(); charts[id] = null; }
         charts[id] = createChart(mount, {
-          onSelectPoint: (index) => commitChart(selectPoint(state, index, id)),
-          onContextMenu: (x, y, info) => commitContextMenu(openContextMenu(state, x, y, { ...info, role: id })),
+          onSelectPoint: (index) => {
+            state = focusChart(state, id);
+            commitChart(selectPoint(state, index, id));
+          },
+          onContextMenu: (x, y, info) => {
+            state = focusChart(state, id);
+            commitContextMenu(openContextMenu(state, x, y, { ...info, role: id }));
+          },
           onAxisDrag: (info) => {
+            state = focusChart(state, id);
             if (info.axis === 'x') commitChart(setXDomainOverride(state, info.min, info.max, id));
             if (info.axis === 'y') commitChart(setYDomainOverride(state, info.yMin, info.yMax, id));
           },
@@ -180,14 +197,14 @@ function render() {
     }
 
     requestAnimationFrame(() => {
-      for (const id of activeIds) {
+      for (const id of visibleIds) {
         if (charts[id]) charts[id].update(buildChartData(id));
       }
     });
 
-    // Destroy charts not in chartOrder
+    // Destroy charts not visible in the tree
     for (const id of Object.keys(charts)) {
-      if (!activeIds.includes(id) && charts[id]) {
+      if (!visibleIds.includes(id) && charts[id]) {
         charts[id].destroy();
         charts[id] = null;
       }
@@ -208,7 +225,7 @@ function commitChart(next) {
     if (charts[id]) charts[id].update(buildChartData(id));
   }
   for (const id of state.chartOrder) {
-    const paneCaps = root.querySelector(`.chart-pane[data-role="${id}"] .pane-caps`);
+    const paneCaps = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-caps`);
     if (!paneCaps) continue;
     const cap = getCapability(state, id);
     if (cap.cpk) {
@@ -218,72 +235,21 @@ function commitChart(next) {
       `;
     }
   }
+  // Update focus visual
+  root.querySelectorAll('.chart-pane').forEach(p => {
+    p.classList.toggle('pane-focused', p.dataset.chartId === state.focusedChartId);
+  });
 }
 
 function commitLayout(next) {
   state = next;
-  const arena = root.querySelector(".chart-arena");
-  if (!arena) return;
-
-  const hasChallenger = state.chartOrder.length > 1;
-  const layout = state.chartLayout;
-  const arrangement = hasChallenger ? layout.arrangement : "single";
-  const ratio = layout.splitRatio ?? 0.5;
-  const isHoriz = arrangement === "horizontal" || arrangement === "primary-wide" || arrangement === "challenger-wide";
-  const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
-  const showChallenger = hasChallenger && arrangement !== "single";
-
-  if (showChallenger && isHoriz) {
-    arena.style.gridTemplateColumns = `${ratio}fr auto ${1 - ratio}fr`;
-    arena.style.gridTemplateRows = "1fr";
-  } else if (showChallenger && isVert) {
-    arena.style.gridTemplateColumns = "1fr";
-    arena.style.gridTemplateRows = `${ratio}fr auto ${1 - ratio}fr`;
-  } else {
-    arena.style.gridTemplateColumns = "1fr";
-    arena.style.gridTemplateRows = "1fr";
-  }
-  arena.dataset.layout = arrangement;
-
-  const divider = arena.querySelector(".chart-divider");
-  if (divider && showChallenger) {
-    divider.style.display = "";
-    divider.dataset.divider = isHoriz ? "horizontal" : "vertical";
-  } else if (divider) {
-    divider.style.display = "none";
-  }
-
-  const challengerPane = arena.querySelector('.chart-pane[data-role="challenger"]');
-  if (challengerPane) challengerPane.style.display = showChallenger ? "" : "none";
-
-  const primaryFirst = layout.primaryPosition === "left" || layout.primaryPosition === "top";
-  const primaryPane = arena.querySelector('.chart-pane[data-role="primary"]');
-  if (primaryPane && challengerPane && divider) {
-    if (primaryFirst) {
-      arena.insertBefore(primaryPane, arena.firstChild);
-      arena.insertBefore(divider, challengerPane);
-    } else {
-      arena.insertBefore(challengerPane, arena.firstChild);
-      arena.insertBefore(divider, primaryPane);
-    }
-  }
-
-  root.querySelectorAll(".layout-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.arrangement === arrangement);
-  });
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      for (const id of state.chartOrder) {
-        if (charts[id]) charts[id].update(buildChartData(id));
-      }
-    });
-  });
+  // Full re-render for layout changes (tree structure may have changed)
+  render();
 }
 
 function commitContextMenu(next) {
   state = next;
-  const stage = root.querySelector(`#${CHART_MOUNT_PRIMARY}`);
+  const stage = root.querySelector(`#chart-mount-${state.focusedChartId}`);
   if (!stage) return;
   stage.querySelector(".context-menu")?.remove();
 
@@ -324,18 +290,18 @@ function commitWorkspace(next) {
   const rail = root.querySelector(".recipe-rail");
   if (rail) morphEl(rail, renderRecipeRail(state));
 
-  // 2. Chart toolbar title
-  const primary = getPrimary(state);
+  // 2. Chart toolbar title (shows focused chart info)
+  const focused = getFocused(state);
   const title = root.querySelector(".toolbar-title h3");
-  if (title) title.textContent = `${primary.context.metric.label} \u2014 ${primary.context.chartType.label}`;
+  if (title) title.textContent = `${focused.context.metric.label} \u2014 ${focused.context.chartType.label}`;
   const windowEl = root.querySelector(".toolbar-window");
-  if (windowEl) windowEl.textContent = primary.context.window;
+  if (windowEl) windowEl.textContent = focused.context.window;
 
   // 3. Pane method labels + capability badges
   for (const id of state.chartOrder) {
-    const paneMethod = root.querySelector(`.chart-pane[data-role="${id}"] .pane-method`);
+    const paneMethod = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-method`);
     if (paneMethod) paneMethod.textContent = state.charts[id].context.chartType?.label || "";
-    const paneCaps = root.querySelector(`.chart-pane[data-role="${id}"] .pane-caps`);
+    const paneCaps = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-caps`);
     const cap = getCapability(state, id);
     if (paneCaps && cap.cpk) {
       paneCaps.innerHTML = `
@@ -424,14 +390,30 @@ async function reanalyze() {
   if (!state.activeDatasetId) return;
   try {
     const dsId = state.activeDatasetId;
-    const [points, ...analyses] = await Promise.all([
-      fetchPoints(dsId),
-      ...state.chartOrder.map(id => runAnalysis(dsId, state.charts[id].params)),
-    ]);
+    // Fetch points + run analysis per chart (gracefully handle per-chart failures)
+    const points = await fetchPoints(dsId);
+    const analysisResults = await Promise.allSettled(
+      state.chartOrder.map(id => runAnalysis(dsId, state.charts[id].params))
+    );
     const columns = state.columnConfig.columns;
     const ds = state.datasets.find((d) => d.id === dsId);
     const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
-    const slots = buildSlots(analyses, baseContext);
+
+    // Build slots only for successful analyses; keep existing data for failed ones
+    const slots = {};
+    state.chartOrder.forEach((id, i) => {
+      if (analysisResults[i].status === "fulfilled") {
+        const t = transformAnalysis(analysisResults[i].value);
+        slots[id] = {
+          context: applyParamsToContext(baseContext, state.charts[id].params),
+          limits: t.limits, capability: t.capability, violations: t.violations,
+          sigma: t.sigma, zones: t.zones, chartValues: t.chartValues,
+          chartLabels: t.chartLabels, phases: t.phases,
+        };
+      }
+      // If rejected, slot is omitted — loadDataset will keep existing chart data
+    });
+
     state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId: dsId });
     state = setStructuralFindings(state, generateFindings(state));
     commitWorkspace(state);
@@ -443,6 +425,25 @@ async function reanalyze() {
 
 /* ═══ Event handlers ═══ */
 root.addEventListener("click", async (e) => {
+  // Focus-on-click: clicking anywhere inside a chart pane focuses that chart
+  const clickedPane = e.target.closest('.chart-pane[data-chart-id]');
+  if (clickedPane) {
+    const chartId = clickedPane.dataset.chartId;
+    if (chartId && chartId !== state.focusedChartId && state.charts[chartId]) {
+      state = focusChart(state, chartId);
+      // Update focus visual + recipe rail + evidence rail
+      root.querySelectorAll('.chart-pane').forEach(p => {
+        p.classList.toggle('pane-focused', p.dataset.chartId === state.focusedChartId);
+      });
+      commitRecipeRail(state);
+      commitEvidenceRail(state);
+      // Update toolbar title
+      const focused = getFocused(state);
+      const titleEl = root.querySelector(".toolbar-title h3");
+      if (titleEl) titleEl.textContent = `${focused.context.metric.label} \u2014 ${focused.context.chartType.label}`;
+    }
+  }
+
   const t = e.target.closest("[data-action]");
   if (!t) {
     if (state.activeChipEditor) commitRecipeRail(setActiveChipEditor(state, state.activeChipEditor));
@@ -486,6 +487,13 @@ root.addEventListener("click", async (e) => {
     case "set-challenger-status": commit(setChallengerStatus(state, t.dataset.status)); break;
     case "select-finding":     commit(selectFinding(state, t.dataset.findingId)); break;
     case "select-structural-finding": commit(selectStructuralFinding(state, t.dataset.findingId)); break;
+    case "switch-findings-chart": {
+      const cid = t.dataset.chartId;
+      state = setFindingsChart(state, cid);
+      state = setStructuralFindings(state, generateFindings(state, cid), cid);
+      render();
+      break;
+    }
     case "create-finding":     commitEvidenceRail(createFindingFromSelection(state)); commitContextMenu(closeContextMenu(state)); break;
     case "generate-report":    commit(generateReportDraft(state)); break;
     case "export-report":      commit(exportReport(state)); break;
@@ -498,7 +506,34 @@ root.addEventListener("click", async (e) => {
       commitLayout(setChartLayout(state, arr, posMap[arr] || "left"));
       break;
     }
-    case "reset-axis": { const axisRole = state.ui.contextMenu?.role || "primary"; commitChart(resetAxis(state, t.dataset.axis, axisRole)); commitContextMenu(closeContextMenu(state)); break; }
+    case "add-chart": {
+      commit(openChartPicker(state));
+      break;
+    }
+    case "confirm-add-chart": {
+      const typeSelect = root.querySelector('[data-field="picker-chart-type"]');
+      const chartType = typeSelect ? typeSelect.value : "imr";
+      state = addChart(state, { chartType, splitDirection: "row" });
+      commit(state);
+      // Trigger analysis for the new chart
+      if (state.activeDatasetId) reanalyze();
+      break;
+    }
+    case "cancel-add-chart": {
+      commit(closeChartPicker(state));
+      break;
+    }
+    case "remove-chart": {
+      const chartId = t.dataset.chartId;
+      if (chartId) {
+        state = removeChart(state, chartId);
+        // Destroy the D3 chart instance
+        if (charts[chartId]) { charts[chartId].destroy(); delete charts[chartId]; }
+        commit(state);
+      }
+      break;
+    }
+    case "reset-axis": { const axisRole = state.ui.contextMenu?.role || state.focusedChartId; commitChart(resetAxis(state, t.dataset.axis, axisRole)); commitContextMenu(closeContextMenu(state)); break; }
     case "toggle-chip-editor": {
       commitRecipeRail(setActiveChipEditor(state, t.dataset.chip));
       break;
@@ -734,135 +769,58 @@ root.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
 });
 
-/* ═══ Drag-to-arrange chart panes ═══ */
-let dragState = null;
+/* ═══ Drag-to-arrange chart panes (Phase 2 — simplified for now) ═══ */
+// Drag-to-rearrange is deferred to Phase 2. For now, pane titlebars
+// serve as focus targets only. The grip icon hints at future drag capability.
 
-root.addEventListener("pointerdown", (e) => {
-  const handle = e.target.closest("[data-drag-handle]");
-  if (!handle) return;
-  const pane = handle.closest(".chart-pane");
-  const arena = pane?.closest(".chart-arena");
-  if (!pane || !arena) return;
-
-  e.preventDefault();
-  const role = handle.dataset.dragHandle;
-  const rect = arena.getBoundingClientRect();
-
-  const ghost = pane.cloneNode(true);
-  ghost.classList.add("drag-ghost");
-  ghost.style.width = pane.offsetWidth + "px";
-  ghost.style.height = pane.offsetHeight + "px";
-  document.body.appendChild(ghost);
-  pane.classList.add("dragging");
-
-  const zones = ["left", "right", "top", "bottom"].map(pos => {
-    const zone = document.createElement("div");
-    zone.classList.add("drop-zone");
-    zone.dataset.dropPosition = pos;
-    arena.style.position = "relative";
-    arena.appendChild(zone);
-    Object.assign(zone.style, {
-      position: "absolute", zIndex: "100",
-      ...(pos === "left"   ? { left: 0, top: 0, width: "50%", height: "100%" } : {}),
-      ...(pos === "right"  ? { right: 0, top: 0, width: "50%", height: "100%" } : {}),
-      ...(pos === "top"    ? { left: 0, top: 0, width: "100%", height: "50%" } : {}),
-      ...(pos === "bottom" ? { left: 0, bottom: 0, width: "100%", height: "50%" } : {}),
-    });
-    return zone;
-  });
-
-  dragState = { role, pane, arena, ghost, zones, arenaRect: rect };
-});
-
-root.addEventListener("pointermove", (e) => {
-  if (!dragState) return;
-  const { ghost, zones, arenaRect } = dragState;
-  ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + "px";
-  ghost.style.top = (e.clientY - 20) + "px";
-
-  const x = e.clientX - arenaRect.left;
-  const y = e.clientY - arenaRect.top;
-  const w = arenaRect.width;
-  const h = arenaRect.height;
-
-  let activePos = null;
-  if (x < w * 0.35) activePos = "left";
-  else if (x > w * 0.65) activePos = "right";
-  else if (y < h * 0.35) activePos = "top";
-  else if (y > h * 0.65) activePos = "bottom";
-
-  zones.forEach(z => z.classList.toggle("active", z.dataset.dropPosition === activePos));
-  dragState.activePos = activePos;
-});
-
-function endDrag() {
-  if (!dragState) return;
-  const { pane, ghost, zones, activePos, role } = dragState;
-  pane.classList.remove("dragging");
-  ghost.remove();
-  zones.forEach(z => z.remove());
-
-  if (activePos) {
-    const arrangement = (activePos === "left" || activePos === "right") ? "horizontal" : "vertical";
-    let primaryPosition;
-    if (role === "primary") {
-      primaryPosition = activePos;
-    } else {
-      const opposites = { left: "right", right: "left", top: "bottom", bottom: "top" };
-      primaryPosition = opposites[activePos];
-    }
-    commitLayout(setChartLayout(state, arrangement, primaryPosition));
-  }
-  dragState = null;
-}
-
-root.addEventListener("pointerup", endDrag);
-root.addEventListener("pointercancel", endDrag);
-
-/* ═══ Resize divider ═══ */
+/* ═══ Resize split divider (tree-path-aware) ═══ */
 let dividerDrag = null;
 
 root.addEventListener("pointerdown", (e) => {
-  const divider = e.target.closest(".chart-divider");
+  const divider = e.target.closest(".split-divider");
   if (!divider) return;
   e.preventDefault();
   divider.setPointerCapture(e.pointerId);
-  const arena = divider.closest(".chart-arena");
-  if (!arena) return;
-  const rect = arena.getBoundingClientRect();
-  const isHoriz = divider.dataset.divider === "horizontal";
+  const container = divider.closest(".split-container");
+  if (!container) return;
+  const rect = container.getBoundingClientRect();
+  const isHoriz = divider.dataset.direction === "horizontal";
+  const path = divider.dataset.path ? divider.dataset.path.split(".").map(Number) : [];
   divider.classList.add("active");
   document.body.style.cursor = isHoriz ? "col-resize" : "row-resize";
-  dividerDrag = { divider, arena, rect, isHoriz, pointerId: e.pointerId };
+  dividerDrag = { divider, container, rect, isHoriz, path, pointerId: e.pointerId };
 });
 
 root.addEventListener("pointermove", (e) => {
   if (!dividerDrag) return;
-  const { rect, isHoriz, arena } = dividerDrag;
+  const { rect, isHoriz, container } = dividerDrag;
+  const minPx = state.chartLayout.minPaneSize || 300;
+  const totalPx = isHoriz ? rect.width : rect.height;
+  const minRatio = Math.min(0.2, minPx / totalPx);
   let ratio;
   if (isHoriz) {
-    ratio = Math.max(0.2, Math.min(0.8, (e.clientX - rect.left) / rect.width));
-    arena.style.gridTemplateColumns = `${ratio}fr auto ${1 - ratio}fr`;
+    ratio = Math.max(minRatio, Math.min(1 - minRatio, (e.clientX - rect.left) / rect.width));
+    container.style.gridTemplateColumns = `${ratio}fr ${1 - ratio}fr`;
   } else {
-    ratio = Math.max(0.2, Math.min(0.8, (e.clientY - rect.top) / rect.height));
-    arena.style.gridTemplateRows = `${ratio}fr auto ${1 - ratio}fr`;
+    ratio = Math.max(minRatio, Math.min(1 - minRatio, (e.clientY - rect.top) / rect.height));
+    container.style.gridTemplateRows = `${ratio}fr ${1 - ratio}fr`;
   }
   dividerDrag.lastRatio = ratio;
 });
 
 function endDividerDrag() {
   if (!dividerDrag) return;
-  const { divider, lastRatio } = dividerDrag;
+  const { divider, lastRatio, path } = dividerDrag;
   divider.classList.remove("active");
   document.body.style.cursor = "";
   if (lastRatio != null) {
-    state = setChartLayout(state, state.chartLayout.arrangement, state.chartLayout.primaryPosition, lastRatio);
+    state = resizeSplit(state, path, [lastRatio, 1 - lastRatio]);
   }
   dividerDrag = null;
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      for (const role of state.chartOrder) {
-        if (charts[role]) charts[role].update(buildChartData(role));
+      for (const id of state.chartOrder) {
+        if (charts[id]) charts[id].update(buildChartData(id));
       }
     });
   });
@@ -876,8 +834,13 @@ root.addEventListener("contextmenu", (e) => {
   const ch = e.target.closest(".chart-stage");
   if (!ch) return;
   e.preventDefault();
+  // Focus the chart pane that was right-clicked
+  const pane = ch.closest('.chart-pane[data-chart-id]');
+  if (pane && pane.dataset.chartId !== state.focusedChartId) {
+    state = focusChart(state, pane.dataset.chartId);
+  }
   const r = root.getBoundingClientRect();
-  commitContextMenu(openContextMenu(state, e.clientX - r.left, e.clientY - r.top, { target: 'canvas' }));
+  commitContextMenu(openContextMenu(state, e.clientX - r.left, e.clientY - r.top, { target: 'canvas', role: state.focusedChartId }));
 });
 
 /* ═══ Change handlers ═══ */
@@ -939,16 +902,22 @@ root.addEventListener("change", async (e) => {
     return;
   }
 
+
   const action = e.target.dataset?.action;
   if (!action || !state.activeDatasetId) return;
   const dsId = state.activeDatasetId;
   const cols = state.columnConfig.columns;
 
-  // Determine which chart this action targets by prefix
-  const isPrimary = action.startsWith("primary-");
-  const isChallenger = action.startsWith("challenger-");
-  const chartId = isPrimary ? "primary" : isChallenger ? "challenger" : null;
-  const baseAction = isPrimary ? action.slice(8) : isChallenger ? action.slice(11) : action;
+  // Determine which chart this action targets by prefix (e.g. "chart-1-set-chart-type")
+  let chartId = null;
+  let baseAction = action;
+  for (const id of state.chartOrder) {
+    if (action.startsWith(id + "-")) {
+      chartId = id;
+      baseAction = action.slice(id.length + 1);
+      break;
+    }
+  }
 
   if (chartId && baseAction === "set-metric-column") {
     state = setChartParams(state, chartId, { value_column: e.target.value || null });

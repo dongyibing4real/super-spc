@@ -1,19 +1,34 @@
-import { getCapability, capClass, detectRuleViolations } from "../helpers.js";
+import { getCapability, capClass, detectRuleViolations, CHART_TYPE_LABELS } from "../helpers.js";
 import { renderContextMenu } from "./context-menu.js";
+import { collectChartIds } from "../core/state.js";
 
-export const CHART_MOUNT_PRIMARY = "chart-mount-primary";
-export const CHART_MOUNT_CHALLENGER = "chart-mount-challenger";
+/* ═══ Chart type options (shared with recipe-rail) ═══ */
+const CHART_TYPES = [
+  ["Variables", [["imr","IMR"],["xbar_r","X-Bar R"],["xbar_s","X-Bar S"],["r","R"],["s","S"],["mr","MR"]]],
+  ["Attributes", [["p","P"],["np","NP"],["c","C"],["u","U"],["laney_p","Laney P\u2019"],["laney_u","Laney U\u2019"]]],
+  ["Advanced", [["cusum","CUSUM"],["ewma","EWMA"],["levey_jennings","Levey-Jennings"],["cusum_vmask","CUSUM V-Mask"],["three_way","Three-Way"],["presummarize","Presummarize"],["run","Run Chart"]]],
+  ["Short Run", [["short_run","Short Run"]]],
+  ["Rare Event", [["g","G"],["t","T"]]],
+  ["Multivariate", [["hotelling_t2","Hotelling T\u00B2"],["mewma","MEWMA"]]],
+];
 
-function renderChartPane(state, role, method, caps, sp, limits, seriesKey) {
-  const val = sp[seriesKey];
-  const violations = detectRuleViolations(state);
+/* ═══ Chart pane renderer ═══ */
+
+function renderChartPane(state, chartId) {
+  const slot = state.charts[chartId];
+  if (!slot) return "";
+
+  const isFocused = state.focusedChartId === chartId;
+  const isLastChart = state.chartOrder.length <= 1;
+  const caps = getCapability(state, chartId);
+  const method = slot.context.chartType?.label || "";
 
   return `
-    <div class="chart-pane" data-role="${role}" data-series-key="${seriesKey}">
-      <div class="chart-pane-titlebar" data-drag-handle="${role}">
+    <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}">
+      <div class="chart-pane-titlebar" data-drag-handle="${chartId}">
         <span class="grip-icon">\u2817</span>
-        <span class="method-dot ${role}"></span>
-        <span class="pane-role">${role === "primary" ? "Primary" : "Challenger"}</span>
+        <span class="method-dot ${chartId}"></span>
+        <span class="pane-role">${CHART_TYPE_LABELS[slot.params.chart_type] || chartId}</span>
         <strong class="pane-method">${method}</strong>
         ${caps.cpk ? `
           <div class="pane-caps">
@@ -21,18 +36,63 @@ function renderChartPane(state, role, method, caps, sp, limits, seriesKey) {
             <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(caps.ppk)}">${caps.ppk}</span></span>
           </div>
         ` : ""}
+        ${!isLastChart ? `<button class="pane-close" data-action="remove-chart" data-chart-id="${chartId}" title="Close chart">\u00d7</button>` : ""}
       </div>
-      <div class="chart-stage" id="${role === "primary" ? CHART_MOUNT_PRIMARY : CHART_MOUNT_CHALLENGER}" tabindex="0" data-chart-focus="true" aria-label="${role} control chart">
-        ${role === "primary" && state.ui.contextMenu ? renderContextMenu(state) : ""}
+      <div class="chart-stage" id="chart-mount-${chartId}" tabindex="0" data-chart-focus="true" aria-label="${chartId} control chart">
+        ${isFocused && state.ui.contextMenu ? renderContextMenu(state) : ""}
       </div>
     </div>
   `;
 }
 
+/* ═══ Recursive tree renderer ═══ */
+
+function renderTreeNode(state, node, path = []) {
+  if (node.type === "pane") {
+    return renderChartPane(state, node.chartId);
+  }
+
+  const isRow = node.direction === "row";
+  const gridProp = isRow ? "grid-template-columns" : "grid-template-rows";
+  const gridStyle = `${gridProp}: ${node.sizes[0]}fr ${node.sizes[1]}fr;`;
+  const dividerDir = isRow ? "horizontal" : "vertical";
+
+  return `
+    <div class="split-container" data-direction="${node.direction}" data-path="${path.join(".")}" style="${gridStyle}">
+      ${renderTreeNode(state, node.children[0], [...path, 0])}
+      <div class="split-divider" data-direction="${dividerDir}" data-path="${path.join(".")}"></div>
+      ${renderTreeNode(state, node.children[1], [...path, 1])}
+    </div>
+  `;
+}
+
+/* ═══ Chart picker (inline panel) ═══ */
+
+function renderChartPicker(state) {
+  if (!state.chartPicker) return "";
+  return `
+    <div class="chart-picker">
+      <span class="picker-label">New chart type:</span>
+      <select class="chip-select" data-field="picker-chart-type">
+        ${CHART_TYPES.map(([group, items]) =>
+          `<optgroup label="${group}">${items.map(([val, label]) =>
+            `<option value="${val}">${label}</option>`
+          ).join("")}</optgroup>`
+        ).join("")}
+      </select>
+      <button class="picker-btn primary" data-action="confirm-add-chart">Add</button>
+      <button class="picker-btn" data-action="cancel-add-chart">Cancel</button>
+    </div>
+  `;
+}
+
+/* ═══ Data table renderer ═══ */
+
 export function renderDataTable(state) {
   if (state.points.length === 0) return '<div class="empty-table">No data loaded.</div>';
 
-  const violations = state.charts[state.chartOrder[0]]?.violations || [];
+  const focusedSlot = state.charts[state.focusedChartId];
+  const violations = focusedSlot?.violations || [];
   const violatedIndices = new Set();
   violations.forEach(v => v.indices.forEach(i => violatedIndices.add(i)));
 
@@ -86,60 +146,28 @@ export function renderDataTable(state) {
   `;
 }
 
+/* ═══ Main chart arena ═══ */
+
 export function renderChartArena(state) {
-  const sp = state.points[state.selectedPointIndex];
-  const primarySlot = state.charts[state.chartOrder[0]];
-  const hasChallenger = state.chartOrder.length > 1;
-  const layout = state.chartLayout;
-  const arrangement = hasChallenger ? layout.arrangement : "single";
-  const showChallenger = hasChallenger && arrangement !== "single";
-
-  const primaryFirst = layout.primaryPosition === "left" || layout.primaryPosition === "top";
-
-  const panes = state.chartOrder.map(id => {
-    const slot = state.charts[id];
-    return renderChartPane(state, id, slot.context.chartType?.label || "", slot.capability || { cpk: null, ppk: null }, sp, slot.limits, "primaryValue");
-  });
-
-  const primaryPane = panes[0];
-  const challengerPane = showChallenger ? panes[1] : "";
-
-  const ratio = layout.splitRatio ?? 0.5;
-  const isHoriz = arrangement === "horizontal" || arrangement === "primary-wide" || arrangement === "challenger-wide";
-  const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
-  let gridStyle = "";
-  if (showChallenger && isHoriz) {
-    gridStyle = `grid-template-columns: ${ratio}fr auto ${1 - ratio}fr; grid-template-rows: 1fr;`;
-  } else if (showChallenger && isVert) {
-    gridStyle = `grid-template-columns: 1fr; grid-template-rows: ${ratio}fr auto ${1 - ratio}fr;`;
-  }
-
-  const divider = showChallenger ? `<div class="chart-divider" data-divider="${isHoriz ? "horizontal" : "vertical"}"></div>` : "";
-
-  const firstPane = primaryFirst ? primaryPane : challengerPane;
-  const secondPane = primaryFirst ? challengerPane : primaryPane;
+  const focusedSlot = state.charts[state.focusedChartId] || state.charts[state.chartOrder[0]];
+  const tree = state.chartLayout.tree;
 
   return `
     <section class="chart-card">
       <div class="chart-toolbar">
         <div class="toolbar-title">
-          <h3>${primarySlot.context.metric?.label || ""} \u2014 ${primarySlot.context.chartType?.label || ""}</h3>
-          <span class="toolbar-window">${primarySlot.context.window || ""}</span>
+          <h3>${focusedSlot.context.metric?.label || ""} \u2014 ${focusedSlot.context.chartType?.label || ""}</h3>
+          <span class="toolbar-window">${focusedSlot.context.window || ""}</span>
         </div>
         <div class="layout-controls">
           <button class="layout-btn ${state.showDataTable ? "active" : ""}" data-action="toggle-data-table" title="Data Table">\u2630</button>
-          ${hasChallenger ? `
-            <button class="layout-btn ${arrangement === "horizontal" ? "active" : ""}" data-action="set-layout" data-arrangement="horizontal" title="Side by side (50/50)">\u25eb</button>
-            <button class="layout-btn ${arrangement === "vertical" ? "active" : ""}" data-action="set-layout" data-arrangement="vertical" title="Stacked (50/50)">\u25a9</button>
-            <button class="layout-btn ${arrangement === "primary-wide" ? "active" : ""}" data-action="set-layout" data-arrangement="primary-wide" title="Primary wide (2/3)">\u25e7</button>
-            <button class="layout-btn ${arrangement === "primary-tall" ? "active" : ""}" data-action="set-layout" data-arrangement="primary-tall" title="Primary tall (2/3)">\u2b12</button>
-            <button class="layout-btn ${arrangement === "single" ? "active" : ""}" data-action="set-layout" data-arrangement="single" title="Primary only">\u25a3</button>
-          ` : ""}
+          <button class="layout-btn" data-action="add-chart" title="Add chart">+</button>
         </div>
       </div>
+      ${renderChartPicker(state)}
       ${state.showDataTable ? renderDataTable(state) : `
-        <div class="chart-arena" data-layout="${arrangement}" style="${gridStyle}">
-          ${firstPane}${divider}${secondPane}
+        <div class="chart-arena">
+          ${renderTreeNode(state, tree)}
         </div>
       `}
     </section>
