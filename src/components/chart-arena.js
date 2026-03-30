@@ -178,11 +178,8 @@ export function renderChartArena(state) {
               <button class="layout-btn" data-action="set-layout-preset" data-preset="grid" title="Grid (2\u00d72)">\u2b1a</button>
             ` : ""}
           ` : ""}
-          <span class="layout-divider"></span>
-          <button class="layout-btn" data-action="add-chart" title="Add chart">+</button>
         </div>
       </div>
-      ${renderChartPicker(state)}
       ${state.showDataTable ? renderDataTable(state) : `
         <div class="chart-arena">
           ${renderTreeNode(state, tree)}

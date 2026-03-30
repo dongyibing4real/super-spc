@@ -511,22 +511,13 @@ root.addEventListener("click", async (e) => {
       commitLayout(setChartLayout(state, arr, posMap[arr] || "left"));
       break;
     }
-    case "add-chart": {
-      commit(openChartPicker(state));
-      break;
-    }
-    case "confirm-add-chart": {
-      const typeSelect = root.querySelector('[data-field="picker-chart-type"]');
-      const chartType = typeSelect ? typeSelect.value : "imr";
-      state = addChart(state, { chartType, splitDirection: "row" });
+    case "add-chart-from-rail": {
+      // Clone focused chart's type, create new chart, auto-focus it
+      const focusedType = getFocused(state).params.chart_type;
+      state = addChart(state, { chartType: focusedType, splitDirection: "row" });
       commit(state);
       saveLayout();
-      // Trigger analysis for the new chart
       if (state.activeDatasetId) reanalyze();
-      break;
-    }
-    case "cancel-add-chart": {
-      commit(closeChartPicker(state));
       break;
     }
     case "set-layout-preset": {

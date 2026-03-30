@@ -495,8 +495,35 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 10px;
   font-weight: 500;
 }
-.rail-card--dimmed:hover {
-  opacity: 0.75;
+/* Add Chart button in recipe rail */
+.rail-add-chart {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: 1px dashed var(--border-2);
+  border-radius: 4px;
+  color: var(--t-3);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+.rail-add-chart:hover {
+  border-color: var(--blue);
+  color: var(--blue-bright);
+  background: var(--blue-dim);
+}
+.rail-add-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.rail-add-label {
+  /* inherits font from parent */
 }
 
 /* Chips inside cards — full-bleed highlight */
@@ -879,45 +906,6 @@ h1, h2, h3, h4, h5, h6 {
 .pane-close:hover {
   background: rgba(205,66,70,0.15);
   color: var(--red, #CD4246);
-}
-
-/* Chart picker (inline panel below toolbar) */
-.chart-picker {
-  padding: 8px 12px;
-  background: var(--chart-surface, #EDEFF2);
-  border-bottom: 1px solid var(--chart-border, #DCE0E5);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-}
-
-.picker-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--chart-text-3);
-}
-
-.picker-btn {
-  padding: 4px 10px;
-  border: 1px solid var(--chart-border, #DCE0E5);
-  border-radius: 3px;
-  background: var(--chart-bg, #F6F7F9);
-  font-size: 11px;
-  color: var(--chart-text, #1C2127);
-  cursor: pointer;
-}
-
-.picker-btn.primary {
-  background: var(--blue, #2D72D2);
-  border-color: var(--blue, #2D72D2);
-  color: #fff;
-}
-
-.picker-btn:hover {
-  opacity: 0.9;
 }
 
 /* Pane Title Bar (draggable) */

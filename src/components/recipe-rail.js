@@ -1,4 +1,4 @@
-import { getFocused } from "../core/state.js";
+import { getFocused, collectChartIds } from "../core/state.js";
 
 function chipSelect(action, options, current) {
   return `<select class="chip-select" data-action="${action}" onclick="event.stopPropagation()">${options.map(([val, label]) =>
@@ -120,6 +120,11 @@ export function renderRecipeRail(state) {
         </div>
         ${renderChartChips(state, focusedId, focusedSlot.params, focusedSlot.context, ae, cols)}
       </div>
+      <div class="recipe-divider"></div>
+      <button class="rail-add-chart" data-action="add-chart-from-rail" type="button">
+        <span class="rail-add-icon">+</span>
+        <span class="rail-add-label">Add Chart</span>
+      </button>
     </div>
   `;
 }
