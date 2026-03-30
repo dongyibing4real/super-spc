@@ -26,12 +26,6 @@ function renderChartPane(state, chartId) {
         </div>
       ` : ""}
       <div class="pane-actions">
-        <button class="pane-split-btn" data-action="split-pane" data-chart-id="${chartId}" data-direction="h" title="Split right">
-          <svg viewBox="0 0 12 12" width="10" height="10"><rect x="0" y="1" width="5" height="10" rx="1" fill="currentColor" opacity="0.5"/><rect x="7" y="1" width="5" height="10" rx="1" fill="currentColor" opacity="0.5"/></svg>
-        </button>
-        <button class="pane-split-btn" data-action="split-pane" data-chart-id="${chartId}" data-direction="v" title="Split down">
-          <svg viewBox="0 0 12 12" width="10" height="10"><rect x="1" y="0" width="10" height="5" rx="1" fill="currentColor" opacity="0.5"/><rect x="1" y="7" width="10" height="5" rx="1" fill="currentColor" opacity="0.5"/></svg>
-        </button>
         <button class="pane-close" data-action="remove-chart" data-chart-id="${chartId}" title="Close chart">×</button>
       </div>
     </div>`;
@@ -46,47 +40,29 @@ function renderChartPane(state, chartId) {
   `;
 }
 
-/* ═══ Recursive tree renderer ═══ */
+/* ═══ Row-grid renderer ═══ */
 
-function renderTreeNode(state, node) {
-  if (!node) return "";
-
-  if (node.type === "pane") {
-    return renderChartPane(state, node.chartId);
-  }
-
-  // Container node: two children separated by a draggable divider
-  const isH = node.direction === "h";
-  const pct = (node.ratio * 100).toFixed(2);
-
-  return `
-    <div class="split-container split-${node.direction}" data-container-id="${node.id}">
-      <div class="split-child" style="flex: 0 0 ${pct}%">
-        ${renderTreeNode(state, node.children[0])}
-      </div>
-      <div class="split-divider split-divider-${node.direction}" data-container-id="${node.id}" data-direction="${node.direction}"></div>
-      <div class="split-child" style="flex: 1 1 0">
-        ${renderTreeNode(state, node.children[1])}
-      </div>
-    </div>
-  `;
+function renderRows(state) {
+  const { rows } = state.chartLayout;
+  if (!rows || rows.length === 0) return "";
+  return rows.map(row =>
+    `<div class="chart-row">
+      ${row.map(id => renderChartPane(state, id)).join("")}
+    </div>`
+  ).join("");
 }
 
 /* ═══ Ghost layout renderer (drag preview overlay) ═══ */
 
-export function renderGhostNode(node, incomingId) {
-  if (!node) return "";
-  if (node.type === "pane") {
-    const isIncoming = node.chartId === incomingId;
-    return `<div class="ghost-pane${isIncoming ? " ghost-pane-incoming" : ""}"></div>`;
-  }
-  const pct = (node.ratio * 100).toFixed(2);
-  return `
-    <div class="ghost-container ghost-${node.direction}">
-      <div class="ghost-child" style="flex: 0 0 ${pct}%">${renderGhostNode(node.children[0], incomingId)}</div>
-      <div class="ghost-divider-line ghost-divider-${node.direction}"></div>
-      <div class="ghost-child" style="flex: 1 1 0">${renderGhostNode(node.children[1], incomingId)}</div>
-    </div>`;
+export function renderGhostRows(rows, incomingId) {
+  if (!rows || rows.length === 0) return "";
+  return rows.map(row =>
+    `<div class="ghost-row">
+      ${row.map(id =>
+        `<div class="ghost-pane${id === incomingId ? " ghost-pane-incoming" : ""}"></div>`
+      ).join("")}
+    </div>`
+  ).join("");
 }
 
 
@@ -154,7 +130,6 @@ export function renderDataTable(state) {
 
 export function renderChartArena(state) {
   const focusedSlot = state.charts[state.focusedChartId] || state.charts[state.chartOrder[0]];
-  const tree = state.chartLayout.tree;
 
   return `
     <section class="chart-card">
@@ -169,7 +144,7 @@ export function renderChartArena(state) {
       </div>
       ${state.showDataTable ? renderDataTable(state) : `
         <div class="chart-arena">
-          ${renderTreeNode(state, tree)}
+          ${renderRows(state)}
         </div>
       `}
     </section>

@@ -263,23 +263,7 @@ export function getFocused(state) {
 /* ═══ Freeform Split Layout (binary split tree) ═══ */
 
 
-/* ── Tree node constructors ─────────────────────────────────── */
-
-function createPaneNode(chartId) {
-  return { type: "pane", chartId };
-}
-
-function createContainerNode(direction, children, ratio = 0.5) {
-  return {
-    type: "container",
-    id: `c${Math.random().toString(36).slice(2, 8)}`,
-    direction,   // "h" | "v"
-    ratio,       // fraction of space given to children[0] (0.1 – 0.9)
-    children,    // always exactly 2 nodes
-  };
-}
-
-/* ── Tree traversal helpers ─────────────────────────────────── */
+/* ── Tree helpers (kept temporarily for migration only) ─────── */
 
 function _collect(node) {
   if (!node) return [];
@@ -287,61 +271,103 @@ function _collect(node) {
   return node.children.flatMap(_collect);
 }
 
-function _replace(node, pred, fn) {
-  if (pred(node)) return fn(node);
-  if (node.type === "container") {
-    return { ...node, children: node.children.map(c => _replace(c, pred, fn)) };
-  }
-  return node;
+/** Migrate legacy tree layout to row-grid on load */
+export function migrateTreeToRows(layout) {
+  if (layout.rows) return layout;
+  if (layout.tree) return { rows: [_collect(layout.tree)] };
+  if (layout.slots) return { rows: [[...layout.slots]] };
+  return { rows: [] };
 }
-
-function _removePane(node, chartId) {
-  if (node.type === "pane") return node.chartId === chartId ? null : node;
-  const [a, b] = node.children;
-  if (a.type === "pane" && a.chartId === chartId) return b;
-  if (b.type === "pane" && b.chartId === chartId) return a;
-  const newA = _removePane(a, chartId);
-  const newB = _removePane(b, chartId);
-  if (newA === null) return newB;
-  if (newB === null) return newA;
-  return { ...node, children: [newA, newB] };
-}
-
-function _setRatio(node, containerId, ratio) {
-  if (node.type === "container" && node.id === containerId) return { ...node, ratio };
-  if (node.type === "container") {
-    return { ...node, children: node.children.map(c => _setRatio(c, containerId, ratio)) };
-  }
-  return node;
-}
-
-function _swapPanes(node, idA, idB) {
-  if (node.type === "pane") {
-    if (node.chartId === idA) return { ...node, chartId: idB };
-    if (node.chartId === idB) return { ...node, chartId: idA };
-    return node;
-  }
-  return { ...node, children: node.children.map(c => _swapPanes(c, idA, idB)) };
-}
-
-/** Return the direct parent container of the pane with chartId, or null if root/not found */
-function _findParent(node, chartId, parent = null) {
-  if (!node) return null;
-  if (node.type === "pane") return node.chartId === chartId ? parent : null;
-  for (const child of node.children) {
-    const result = _findParent(child, chartId, node);
-    if (result !== null) return result;
-  }
-  return null;
-}
-
 
 /** Get all chart IDs visible in the current layout */
 export function collectChartIds(layout) {
-  if (!layout) return [];
-  if (layout.tree) return _collect(layout.tree);          // new tree format
-  if (layout.slots) return [...layout.slots];             // old flat format (migration)
-  return [];
+  if (!layout?.rows) {
+    // Legacy fallback — auto-migrate
+    if (layout?.tree) return _collect(layout.tree);
+    if (layout?.slots) return [...layout.slots];
+    return [];
+  }
+  return layout.rows.flat();
+}
+
+/** Insert a chart at a position relative to a target chart */
+export function insertChart(state, chartId, targetId, zone) {
+  const rows = state.chartLayout.rows.map(r => [...r]);
+  const tR = rows.findIndex(r => r.includes(targetId));
+  const tC = rows[tR].indexOf(targetId);
+
+  // Remove chartId from current position
+  const sR = rows.findIndex(r => r.includes(chartId));
+  if (sR >= 0) {
+    rows[sR] = rows[sR].filter(id => id !== chartId);
+    if (rows[sR].length === 0) rows.splice(sR, 1);
+  }
+
+  // Recompute target after removal
+  const tR2 = rows.findIndex(r => r.includes(targetId));
+  const tC2 = rows[tR2].indexOf(targetId);
+
+  switch (zone) {
+    case "right":  rows[tR2].splice(tC2 + 1, 0, chartId); break;
+    case "left":   rows[tR2].splice(tC2, 0, chartId); break;
+    case "bottom": rows.splice(tR2 + 1, 0, [chartId]); break;
+    case "top":    rows.splice(tR2, 0, [chartId]); break;
+    case "center": {
+      // Swap positions
+      const srcRow = rows.findIndex(r => r.includes(targetId));
+      const srcCol = rows[srcRow].indexOf(targetId);
+      rows[srcRow][srcCol] = chartId;
+      // Re-insert targetId at chartId's old position (already removed above)
+      // Since chartId was removed, we need to place targetId somewhere —
+      // the simplest swap puts it where chartId was, but chartId was already removed.
+      // For center/swap: remove target, insert target where source was, put source where target was.
+      // Re-do: undo the removal and do a proper swap instead.
+      break;
+    }
+  }
+
+  // For center (swap), do it differently
+  if (zone === "center") {
+    const freshRows = state.chartLayout.rows.map(r => [...r]);
+    const aR = freshRows.findIndex(r => r.includes(chartId));
+    const aC = freshRows[aR].indexOf(chartId);
+    const bR = freshRows.findIndex(r => r.includes(targetId));
+    const bC = freshRows[bR].indexOf(targetId);
+    freshRows[aR][aC] = targetId;
+    freshRows[bR][bC] = chartId;
+    return { ...state, chartLayout: { rows: freshRows } };
+  }
+
+  return { ...state, chartLayout: { rows } };
+}
+
+/** Compute a preview of the grid after a drag-drop — does NOT modify state */
+export function computeGridPreview(rows, draggingId, targetId, zone) {
+  if (!draggingId || !targetId || draggingId === targetId) return rows;
+
+  if (zone === "center") {
+    // Swap preview
+    const preview = rows.map(r => r.map(id =>
+      id === draggingId ? targetId : id === targetId ? draggingId : id
+    ));
+    return preview;
+  }
+
+  // Remove dragging from current position
+  let preview = rows.map(r => r.filter(id => id !== draggingId)).filter(r => r.length > 0);
+
+  // Find target in the reduced grid
+  const tR = preview.findIndex(r => r.includes(targetId));
+  if (tR < 0) return rows; // target not found — no-op
+  const tC = preview[tR].indexOf(targetId);
+
+  switch (zone) {
+    case "right":  preview[tR].splice(tC + 1, 0, draggingId); break;
+    case "left":   preview[tR].splice(tC, 0, draggingId); break;
+    case "bottom": preview.splice(tR + 1, 0, [draggingId]); break;
+    case "top":    preview.splice(tR, 0, [draggingId]); break;
+  }
+  return preview;
 }
 
 export function createInitialState() {
@@ -391,7 +417,7 @@ export function createInitialState() {
     nextChartId: 2,
     focusedChartId: "chart-1",
     chartLayout: {
-      tree: { type: "pane", chartId: "chart-1" },
+      rows: [["chart-1"]],
     },
     ui: {
       notice: null,
@@ -1077,8 +1103,8 @@ export function focusChart(state, chartId) {
   return { ...state, focusedChartId: chartId };
 }
 
-/** Split a pane and insert a new chart next to it */
-export function splitPane(state, chartId, direction, { chartType = "imr" } = {}) {
+/** Add a new chart using row-grid auto-placement rules */
+export function addChart(state, { chartType = "imr" } = {}) {
   const newId = `chart-${state.nextChartId}`;
   const focusedSlot = getFocused(state);
 
@@ -1103,11 +1129,18 @@ export function splitPane(state, chartId, direction, { chartType = "imr" } = {})
     context: { ...focusedSlot.context, chartType: { id: chartType, label, detail: "" }, methodBadge: label },
   });
 
-  const newTree = _replace(
-    state.chartLayout.tree,
-    n => n.type === "pane" && n.chartId === chartId,
-    n => createContainerNode(direction, [n, createPaneNode(newId)])
-  );
+  // Auto-placement: fill last row first, then new row below
+  const rows = state.chartLayout.rows;
+  const lastRow = rows[rows.length - 1];
+  const rowAbove = rows.length >= 2 ? rows[rows.length - 2] : null;
+  const maxInRow = rowAbove ? rowAbove.length : 2;
+
+  let newRows;
+  if (lastRow.length < maxInRow) {
+    newRows = [...rows.slice(0, -1), [...lastRow, newId]];
+  } else {
+    newRows = [...rows, [newId]];
+  }
 
   return {
     ...state,
@@ -1115,21 +1148,18 @@ export function splitPane(state, chartId, direction, { chartType = "imr" } = {})
     chartOrder: [...state.chartOrder, newId],
     nextChartId: state.nextChartId + 1,
     focusedChartId: newId,
-    chartLayout: { tree: newTree },
+    chartLayout: { rows: newRows },
   };
 }
 
-/** addChart: splits the focused pane horizontally (used by recipe rail "+Add Chart") */
-export function addChart(state, { chartType = "imr" } = {}) {
-  return splitPane(state, state.focusedChartId, "h", { chartType });
-}
-
-/** Remove a pane from the tree (collapses its parent container) */
+/** Remove a chart from the row-grid layout */
 export function removeChart(state, chartId) {
   if (collectChartIds(state.chartLayout).length <= 1) return state;
   if (!state.charts[chartId]) return state;
 
-  const newTree = _removePane(state.chartLayout.tree, chartId);
+  const newRows = state.chartLayout.rows
+    .map(row => row.filter(id => id !== chartId))
+    .filter(row => row.length > 0);
   const newCharts = { ...state.charts };
   delete newCharts[chartId];
   const newOrder = state.chartOrder.filter(id => id !== chartId);
@@ -1140,79 +1170,8 @@ export function removeChart(state, chartId) {
     charts: newCharts,
     chartOrder: newOrder,
     focusedChartId: newFocus,
-    chartLayout: { tree: newTree },
+    chartLayout: { rows: newRows },
   };
-}
-
-/** Update the ratio of a split container (used during divider drag) */
-export function setSplitRatio(state, containerId, ratio) {
-  const clampedRatio = Math.max(0.1, Math.min(0.9, ratio));
-  return { ...state, chartLayout: { tree: _setRatio(state.chartLayout.tree, containerId, clampedRatio) } };
-}
-
-/** Swap two panes' positions in the tree (used for drag-to-reorder) */
-export function swapSlots(state, idA, idB) {
-  const newTree = _swapPanes(state.chartLayout.tree, idA, idB);
-  return { ...state, chartLayout: { tree: newTree } };
-}
-
-/**
- * Compute the predicted tree after a drag-drop operation — does NOT modify state.
- * zone: "top" | "bottom" | "left" | "right" | "center"
- * Returns the new tree, or null if the operation is a no-op.
- *
- * Smart insert: when the drop zone direction matches the target's parent container
- * direction, wrap the sibling instead of the target — preserving the target's
- * proportions and avoiding unnecessary same-direction nesting.
- *
- * Example: [A | [B/C]], drag B → right of A
- *   Naive:  [[A|B] | C]   A gets split, nested h-in-h
- *   Smart:  [A | [B|C]]   A keeps its space, B slots between A and C
- */
-export function computeDragResult(tree, draggingId, targetId, zone) {
-  if (!draggingId || !targetId || draggingId === targetId) return null;
-  if (zone === "center") return _swapPanes(tree, draggingId, targetId);
-
-  const reducedTree = _removePane(tree, draggingId);
-  if (!reducedTree) return null;
-
-  const direction = (zone === "left" || zone === "right") ? "h" : "v";
-  const putFirst = (zone === "top" || zone === "left");
-
-  // Smart insert: if target's direct parent has the same direction as the drop zone,
-  // insert between target and its sibling (wrap sibling, preserve target's space).
-  const parentNode = _findParent(reducedTree, targetId);
-  if (parentNode && parentNode.direction === direction) {
-    const idx = parentNode.children.findIndex(c =>
-      c.type === "pane" && c.chartId === targetId
-    );
-    if (idx !== -1) {
-      const siblingIdx = putFirst ? idx - 1 : idx + 1;
-      if (siblingIdx >= 0 && siblingIdx < parentNode.children.length) {
-        const sibling = parentNode.children[siblingIdx];
-        // Dragging goes on the target-facing side of the sibling:
-        //   zone=right (putFirst=false): [dragging | sibling]
-        //   zone=left  (putFirst=true):  [sibling | dragging]
-        const dragFirst = !putFirst;
-        return _replace(
-          reducedTree,
-          n => n === sibling,
-          n => dragFirst
-            ? createContainerNode(direction, [createPaneNode(draggingId), n])
-            : createContainerNode(direction, [n, createPaneNode(draggingId)])
-        );
-      }
-    }
-  }
-
-  // Standard fallback: wrap the target itself
-  return _replace(
-    reducedTree,
-    n => n.type === "pane" && n.chartId === targetId,
-    n => putFirst
-      ? createContainerNode(direction, [createPaneNode(draggingId), n])
-      : createContainerNode(direction, [n, createPaneNode(draggingId)])
-  );
 }
 
 

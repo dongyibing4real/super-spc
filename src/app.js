@@ -60,12 +60,11 @@ import {
   focusChart,
   addChart,
   removeChart,
-  splitPane,
-  setSplitRatio,
   collectChartIds,
   createSlot,
-  swapSlots,
-  computeDragResult,
+  insertChart,
+  computeGridPreview,
+  migrateTreeToRows,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
 import {
@@ -83,7 +82,7 @@ import { renderSidebar } from "./components/sidebar.js";
 import { renderNotice, renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
 import { renderRecipeRail } from "./components/recipe-rail.js";
 import { renderContextMenu } from "./components/context-menu.js";
-import { renderChartArena, renderGhostNode } from "./components/chart-arena.js";
+import { renderChartArena, renderGhostRows } from "./components/chart-arena.js";
 import { renderWorkspace, renderEvidenceRail } from "./views/workspace.js";
 import { renderDataPrep } from "./views/dataprep.js";
 import { renderMethodLab } from "./views/methodlab.js";
@@ -516,18 +515,6 @@ root.addEventListener("click", async (e) => {
       commit(state);
       saveLayout();
       if (state.activeDatasetId) reanalyze();
-      break;
-    }
-    case "split-pane": {
-      const chartId = t.dataset.chartId;
-      const direction = t.dataset.direction; // "h" or "v"
-      if (chartId && direction) {
-        const focusedType = state.charts[chartId]?.params?.chart_type || "imr";
-        state = splitPane(state, chartId, direction, { chartType: focusedType });
-        commit(state);
-        saveLayout();
-        if (state.activeDatasetId) reanalyze();
-      }
       break;
     }
     case "remove-chart": {
@@ -1002,9 +989,6 @@ root.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
 });
 
-/* ═══ Divider drag — resize split panes ═══ */
-let dividerDrag = null;
-
 /* ═══ Header drag — zone-inference + ghost preview ═══ */
 let pendingDrag = null;  // recorded on pointerdown, promoted to dragState after threshold
 let dragState = null;
@@ -1042,11 +1026,11 @@ function getDropZone(paneEl, clientX, clientY, prevZone) {
 }
 
 // DRAG-005: rAF-throttled overlay update
-function updateGhostOverlay(ghostTree, incomingId) {
-  if (!ghostOverlay || !ghostTree) return;
+function updateGhostOverlay(ghostRows, incomingId) {
+  if (!ghostOverlay || !ghostRows) return;
   if (ghostRafId) cancelAnimationFrame(ghostRafId);
   ghostRafId = requestAnimationFrame(() => {
-    ghostOverlay.innerHTML = renderGhostNode(ghostTree, incomingId);
+    ghostOverlay.innerHTML = renderGhostRows(ghostRows, incomingId);
     ghostOverlay.style.display = "flex";
     ghostRafId = null;
   });
@@ -1063,24 +1047,6 @@ function removeGhostOverlay() {
 }
 
 root.addEventListener("pointerdown", (e) => {
-  // ── Divider resize drag ──
-  const divider = e.target.closest(".split-divider");
-  if (divider) {
-    e.preventDefault();
-    e.stopPropagation();
-    const container = divider.closest(".split-container");
-    if (!container) return;
-    divider.setPointerCapture(e.pointerId);
-    divider.classList.add("split-divider-active");
-    dividerDrag = {
-      containerId: divider.dataset.containerId,
-      direction: divider.dataset.direction,
-      containerEl: container,
-      firstChild: container.querySelector(".split-child"),
-    };
-    return;
-  }
-
   // ── Header drag — record pending, promote after 4px threshold (DRAG-003) ──
   const handle = e.target.closest("[data-drag-handle]");
   if (!handle) return;
@@ -1094,18 +1060,6 @@ root.addEventListener("pointerdown", (e) => {
 });
 
 root.addEventListener("pointermove", (e) => {
-  // ── Divider resize ──
-  if (dividerDrag) {
-    const freshRect = dividerDrag.containerEl.getBoundingClientRect();
-    let ratio = dividerDrag.direction === "h"
-      ? (e.clientX - freshRect.left) / freshRect.width
-      : (e.clientY - freshRect.top) / freshRect.height;
-    ratio = Math.max(0.1, Math.min(0.9, ratio));
-    dividerDrag.pendingRatio = ratio;
-    if (dividerDrag.firstChild) dividerDrag.firstChild.style.flex = `0 0 ${(ratio * 100).toFixed(2)}%`;
-    return;
-  }
-
   // ── Promote pending drag once 4px threshold is crossed (DRAG-003) ──
   if (pendingDrag && !dragState) {
     const dx = e.clientX - pendingDrag.startX;
@@ -1139,7 +1093,7 @@ root.addEventListener("pointermove", (e) => {
     dragState = { chartId, pane, ghost, dropTarget: null, dropZone: null };
 
     // DRAG-004: show overlay immediately over source pane
-    updateGhostOverlay(state.chartLayout.tree, chartId);
+    updateGhostOverlay(state.chartLayout.rows, chartId);
   }
 
   // ── Header drag: zone inference + ghost preview ──
@@ -1162,28 +1116,13 @@ root.addEventListener("pointermove", (e) => {
   dragState.dropZone = foundZone;
 
   if (foundTarget && foundZone) {
-    const ghostTree = computeDragResult(state.chartLayout.tree, chartId, foundTarget, foundZone);
-    updateGhostOverlay(ghostTree, chartId);
+    const previewRows = computeGridPreview(state.chartLayout.rows, chartId, foundTarget, foundZone);
+    updateGhostOverlay(previewRows, chartId);
   } else {
     // Back over source pane — show current layout with source highlighted
-    updateGhostOverlay(state.chartLayout.tree, chartId);
+    updateGhostOverlay(state.chartLayout.rows, chartId);
   }
 });
-
-function endDividerDrag() {
-  if (!dividerDrag) return;
-  const { containerId, pendingRatio } = dividerDrag;
-  root.querySelectorAll(".split-divider-active").forEach(el => el.classList.remove("split-divider-active"));
-  if (pendingRatio !== undefined) {
-    state = setSplitRatio(state, containerId, pendingRatio);
-    saveLayout();
-    const visibleIds = collectChartIds(state.chartLayout);
-    requestAnimationFrame(() => {
-      for (const id of visibleIds) { if (charts[id]) charts[id].update(buildChartData(id)); }
-    });
-  }
-  dividerDrag = null;
-}
 
 function endDrag() {
   pendingDrag = null;
@@ -1195,19 +1134,16 @@ function endDrag() {
   document.body.style.userSelect = ""; // DRAG-007: restore text selection
 
   if (dropTarget && dropZone && dropTarget !== chartId) {
-    const newTree = computeDragResult(state.chartLayout.tree, chartId, dropTarget, dropZone);
-    if (newTree) {
-      state = { ...state, chartLayout: { tree: newTree } };
-      commitLayout(state);
-      saveLayout();
-    }
+    state = insertChart(state, chartId, dropTarget, dropZone);
+    commitLayout(state);
+    saveLayout();
   }
   dragState = null;
 }
 
 // DRAG-002: bind to document so release outside root is always caught
-document.addEventListener("pointerup", () => { endDividerDrag(); endDrag(); });
-document.addEventListener("pointercancel", () => { endDividerDrag(); endDrag(); });
+document.addEventListener("pointerup", () => { endDrag(); });
+document.addEventListener("pointercancel", () => { endDrag(); });
 
 /* ═══ Pane titlebar right-click — split/close context menu ═══ */
 let paneMenu = null;
@@ -1223,9 +1159,6 @@ function showPaneContextMenu(x, y, chartId) {
   menu.className = "pane-context-menu";
   menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:9999`;
   menu.innerHTML = `
-    <button data-action="split-pane" data-chart-id="${chartId}" data-direction="h">Split Right</button>
-    <button data-action="split-pane" data-chart-id="${chartId}" data-direction="v">Split Down</button>
-    <div class="pane-menu-sep"></div>
     <button data-action="remove-chart" data-chart-id="${chartId}" ${isOnly ? "disabled" : ""}>Close Pane</button>
   `;
   document.body.appendChild(menu);
@@ -1461,7 +1394,7 @@ const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
 function saveLayout() {
   try {
     const data = {
-      tree: state.chartLayout.tree,
+      rows: state.chartLayout.rows,
       chartOrder: state.chartOrder,
       focusedChartId: state.focusedChartId,
       nextChartId: state.nextChartId,
@@ -1480,18 +1413,11 @@ function restoreLayout() {
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (!data.chartOrder || !data.chartParams) return null;
-    // Migrate old flat snap-layout format to tree format
-    if (!data.tree) {
-      const slots = data.slots || data.chartOrder;
-      if (slots.length === 1) {
-        data.tree = { type: "pane", chartId: slots[0] };
-      } else {
-        // Build a simple horizontal split tree for 2+ charts
-        let tree = { type: "pane", chartId: slots[slots.length - 1] };
-        for (let i = slots.length - 2; i >= 0; i--) {
-          tree = { type: "container", id: `cm${i}`, direction: "h", ratio: 1 / (slots.length - i), children: [{ type: "pane", chartId: slots[i] }, tree] };
-        }
-        data.tree = tree;
+    // Migrate legacy tree/flat formats to row-grid
+    if (!data.rows) {
+      data.rows = migrateTreeToRows(data).rows;
+      if (!data.rows || data.rows.length === 0) {
+        data.rows = [data.chartOrder];
       }
     }
     return data;
@@ -1522,7 +1448,7 @@ async function main() {
         chartOrder: saved.chartOrder,
         nextChartId: saved.nextChartId || saved.chartOrder.length + 1,
         focusedChartId: saved.focusedChartId || saved.chartOrder[0],
-        chartLayout: { tree: saved.tree },
+        chartLayout: { rows: saved.rows },
       };
     }
 
