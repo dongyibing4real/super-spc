@@ -1829,8 +1829,8 @@ h1, h2, h3, h4, h5, h6 {
   vertical-align: top; padding: 6px 8px 6px; min-width: 80px;
 }
 .th-name-row {
-  display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
-  margin-bottom: 5px; color: var(--t-2);
+  display: flex; align-items: center; gap: 3px; flex-wrap: nowrap;
+  overflow: hidden; margin-bottom: 5px; color: var(--t-2);
 }
 .th-profile { display: flex; flex-direction: column; gap: 2px; }
 

@@ -422,13 +422,15 @@ function renderThProfile(profile, dtype) {
     const fmt = v => v != null ? (Math.abs(v) >= 10000 ? v.toExponential(1) : parseFloat(v.toFixed(2))) : '\u2014';
     statsLine = `<div class="th-mini-stats">${fmt(profile.min)} \u00b7 ${fmt(profile.mean)} \u00b7 ${fmt(profile.max)}</div>`;
   } else if (dtype !== 'numeric' && profile.topValues?.length > 0) {
+    const maxCount = profile.topValues[0].count;
     const bars = profile.topValues.slice(0, 3).map(t => {
-      const pct = profile.count > 0 ? (t.count / profile.count * 100).toFixed(0) : 0;
+      const relPct = maxCount > 0 ? (t.count / maxCount * 100).toFixed(0) : 0;
       const label = String(t.value).length > 8 ? String(t.value).slice(0, 8) + '\u2026' : t.value;
-      return `<div class="th-top-row"><span class="th-top-label">${label}</span><div class="th-top-track"><div class="th-top-bar" style="width:${pct}%"></div></div></div>`;
+      return `<div class="th-top-row"><span class="th-top-label">${label}</span><div class="th-top-track"><div class="th-top-bar" style="width:${relPct}%"></div></div></div>`;
     }).join('');
     distribution = `<div class="th-mini-top">${bars}</div>`;
-    statsLine = `<div class="th-mini-stats">${profile.distinct} distinct</div>`;
+    const topAbsPct = profile.count > 0 ? (maxCount / profile.count * 100).toFixed(0) : 0;
+    statsLine = `<div class="th-mini-stats">${profile.distinct} distinct \u00b7 top ${topAbsPct}%</div>`;
   }
 
   if (!distribution) return '';
