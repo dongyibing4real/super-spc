@@ -800,10 +800,10 @@ root.addEventListener("pointermove", (e) => {
   let ratio;
   if (isHoriz) {
     ratio = Math.max(minRatio, Math.min(1 - minRatio, (e.clientX - rect.left) / rect.width));
-    container.style.gridTemplateColumns = `${ratio}fr ${1 - ratio}fr`;
+    container.style.gridTemplateColumns = `${ratio}fr auto ${1 - ratio}fr`;
   } else {
     ratio = Math.max(minRatio, Math.min(1 - minRatio, (e.clientY - rect.top) / rect.height));
-    container.style.gridTemplateRows = `${ratio}fr ${1 - ratio}fr`;
+    container.style.gridTemplateRows = `${ratio}fr auto ${1 - ratio}fr`;
   }
   dividerDrag.lastRatio = ratio;
 });

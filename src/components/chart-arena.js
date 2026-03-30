@@ -54,7 +54,8 @@ function renderTreeNode(state, node, path = []) {
 
   const isRow = node.direction === "row";
   const gridProp = isRow ? "grid-template-columns" : "grid-template-rows";
-  const gridStyle = `${gridProp}: ${node.sizes[0]}fr ${node.sizes[1]}fr;`;
+  const crossProp = isRow ? "grid-template-rows" : "grid-template-columns";
+  const gridStyle = `${gridProp}: ${node.sizes[0]}fr auto ${node.sizes[1]}fr; ${crossProp}: 1fr;`;
   const dividerDir = isRow ? "horizontal" : "vertical";
 
   return `
