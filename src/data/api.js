@@ -21,10 +21,13 @@ export function fetchDatasets() {
   return request("/api/datasets");
 }
 
-/** GET /api/datasets/:id/points → [{id, value, subgroup, sequence_index, metadata}] */
-export function fetchPoints(datasetId) {
-  return request(`/api/datasets/${datasetId}/points`);
+/** GET /api/datasets/:id/rows → [{id, sequence_index, metadata, raw_data}] */
+export function fetchRows(datasetId) {
+  return request(`/api/datasets/${datasetId}/rows`);
 }
+
+/** @deprecated alias for backward compat during migration */
+export const fetchPoints = fetchRows;
 
 /**
  * POST /api/datasets/:id/analyze
@@ -41,16 +44,15 @@ export function runAnalysis(datasetId, params) {
 }
 
 /**
- * POST /api/datasets/upload (multipart form, field "file")
- * @param {File} file
- * @returns {Promise<{id, name, created_at, point_count, metadata}>}
+ * POST /api/datasets (structured JSON — columns + rows)
+ * @param {{name: string, columns: Array, rows: Array<Object>}} payload
+ * @returns {Promise<{id, name, created_at, columns, point_count, metadata}>}
  */
-export function uploadCsv(file) {
-  const form = new FormData();
-  form.append("file", file);
-  return request("/api/datasets/upload", {
+export function createDataset(payload) {
+  return request("/api/datasets", {
     method: "POST",
-    body: form,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 }
 
@@ -83,7 +85,7 @@ export function updateColumnRoles(datasetId, columns) {
   });
 }
 
-/** GET /api/datasets/:id/raw → [{...originalColumns, _sequence_index, _value, _subgroup}] */
+/** GET /api/datasets/:id/raw → [{...originalColumns, _sequence_index}] */
 export function fetchRawData(datasetId) {
   return request(`/api/datasets/${datasetId}/raw`);
 }

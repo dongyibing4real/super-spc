@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from api.models import Base, Dataset, Measurement
+from api.models import Base, Dataset, DataRow, DatasetColumn
 from api.schemas import AnalysisRequest
 from api.services.analysis import run_analysis
 
@@ -63,11 +63,14 @@ async def seeded_db(db: AsyncSession):
         10.3, 10.5, 10.4, 10.7, 10.5,
     ]
     for i, v in enumerate(values):
-        dataset.measurements.append(
-            Measurement(value=v, subgroup=None, sequence_index=i)
+        dataset.data_rows.append(
+            DataRow(sequence_index=i, raw_json=json.dumps({"value": str(v)}))
         )
 
     db.add(dataset)
+    db.add_all([
+        DatasetColumn(dataset_id=DATASET_ID, name="value", ordinal=0, dtype="numeric", role="value"),
+    ])
     await db.commit()
     return db
 
@@ -90,11 +93,15 @@ async def subgrouped_db(db: AsyncSession):
     ]
     for i, v in enumerate(values):
         sg = str((i // 5) + 1)
-        dataset.measurements.append(
-            Measurement(value=v, subgroup=sg, sequence_index=i)
+        dataset.data_rows.append(
+            DataRow(sequence_index=i, raw_json=json.dumps({"value": str(v), "subgroup": sg}))
         )
 
     db.add(dataset)
+    db.add_all([
+        DatasetColumn(dataset_id=SUBGROUPED_DATASET_ID, name="value", ordinal=0, dtype="numeric", role="value"),
+        DatasetColumn(dataset_id=SUBGROUPED_DATASET_ID, name="subgroup", ordinal=1, dtype="text", role="subgroup"),
+    ])
     await db.commit()
     return db
 
@@ -112,15 +119,19 @@ async def short_run_db(db: AsyncSession):
     values_a = [10.0, 10.2, 10.1, 10.3, 10.0, 10.2, 10.4, 10.1, 10.3, 10.2]
     values_b = [20.0, 20.3, 20.1, 20.2, 20.4, 20.1, 20.3, 20.0, 20.2, 20.1]
     for i, v in enumerate(values_a):
-        dataset.measurements.append(
-            Measurement(value=v, subgroup="product_A", sequence_index=i)
+        dataset.data_rows.append(
+            DataRow(sequence_index=i, raw_json=json.dumps({"value": str(v), "subgroup": "product_A"}))
         )
     for i, v in enumerate(values_b):
-        dataset.measurements.append(
-            Measurement(value=v, subgroup="product_B", sequence_index=len(values_a) + i)
+        dataset.data_rows.append(
+            DataRow(sequence_index=len(values_a) + i, raw_json=json.dumps({"value": str(v), "subgroup": "product_B"}))
         )
 
     db.add(dataset)
+    db.add_all([
+        DatasetColumn(dataset_id=SHORT_RUN_DATASET_ID, name="value", ordinal=0, dtype="numeric", role="value"),
+        DatasetColumn(dataset_id=SHORT_RUN_DATASET_ID, name="subgroup", ordinal=1, dtype="text", role="subgroup"),
+    ])
     await db.commit()
     return db
 
@@ -144,16 +155,17 @@ async def multivariate_db(db: AsyncSession):
         [0.8, 2.3, 3.1], [1.2, 2.0, 2.6], [1.0, 2.2, 3.2],
     ]
     for i, row in enumerate(data):
-        dataset.measurements.append(
-            Measurement(
-                value=row[0],
-                subgroup=None,
+        dataset.data_rows.append(
+            DataRow(
                 sequence_index=i,
-                raw_json=json.dumps({"variables": row}),
+                raw_json=json.dumps({"value": str(row[0]), "variables": row}),
             )
         )
 
     db.add(dataset)
+    db.add_all([
+        DatasetColumn(dataset_id=MULTIVARIATE_DATASET_ID, name="value", ordinal=0, dtype="numeric", role="value"),
+    ])
     await db.commit()
     return db
 

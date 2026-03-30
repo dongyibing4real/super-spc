@@ -2,37 +2,44 @@
  * transforms.js — Maps API responses to the frontend state shape.
  *
  * API types:
- *   MeasurementOut: { id, value, subgroup, sequence_index, metadata, raw_data }
+ *   DataRowOut: { id, sequence_index, metadata, raw_data }
  *   AnalysisResult: { id, dataset_id, sigma, limits, zones, capability, created_at }
  *
  * Frontend state shape: see state.js createInitialState()
  */
 
 /**
- * Map MeasurementOut[] → point[]
+ * Map DataRowOut[] → point[]
  *
  * Uses column config to determine which raw data fields map to which roles.
  * No hardcoded field names — everything is driven by the columns parameter.
+ * Value and subgroup are derived from raw_data using column roles (not stored on the row).
  *
- * @param {Array<{id: number, value: number, subgroup: string|null, sequence_index: number, metadata: object, raw_data: object}>} measurements
+ * @param {Array<{id: number, sequence_index: number, metadata: object, raw_data: object}>} rows
  * @param {Array<{name: string, ordinal: number, dtype: string, role: string|null}>} [columns]
  * @returns {Array<{id: string, label: string, subgroupLabel: string, phaseId: string|null, primaryValue: number, challengerValue: null, excluded: boolean, annotation: null, raw: object}>}
  */
-export function transformPoints(measurements, columns) {
-  if (!Array.isArray(measurements)) return [];
+export function transformPoints(rows, columns) {
+  if (!Array.isArray(rows)) return [];
 
   // Find column roles from the columns config
+  const valueCol = columns?.find((c) => c.role === "value")?.name;
+  const subgroupCol = columns?.find((c) => c.role === "subgroup")?.name;
   const labelCol = columns?.find((c) => c.role === "label")?.name;
   const phaseCol = columns?.find((c) => c.role === "phase")?.name;
 
-  return measurements.map((m) => {
+  return rows.map((m) => {
     const raw = m.raw_data || m.metadata || {};
+    const rawValue = valueCol ? raw[valueCol] : null;
+    const value = rawValue != null ? parseFloat(rawValue) : 0;
+    const subgroup = subgroupCol ? (raw[subgroupCol] ?? null) : null;
+
     return {
       id: `pt-${m.sequence_index}`,
       label: labelCol ? (raw[labelCol] ?? `pt-${m.sequence_index}`) : `pt-${m.sequence_index}`,
-      subgroupLabel: m.subgroup ?? `pt-${m.sequence_index}`,
+      subgroupLabel: subgroup ?? `pt-${m.sequence_index}`,
       phaseId: phaseCol ? (raw[phaseCol] ?? null) : null,
-      primaryValue: m.value,
+      primaryValue: isNaN(value) ? 0 : value,
       challengerValue: null,
       excluded: false,
       annotation: null,

@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -30,7 +30,7 @@ class Dataset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     metadata_json: Mapped[str | None] = mapped_column("metadata", Text, nullable=True)
 
-    measurements: Mapped[list[Measurement]] = relationship(
+    data_rows: Mapped[list[DataRow]] = relationship(
         back_populates="dataset", cascade="all, delete-orphan", passive_deletes=True,
     )
     columns: Mapped[list[DatasetColumn]] = relationship(
@@ -59,20 +59,24 @@ class DatasetColumn(Base):
     dataset: Mapped[Dataset] = relationship(back_populates="columns")
 
 
-class Measurement(Base):
-    __tablename__ = "measurements"
+class DataRow(Base):
+    __tablename__ = "data_rows"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     dataset_id: Mapped[str] = mapped_column(
         ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True,
     )
-    value: Mapped[float] = mapped_column(Float, nullable=False)
-    subgroup: Mapped[str | None] = mapped_column(String, nullable=True)
     sequence_index: Mapped[int] = mapped_column(Integer, nullable=False)
     metadata_json: Mapped[str | None] = mapped_column("metadata", Text, nullable=True)
     raw_json: Mapped[str | None] = mapped_column("raw_data", Text, nullable=True)
 
-    dataset: Mapped[Dataset] = relationship(back_populates="measurements")
+    dataset: Mapped[Dataset] = relationship(back_populates="data_rows")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Transient attributes for analysis-time use (not persisted to DB)
+        self.value: float = 0.0
+        self.subgroup: str | None = None
 
 
 class Analysis(Base):

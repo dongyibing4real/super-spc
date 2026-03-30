@@ -7,7 +7,8 @@ export function toneClass(tone) {
   return { critical: "critical", info: "info", neutral: "neutral", positive: "positive", warning: "warning" }[tone] || "neutral";
 }
 
-export function getCapability(state, id = "primary") {
+export function getCapability(state, id = null) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
   return state.charts[id]?.capability || { cpk: null, ppk: null, cp: null };
 }
 
@@ -18,7 +19,8 @@ export function capClass(val) {
   return "poor";
 }
 
-export function detectRuleViolations(state, id = "primary") {
+export function detectRuleViolations(state, id = null) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
   const violations = new Map();
   const stateViolations = state.charts[id]?.violations || [];
   stateViolations.forEach(v => {

@@ -22,6 +22,9 @@ import {
   selectFinding,
   selectPoint,
   selectPrepDataset,
+  selectStructuralFinding,
+  setFindingsChart,
+  setStructuralFindings,
   setPrepError,
   setPrepSort,
   resetAxis,
@@ -41,13 +44,35 @@ import {
   setChartParams,
   setActiveChipEditor,
   getPrimary,
+  getFocused,
+  setPrepParsedData,
+  setPrepTable,
+  addPrepTransform,
+  markPrepSaved,
+  setPrepHiddenColumns,
+  undoPrepTransform,
+  setActivePanel,
+  closeActivePanel,
+  focusChart,
+  addChart,
+  removeChart,
+  resizeSplit,
+  openChartPicker,
+  closeChartPicker,
+  collectChartIds,
+  createSlot,
+  swapCharts,
+  moveChartToSplit,
+  setLayoutPreset,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
 import {
-  deleteDataset, fetchColumns, fetchDatasets, fetchPoints,
-  runAnalysis, updateColumnRoles, uploadCsv
+  createDataset, deleteDataset, fetchColumns, fetchDatasets, fetchPoints,
+  runAnalysis, updateColumnRoles
 } from "./data/api.js";
 import { transformPoints, transformAnalysis, buildDefaultContext } from "./data/transforms.js";
+import { parseCSV } from "./data/csv-engine.js";
+import { createTable, filterRows, sortTable, findReplace, removeDuplicates, handleMissing, cleanText } from "./data/data-prep-engine.js";
 
 import { getCapability, capClass, detectRuleViolations, applyParamsToContext } from "./helpers.js";
 import { deriveWorkspace } from "./core/state.js";
@@ -56,18 +81,26 @@ import { renderSidebar } from "./components/sidebar.js";
 import { renderNotice, renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
 import { renderRecipeRail } from "./components/recipe-rail.js";
 import { renderContextMenu } from "./components/context-menu.js";
-import { CHART_MOUNT_PRIMARY, CHART_MOUNT_CHALLENGER, renderChartArena } from "./components/chart-arena.js";
+import { renderChartArena } from "./components/chart-arena.js";
 import { renderWorkspace, renderEvidenceRail } from "./views/workspace.js";
 import { renderDataPrep } from "./views/dataprep.js";
 import { renderMethodLab } from "./views/methodlab.js";
 import { renderFindings } from "./views/findings.js";
 import { renderReports } from "./views/reports.js";
 import { morphInner, morphEl } from "./core/morph.js";
+import { generateFindings } from "./core/findings-engine.js";
 
 /* ═══ Global state ═══ */
 const root = document.getElementById("app");
 let state = createInitialState();
 let charts = { primary: null, challenger: null };
+
+/* ═══ Unsaved changes guard ═══ */
+window.addEventListener("beforeunload", (e) => {
+  if (state.dataPrep.unsavedChanges) {
+    e.preventDefault();
+  }
+});
 
 /* ═══ Router ═══ */
 function renderRoute() {
@@ -136,10 +169,11 @@ function render() {
   `);
 
   if (state.route === "workspace") {
-    const activeIds = state.chartOrder;
+    // Collect visible chart IDs from the layout tree
+    const visibleIds = collectChartIds(state.chartLayout.tree);
 
-    for (const id of activeIds) {
-      const mount = document.getElementById(id === "primary" ? CHART_MOUNT_PRIMARY : CHART_MOUNT_CHALLENGER);
+    for (const id of visibleIds) {
+      const mount = document.getElementById(`chart-mount-${id}`);
       if (!mount) continue;
 
       // Recreate chart if instance is missing or SVG is stale (e.g. after data table toggle)
@@ -147,9 +181,16 @@ function render() {
       if (!charts[id] || svgStale) {
         if (charts[id]) { charts[id].destroy(); charts[id] = null; }
         charts[id] = createChart(mount, {
-          onSelectPoint: (index) => commitChart(selectPoint(state, index, id)),
-          onContextMenu: (x, y, info) => commitContextMenu(openContextMenu(state, x, y, { ...info, role: id })),
+          onSelectPoint: (index) => {
+            state = focusChart(state, id);
+            commitChart(selectPoint(state, index, id));
+          },
+          onContextMenu: (x, y, info) => {
+            state = focusChart(state, id);
+            commitContextMenu(openContextMenu(state, x, y, { ...info, role: id }));
+          },
           onAxisDrag: (info) => {
+            state = focusChart(state, id);
             if (info.axis === 'x') commitChart(setXDomainOverride(state, info.min, info.max, id));
             if (info.axis === 'y') commitChart(setYDomainOverride(state, info.yMin, info.yMax, id));
           },
@@ -160,14 +201,14 @@ function render() {
     }
 
     requestAnimationFrame(() => {
-      for (const id of activeIds) {
+      for (const id of visibleIds) {
         if (charts[id]) charts[id].update(buildChartData(id));
       }
     });
 
-    // Destroy charts not in chartOrder
+    // Destroy charts not visible in the tree
     for (const id of Object.keys(charts)) {
-      if (!activeIds.includes(id) && charts[id]) {
+      if (!visibleIds.includes(id) && charts[id]) {
         charts[id].destroy();
         charts[id] = null;
       }
@@ -188,7 +229,7 @@ function commitChart(next) {
     if (charts[id]) charts[id].update(buildChartData(id));
   }
   for (const id of state.chartOrder) {
-    const paneCaps = root.querySelector(`.chart-pane[data-role="${id}"] .pane-caps`);
+    const paneCaps = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-caps`);
     if (!paneCaps) continue;
     const cap = getCapability(state, id);
     if (cap.cpk) {
@@ -198,72 +239,22 @@ function commitChart(next) {
       `;
     }
   }
+  // Update focus visual
+  root.querySelectorAll('.chart-pane').forEach(p => {
+    p.classList.toggle('pane-focused', p.dataset.chartId === state.focusedChartId);
+  });
 }
 
 function commitLayout(next) {
   state = next;
-  const arena = root.querySelector(".chart-arena");
-  if (!arena) return;
-
-  const hasChallenger = state.chartOrder.length > 1;
-  const layout = state.chartLayout;
-  const arrangement = hasChallenger ? layout.arrangement : "single";
-  const ratio = layout.splitRatio ?? 0.5;
-  const isHoriz = arrangement === "horizontal" || arrangement === "primary-wide" || arrangement === "challenger-wide";
-  const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
-  const showChallenger = hasChallenger && arrangement !== "single";
-
-  if (showChallenger && isHoriz) {
-    arena.style.gridTemplateColumns = `${ratio}fr auto ${1 - ratio}fr`;
-    arena.style.gridTemplateRows = "1fr";
-  } else if (showChallenger && isVert) {
-    arena.style.gridTemplateColumns = "1fr";
-    arena.style.gridTemplateRows = `${ratio}fr auto ${1 - ratio}fr`;
-  } else {
-    arena.style.gridTemplateColumns = "1fr";
-    arena.style.gridTemplateRows = "1fr";
-  }
-  arena.dataset.layout = arrangement;
-
-  const divider = arena.querySelector(".chart-divider");
-  if (divider && showChallenger) {
-    divider.style.display = "";
-    divider.dataset.divider = isHoriz ? "horizontal" : "vertical";
-  } else if (divider) {
-    divider.style.display = "none";
-  }
-
-  const challengerPane = arena.querySelector('.chart-pane[data-role="challenger"]');
-  if (challengerPane) challengerPane.style.display = showChallenger ? "" : "none";
-
-  const primaryFirst = layout.primaryPosition === "left" || layout.primaryPosition === "top";
-  const primaryPane = arena.querySelector('.chart-pane[data-role="primary"]');
-  if (primaryPane && challengerPane && divider) {
-    if (primaryFirst) {
-      arena.insertBefore(primaryPane, arena.firstChild);
-      arena.insertBefore(divider, challengerPane);
-    } else {
-      arena.insertBefore(challengerPane, arena.firstChild);
-      arena.insertBefore(divider, primaryPane);
-    }
-  }
-
-  root.querySelectorAll(".layout-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.arrangement === arrangement);
-  });
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      for (const id of state.chartOrder) {
-        if (charts[id]) charts[id].update(buildChartData(id));
-      }
-    });
-  });
+  // Full re-render for layout changes (tree structure may have changed)
+  render();
+  saveLayout();
 }
 
 function commitContextMenu(next) {
   state = next;
-  const stage = root.querySelector(`#${CHART_MOUNT_PRIMARY}`);
+  const stage = root.querySelector(`#chart-mount-${state.focusedChartId}`);
   if (!stage) return;
   stage.querySelector(".context-menu")?.remove();
 
@@ -304,18 +295,18 @@ function commitWorkspace(next) {
   const rail = root.querySelector(".recipe-rail");
   if (rail) morphEl(rail, renderRecipeRail(state));
 
-  // 2. Chart toolbar title
-  const primary = getPrimary(state);
+  // 2. Chart toolbar title (shows focused chart info)
+  const focused = getFocused(state);
   const title = root.querySelector(".toolbar-title h3");
-  if (title) title.textContent = `${primary.context.metric.label} \u2014 ${primary.context.chartType.label}`;
+  if (title) title.textContent = `${focused.context.metric.label} \u2014 ${focused.context.chartType.label}`;
   const windowEl = root.querySelector(".toolbar-window");
-  if (windowEl) windowEl.textContent = primary.context.window;
+  if (windowEl) windowEl.textContent = focused.context.window;
 
   // 3. Pane method labels + capability badges
   for (const id of state.chartOrder) {
-    const paneMethod = root.querySelector(`.chart-pane[data-role="${id}"] .pane-method`);
+    const paneMethod = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-method`);
     if (paneMethod) paneMethod.textContent = state.charts[id].context.chartType?.label || "";
-    const paneCaps = root.querySelector(`.chart-pane[data-role="${id}"] .pane-caps`);
+    const paneCaps = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-caps`);
     const cap = getCapability(state, id);
     if (paneCaps && cap.cpk) {
       paneCaps.innerHTML = `
@@ -392,6 +383,7 @@ async function loadDatasetById(datasetId) {
     const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
     const slots = buildSlots(analyses, baseContext);
     state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId });
+    state = setStructuralFindings(state, generateFindings(state));
     render();
   } catch (err) {
     state = setError(state, err.message);
@@ -403,15 +395,32 @@ async function reanalyze() {
   if (!state.activeDatasetId) return;
   try {
     const dsId = state.activeDatasetId;
-    const [points, ...analyses] = await Promise.all([
-      fetchPoints(dsId),
-      ...state.chartOrder.map(id => runAnalysis(dsId, state.charts[id].params)),
-    ]);
+    // Fetch points + run analysis per chart (gracefully handle per-chart failures)
+    const points = await fetchPoints(dsId);
+    const analysisResults = await Promise.allSettled(
+      state.chartOrder.map(id => runAnalysis(dsId, state.charts[id].params))
+    );
     const columns = state.columnConfig.columns;
     const ds = state.datasets.find((d) => d.id === dsId);
     const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
-    const slots = buildSlots(analyses, baseContext);
+
+    // Build slots only for successful analyses; keep existing data for failed ones
+    const slots = {};
+    state.chartOrder.forEach((id, i) => {
+      if (analysisResults[i].status === "fulfilled") {
+        const t = transformAnalysis(analysisResults[i].value);
+        slots[id] = {
+          context: applyParamsToContext(baseContext, state.charts[id].params),
+          limits: t.limits, capability: t.capability, violations: t.violations,
+          sigma: t.sigma, zones: t.zones, chartValues: t.chartValues,
+          chartLabels: t.chartLabels, phases: t.phases,
+        };
+      }
+      // If rejected, slot is omitted — loadDataset will keep existing chart data
+    });
+
     state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId: dsId });
+    state = setStructuralFindings(state, generateFindings(state));
     commitWorkspace(state);
   } catch (err) {
     state = setError(state, err.message);
@@ -421,10 +430,32 @@ async function reanalyze() {
 
 /* ═══ Event handlers ═══ */
 root.addEventListener("click", async (e) => {
+  // Focus-on-click: clicking anywhere inside a chart pane focuses that chart
+  const clickedPane = e.target.closest('.chart-pane[data-chart-id]');
+  if (clickedPane) {
+    const chartId = clickedPane.dataset.chartId;
+    if (chartId && chartId !== state.focusedChartId && state.charts[chartId]) {
+      state = focusChart(state, chartId);
+      // Update focus visual + recipe rail + evidence rail
+      root.querySelectorAll('.chart-pane').forEach(p => {
+        p.classList.toggle('pane-focused', p.dataset.chartId === state.focusedChartId);
+      });
+      commitRecipeRail(state);
+      commitEvidenceRail(state);
+      // Update toolbar title
+      const focused = getFocused(state);
+      const titleEl = root.querySelector(".toolbar-title h3");
+      if (titleEl) titleEl.textContent = `${focused.context.metric.label} \u2014 ${focused.context.chartType.label}`;
+    }
+  }
+
   const t = e.target.closest("[data-action]");
   if (!t) {
     if (state.activeChipEditor) commitRecipeRail(setActiveChipEditor(state, state.activeChipEditor));
     if (state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
+    if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-tool-btn')) {
+      commit(closeActivePanel(state));
+    }
     return;
   }
   const a = t.dataset.action;
@@ -433,8 +464,16 @@ root.addEventListener("click", async (e) => {
       commit(navigate(state, t.dataset.route));
       if (t.dataset.route === "dataprep" && state.dataPrep.selectedDatasetId && state.dataPrep.datasetPoints.length === 0) {
         try {
-          const pts = await fetchPoints(state.dataPrep.selectedDatasetId);
-          commit(loadPrepPoints(state, pts));
+          const dsId = state.dataPrep.selectedDatasetId;
+          const [pts, cols] = await Promise.all([
+            fetchPoints(dsId),
+            fetchColumns(dsId).catch(() => []),
+          ]);
+          const rawRows = pts.map(p => p.raw_data || {});
+          const arqueroTable = createTable(rawRows, cols.length > 0 ? cols : state.columnConfig.columns);
+          state = setPrepParsedData(state, { rawRows, arqueroTable, columns: cols.length > 0 ? cols : state.columnConfig.columns });
+          state = loadPrepPoints(state, pts);
+          render();
         } catch (err) { commit(setPrepError(state, err.message)); }
       }
       break;
@@ -452,6 +491,14 @@ root.addEventListener("click", async (e) => {
     case "recover-transform":  commitEvidenceRail(recoverTransformStep(state, t.dataset.stepId)); break;
     case "set-challenger-status": commit(setChallengerStatus(state, t.dataset.status)); break;
     case "select-finding":     commit(selectFinding(state, t.dataset.findingId)); break;
+    case "select-structural-finding": commit(selectStructuralFinding(state, t.dataset.findingId)); break;
+    case "switch-findings-chart": {
+      const cid = t.dataset.chartId;
+      state = setFindingsChart(state, cid);
+      state = setStructuralFindings(state, generateFindings(state, cid), cid);
+      render();
+      break;
+    }
     case "create-finding":     commitEvidenceRail(createFindingFromSelection(state)); commitContextMenu(closeContextMenu(state)); break;
     case "generate-report":    commit(generateReportDraft(state)); break;
     case "export-report":      commit(exportReport(state)); break;
@@ -464,7 +511,41 @@ root.addEventListener("click", async (e) => {
       commitLayout(setChartLayout(state, arr, posMap[arr] || "left"));
       break;
     }
-    case "reset-axis": { const axisRole = state.ui.contextMenu?.role || "primary"; commitChart(resetAxis(state, t.dataset.axis, axisRole)); commitContextMenu(closeContextMenu(state)); break; }
+    case "add-chart": {
+      commit(openChartPicker(state));
+      break;
+    }
+    case "confirm-add-chart": {
+      const typeSelect = root.querySelector('[data-field="picker-chart-type"]');
+      const chartType = typeSelect ? typeSelect.value : "imr";
+      state = addChart(state, { chartType, splitDirection: "row" });
+      commit(state);
+      saveLayout();
+      // Trigger analysis for the new chart
+      if (state.activeDatasetId) reanalyze();
+      break;
+    }
+    case "cancel-add-chart": {
+      commit(closeChartPicker(state));
+      break;
+    }
+    case "set-layout-preset": {
+      const preset = t.dataset.preset;
+      if (preset) commitLayout(setLayoutPreset(state, preset));
+      break;
+    }
+    case "remove-chart": {
+      const chartId = t.dataset.chartId;
+      if (chartId) {
+        state = removeChart(state, chartId);
+        // Destroy the D3 chart instance
+        if (charts[chartId]) { charts[chartId].destroy(); delete charts[chartId]; }
+        commit(state);
+        saveLayout();
+      }
+      break;
+    }
+    case "reset-axis": { const axisRole = state.ui.contextMenu?.role || state.focusedChartId; commitChart(resetAxis(state, t.dataset.axis, axisRole)); commitContextMenu(closeContextMenu(state)); break; }
     case "toggle-chip-editor": {
       commitRecipeRail(setActiveChipEditor(state, t.dataset.chip));
       break;
@@ -478,7 +559,13 @@ root.addEventListener("click", async (e) => {
           fetchColumns(dsId).catch(() => []),
         ]);
         state = setColumns(state, cols);
-        commit(loadPrepPoints(state, pts));
+        state = loadPrepPoints(state, pts);
+        // Build Arquero table from server data for transforms
+        const rawRows = pts.map(p => p.raw_data || {});
+        const arqueroTable = createTable(rawRows, cols);
+        state = setPrepParsedData(state, { rawRows, arqueroTable, columns: cols });
+        state = loadPrepPoints(state, pts);
+        render();
       } catch (err) { commit(setPrepError(state, err.message)); }
       break;
     }
@@ -503,8 +590,173 @@ root.addEventListener("click", async (e) => {
       commit(setPrepSort(state, t.dataset.column));
       break;
     }
+    case "toggle-column-visibility": {
+      const col = t.dataset.column;
+      const hidden = state.dataPrep.hiddenColumns || [];
+      const next = hidden.includes(col) ? hidden.filter(c => c !== col) : [...hidden, col];
+      commit(setPrepHiddenColumns(state, next));
+      break;
+    }
+    case "prep-undo": {
+      if (state.dataPrep.transforms.length > 0) {
+        state = undoPrepTransform(state);
+        // Replay transforms from original table
+        if (state.dataPrep.rawRows && state.columnConfig.columns.length > 0) {
+          let table = createTable(state.dataPrep.rawRows, state.columnConfig.columns);
+          for (const tr of state.dataPrep.transforms) {
+            try {
+              table = applyTransform(table, tr);
+            } catch { /* skip failed transforms */ }
+          }
+          state = setPrepTable(state, table);
+          // Reset unsavedChanges based on transform count
+          if (state.dataPrep.transforms.length === 0) {
+            state = markPrepSaved(state);
+          }
+        }
+        render();
+      }
+      break;
+    }
+    case "prep-trim": {
+      const cols = state.columnConfig.columns.filter(c => c.dtype === 'text');
+      if (cols.length > 0 && state.dataPrep.arqueroTable) {
+        let table = state.dataPrep.arqueroTable;
+        for (const c of cols) {
+          try { table = cleanText(table, c.name, 'trim'); } catch { /* skip */ }
+        }
+        state = addPrepTransform(state, { type: 'trim', params: { columns: cols.map(c => c.name) } });
+        state = setPrepTable(state, table);
+        render();
+      }
+      break;
+    }
+    case "prep-save": {
+      if (state.dataPrep.rawRows && state.dataPrep.selectedDatasetId) {
+        try {
+          await createDataset({
+            name: state.datasets.find(d => d.id === state.dataPrep.selectedDatasetId)?.name + ' (cleaned)',
+            columns: state.columnConfig.columns,
+            rows: state.dataPrep.arqueroTable
+              ? state.dataPrep.arqueroTable.objects().map(row => {
+                  const out = {};
+                  for (const [k, v] of Object.entries(row)) out[k] = v != null ? String(v) : '';
+                  return out;
+                })
+              : state.dataPrep.rawRows,
+          });
+          const datasets = await fetchDatasets();
+          state = setDatasets(state, datasets);
+          state = markPrepSaved(state);
+          render();
+        } catch (err) {
+          commit(setPrepError(state, err.message));
+        }
+      }
+      break;
+    }
+    /* ═══ Panel toggle handlers ═══ */
+    case "prep-filter": { commit(setActivePanel(state, 'filter')); break; }
+    case "prep-find-replace": { commit(setActivePanel(state, 'find')); break; }
+    case "prep-dedup": { commit(setActivePanel(state, 'dedup')); break; }
+    case "prep-missing": { commit(setActivePanel(state, 'missing')); break; }
+    /* ═══ Panel apply handlers ═══ */
+    case "prep-apply-filter": {
+      if (!state.dataPrep.arqueroTable) break;
+      const col = root.querySelector('[data-field="filter-col"]')?.value;
+      const op = root.querySelector('[data-field="filter-op"]')?.value;
+      const val = root.querySelector('[data-field="filter-val"]')?.value;
+      const val2 = root.querySelector('[data-field="filter-val2"]')?.value;
+      if (!col || !op) break;
+      const filterVal = op === 'between' ? [val, val2] : (op === 'is_null' || op === 'is_not_null') ? null : val;
+      try {
+        const table = filterRows(state.dataPrep.arqueroTable, col, op, filterVal);
+        state = addPrepTransform(state, { type: 'filter', params: { column: col, operator: op, value: filterVal } });
+        state = setPrepTable(state, table);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-find": {
+      if (!state.dataPrep.arqueroTable) break;
+      const fcol = root.querySelector('[data-field="find-col"]')?.value;
+      const search = root.querySelector('[data-field="find-search"]')?.value;
+      const repl = root.querySelector('[data-field="find-replace"]')?.value ?? '';
+      const useRegex = root.querySelector('[data-field="find-regex"]')?.checked || false;
+      if (!search) break;
+      try {
+        let table = state.dataPrep.arqueroTable;
+        if (fcol === '__all__') {
+          for (const c of table.columnNames()) {
+            try { table = findReplace(table, c, search, repl, useRegex); } catch { /* skip */ }
+          }
+        } else {
+          table = findReplace(table, fcol, search, repl, useRegex);
+        }
+        state = addPrepTransform(state, { type: 'find_replace', params: { column: fcol, find: search, replace: repl, useRegex } });
+        state = setPrepTable(state, table);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-dedup": {
+      if (!state.dataPrep.arqueroTable) break;
+      const checked = [...root.querySelectorAll('[data-field="dedup-col"]:checked')].map(el => el.value);
+      if (checked.length === 0) break;
+      try {
+        const table = removeDuplicates(state.dataPrep.arqueroTable, checked);
+        state = addPrepTransform(state, { type: 'dedup', params: { keyColumns: checked } });
+        state = setPrepTable(state, table);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
+    case "prep-apply-missing": {
+      if (!state.dataPrep.arqueroTable) break;
+      const mcol = root.querySelector('[data-field="missing-col"]')?.value;
+      const strat = root.querySelector('[data-field="missing-strategy"]')?.value;
+      const custom = root.querySelector('[data-field="missing-custom"]')?.value;
+      if (!mcol || !strat) break;
+      try {
+        const table = handleMissing(state.dataPrep.arqueroTable, mcol, strat, custom || null);
+        state = addPrepTransform(state, { type: 'missing', params: { column: mcol, strategy: strat, customValue: custom || null } });
+        state = setPrepTable(state, table);
+        state = closeActivePanel(state);
+        render();
+      } catch (err) { commit(setPrepError(state, err.message)); }
+      break;
+    }
   }
 });
+
+/** Apply a single transform to an Arquero table. */
+function applyTransform(table, tr) {
+  switch (tr.type) {
+    case 'filter': return filterRows(table, tr.params.column, tr.params.operator, tr.params.value);
+    case 'sort': return sortTable(table, tr.params.sortSpec);
+    case 'find_replace': {
+      if (tr.params.column === '__all__') {
+        let t = table;
+        for (const c of t.columnNames()) {
+          try { t = findReplace(t, c, tr.params.find, tr.params.replace, tr.params.useRegex); } catch { /* skip */ }
+        }
+        return t;
+      }
+      return findReplace(table, tr.params.column, tr.params.find, tr.params.replace, tr.params.useRegex);
+    }
+    case 'dedup': return removeDuplicates(table, tr.params.keyColumns);
+    case 'missing': return handleMissing(table, tr.params.column, tr.params.strategy, tr.params.customValue);
+    case 'trim': {
+      let t = table;
+      for (const col of tr.params.columns) { try { t = cleanText(t, col, 'trim'); } catch { /* skip */ } }
+      return t;
+    }
+    default: return table;
+  }
+}
 
 root.addEventListener("keydown", (e) => {
   if (state.ui.contextMenu && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
@@ -529,7 +781,7 @@ root.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
 });
 
-/* ═══ Drag-to-arrange chart panes ═══ */
+/* ═══ Drag-to-arrange + drag-to-split chart panes (VS Code style) ═══ */
 let dragState = null;
 
 root.addEventListener("pointerdown", (e) => {
@@ -540,8 +792,7 @@ root.addEventListener("pointerdown", (e) => {
   if (!pane || !arena) return;
 
   e.preventDefault();
-  const role = handle.dataset.dragHandle;
-  const rect = arena.getBoundingClientRect();
+  const chartId = handle.dataset.dragHandle;
 
   const ghost = pane.cloneNode(true);
   ghost.classList.add("drag-ghost");
@@ -550,63 +801,73 @@ root.addEventListener("pointerdown", (e) => {
   document.body.appendChild(ghost);
   pane.classList.add("dragging");
 
-  const zones = ["left", "right", "top", "bottom"].map(pos => {
-    const zone = document.createElement("div");
-    zone.classList.add("drop-zone");
-    zone.dataset.dropPosition = pos;
-    arena.style.position = "relative";
-    arena.appendChild(zone);
-    Object.assign(zone.style, {
-      position: "absolute", zIndex: "100",
-      ...(pos === "left"   ? { left: 0, top: 0, width: "50%", height: "100%" } : {}),
-      ...(pos === "right"  ? { right: 0, top: 0, width: "50%", height: "100%" } : {}),
-      ...(pos === "top"    ? { left: 0, top: 0, width: "100%", height: "50%" } : {}),
-      ...(pos === "bottom" ? { left: 0, bottom: 0, width: "100%", height: "50%" } : {}),
-    });
-    return zone;
-  });
-
-  dragState = { role, pane, arena, ghost, zones, arenaRect: rect };
+  dragState = { chartId, pane, arena, ghost, dropTarget: null, dropPos: null };
 });
 
 root.addEventListener("pointermove", (e) => {
   if (!dragState) return;
-  const { ghost, zones, arenaRect } = dragState;
+  const { ghost, chartId } = dragState;
   ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + "px";
   ghost.style.top = (e.clientY - 20) + "px";
 
-  const x = e.clientX - arenaRect.left;
-  const y = e.clientY - arenaRect.top;
-  const w = arenaRect.width;
-  const h = arenaRect.height;
+  // Remove previous drop highlight
+  root.querySelectorAll(".pane-drop-highlight").forEach(el => el.remove());
 
-  let activePos = null;
-  if (x < w * 0.35) activePos = "left";
-  else if (x > w * 0.65) activePos = "right";
-  else if (y < h * 0.35) activePos = "top";
-  else if (y > h * 0.65) activePos = "bottom";
+  // Find which pane the cursor is over (not the dragged one)
+  const allPanes = [...root.querySelectorAll(".chart-pane:not(.dragging)")];
+  let targetPane = null;
+  let targetPos = null;
+  for (const p of allPanes) {
+    const r = p.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    if (x < 0 || x > r.width || y < 0 || y > r.height) continue;
 
-  zones.forEach(z => z.classList.toggle("active", z.dataset.dropPosition === activePos));
-  dragState.activePos = activePos;
+    // Determine edge: within 30% of each edge = that side
+    const rx = x / r.width;
+    const ry = y / r.height;
+    if (rx < 0.3) targetPos = "left";
+    else if (rx > 0.7) targetPos = "right";
+    else if (ry < 0.3) targetPos = "top";
+    else if (ry > 0.7) targetPos = "bottom";
+    else targetPos = "center"; // drop on center = swap
+    targetPane = p;
+    break;
+  }
+
+  if (targetPane && targetPos) {
+    // Show drop highlight on the target pane edge
+    const hl = document.createElement("div");
+    hl.classList.add("pane-drop-highlight");
+    hl.dataset.position = targetPos;
+    targetPane.style.position = "relative";
+    targetPane.appendChild(hl);
+    dragState.dropTarget = targetPane.dataset.chartId;
+    dragState.dropPos = targetPos;
+  } else {
+    dragState.dropTarget = null;
+    dragState.dropPos = null;
+  }
 });
 
 function endDrag() {
   if (!dragState) return;
-  const { pane, ghost, zones, activePos, role } = dragState;
+  const { pane, ghost, chartId, dropTarget, dropPos } = dragState;
   pane.classList.remove("dragging");
   ghost.remove();
-  zones.forEach(z => z.remove());
+  root.querySelectorAll(".pane-drop-highlight").forEach(el => el.remove());
 
-  if (activePos) {
-    const arrangement = (activePos === "left" || activePos === "right") ? "horizontal" : "vertical";
-    let primaryPosition;
-    if (role === "primary") {
-      primaryPosition = activePos;
+  if (dropTarget && dropPos && dropTarget !== chartId) {
+    if (dropPos === "center") {
+      // Swap: exchange positions in the tree
+      state = swapCharts(state, chartId, dropTarget);
     } else {
-      const opposites = { left: "right", right: "left", top: "bottom", bottom: "top" };
-      primaryPosition = opposites[activePos];
+      // Split: remove dragged chart from tree, then split the target pane
+      const direction = (dropPos === "left" || dropPos === "right") ? "row" : "column";
+      const isFirst = dropPos === "left" || dropPos === "top";
+      state = moveChartToSplit(state, chartId, dropTarget, direction, isFirst);
     }
-    commitLayout(setChartLayout(state, arrangement, primaryPosition));
+    commitLayout(state);
   }
   dragState = null;
 }
@@ -614,50 +875,55 @@ function endDrag() {
 root.addEventListener("pointerup", endDrag);
 root.addEventListener("pointercancel", endDrag);
 
-/* ═══ Resize divider ═══ */
+/* ═══ Resize split divider (tree-path-aware) ═══ */
 let dividerDrag = null;
 
 root.addEventListener("pointerdown", (e) => {
-  const divider = e.target.closest(".chart-divider");
+  const divider = e.target.closest(".split-divider");
   if (!divider) return;
   e.preventDefault();
   divider.setPointerCapture(e.pointerId);
-  const arena = divider.closest(".chart-arena");
-  if (!arena) return;
-  const rect = arena.getBoundingClientRect();
-  const isHoriz = divider.dataset.divider === "horizontal";
+  const container = divider.closest(".split-container");
+  if (!container) return;
+  const rect = container.getBoundingClientRect();
+  const isHoriz = divider.dataset.direction === "horizontal";
+  const path = divider.dataset.path ? divider.dataset.path.split(".").map(Number) : [];
   divider.classList.add("active");
   document.body.style.cursor = isHoriz ? "col-resize" : "row-resize";
-  dividerDrag = { divider, arena, rect, isHoriz, pointerId: e.pointerId };
+  dividerDrag = { divider, container, rect, isHoriz, path, pointerId: e.pointerId };
 });
 
 root.addEventListener("pointermove", (e) => {
   if (!dividerDrag) return;
-  const { rect, isHoriz, arena } = dividerDrag;
+  const { rect, isHoriz, container } = dividerDrag;
+  const minPx = state.chartLayout.minPaneSize || 300;
+  const totalPx = isHoriz ? rect.width : rect.height;
+  const minRatio = Math.min(0.2, minPx / totalPx);
   let ratio;
   if (isHoriz) {
-    ratio = Math.max(0.2, Math.min(0.8, (e.clientX - rect.left) / rect.width));
-    arena.style.gridTemplateColumns = `${ratio}fr auto ${1 - ratio}fr`;
+    ratio = Math.max(minRatio, Math.min(1 - minRatio, (e.clientX - rect.left) / rect.width));
+    container.style.gridTemplateColumns = `${ratio}fr auto ${1 - ratio}fr`;
   } else {
-    ratio = Math.max(0.2, Math.min(0.8, (e.clientY - rect.top) / rect.height));
-    arena.style.gridTemplateRows = `${ratio}fr auto ${1 - ratio}fr`;
+    ratio = Math.max(minRatio, Math.min(1 - minRatio, (e.clientY - rect.top) / rect.height));
+    container.style.gridTemplateRows = `${ratio}fr auto ${1 - ratio}fr`;
   }
   dividerDrag.lastRatio = ratio;
 });
 
 function endDividerDrag() {
   if (!dividerDrag) return;
-  const { divider, lastRatio } = dividerDrag;
+  const { divider, lastRatio, path } = dividerDrag;
   divider.classList.remove("active");
   document.body.style.cursor = "";
   if (lastRatio != null) {
-    state = setChartLayout(state, state.chartLayout.arrangement, state.chartLayout.primaryPosition, lastRatio);
+    state = resizeSplit(state, path, [lastRatio, 1 - lastRatio]);
+    saveLayout();
   }
   dividerDrag = null;
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      for (const role of state.chartOrder) {
-        if (charts[role]) charts[role].update(buildChartData(role));
+      for (const id of state.chartOrder) {
+        if (charts[id]) charts[id].update(buildChartData(id));
       }
     });
   });
@@ -671,12 +937,32 @@ root.addEventListener("contextmenu", (e) => {
   const ch = e.target.closest(".chart-stage");
   if (!ch) return;
   e.preventDefault();
+  // Focus the chart pane that was right-clicked
+  const pane = ch.closest('.chart-pane[data-chart-id]');
+  if (pane && pane.dataset.chartId !== state.focusedChartId) {
+    state = focusChart(state, pane.dataset.chartId);
+  }
   const r = root.getBoundingClientRect();
-  commitContextMenu(openContextMenu(state, e.clientX - r.left, e.clientY - r.top, { target: 'canvas' }));
+  commitContextMenu(openContextMenu(state, e.clientX - r.left, e.clientY - r.top, { target: 'canvas', role: state.focusedChartId }));
 });
 
 /* ═══ Change handlers ═══ */
 root.addEventListener("change", async (e) => {
+  // Prep panel conditional visibility
+  if (e.target.matches('[data-field="filter-op"]')) {
+    const op = e.target.value;
+    const val1 = root.querySelector('[data-field="filter-val"]');
+    const val2 = root.querySelector('[data-field="filter-val2"]');
+    if (val1) val1.style.display = (op === 'is_null' || op === 'is_not_null') ? 'none' : '';
+    if (val2) val2.style.display = op === 'between' ? '' : 'none';
+    return;
+  }
+  if (e.target.matches('[data-field="missing-strategy"]')) {
+    const custom = root.querySelector('[data-field="missing-custom"]');
+    if (custom) custom.style.display = e.target.value === 'fill_custom' ? '' : 'none';
+    return;
+  }
+
   if (e.target.matches('[data-action="upload-csv"]')) {
     const file = e.target.files[0];
     if (!file) return;
@@ -684,9 +970,28 @@ root.addEventListener("change", async (e) => {
     state = setLoadingState(state, true);
     render();
     try {
-      const newDs = await uploadCsv(file);
+      // Client-side parse with PapaParse
+      const parsed = await parseCSV(file);
+      const arqueroTable = createTable(parsed.rows, parsed.columns);
+
+      // Save to server (raw string rows, no derivation)
+      const name = file.name.replace(/\.csv$/i, '');
+      const newDs = await createDataset({
+        name,
+        columns: parsed.columns,
+        rows: parsed.rows,
+      });
+
       const datasets = await fetchDatasets();
       state = setDatasets(state, datasets);
+
+      // Store parsed data in state for data prep
+      state = setPrepParsedData(state, {
+        rawRows: parsed.rows,
+        arqueroTable,
+        columns: parsed.columns,
+      });
+
       await loadDatasetById(newDs.id);
     } catch (err) {
       state = setError(state, err.message);
@@ -700,16 +1005,22 @@ root.addEventListener("change", async (e) => {
     return;
   }
 
+
   const action = e.target.dataset?.action;
   if (!action || !state.activeDatasetId) return;
   const dsId = state.activeDatasetId;
   const cols = state.columnConfig.columns;
 
-  // Determine which chart this action targets by prefix
-  const isPrimary = action.startsWith("primary-");
-  const isChallenger = action.startsWith("challenger-");
-  const chartId = isPrimary ? "primary" : isChallenger ? "challenger" : null;
-  const baseAction = isPrimary ? action.slice(8) : isChallenger ? action.slice(11) : action;
+  // Determine which chart this action targets by prefix (e.g. "chart-1-set-chart-type")
+  let chartId = null;
+  let baseAction = action;
+  for (const id of state.chartOrder) {
+    if (action.startsWith(id + "-")) {
+      chartId = id;
+      baseAction = action.slice(id.length + 1);
+      break;
+    }
+  }
 
   if (chartId && baseAction === "set-metric-column") {
     state = setChartParams(state, chartId, { value_column: e.target.value || null });
@@ -766,6 +1077,35 @@ root.addEventListener("click", (e) => {
   main();
 });
 
+/* ═══ Layout persistence ═══ */
+const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
+
+function saveLayout() {
+  try {
+    const data = {
+      tree: state.chartLayout.tree,
+      chartOrder: state.chartOrder,
+      focusedChartId: state.focusedChartId,
+      nextChartId: state.nextChartId,
+      chartParams: {},
+    };
+    for (const id of state.chartOrder) {
+      data.chartParams[id] = state.charts[id]?.params || null;
+    }
+    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(data));
+  } catch { /* localStorage unavailable or full — silently ignore */ }
+}
+
+function restoreLayout() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data.tree || !data.chartOrder || !data.chartParams) return null;
+    return data;
+  } catch { return null; }
+}
+
 /* ═══ Boot ═══ */
 render();
 
@@ -775,6 +1115,25 @@ async function main() {
     state = setDatasets(state, datasets);
     const id = datasets[0]?.id;
     if (!id) { state = setLoadingState(state, false); render(); return; }
+
+    // Restore saved layout if it exists
+    const saved = restoreLayout();
+    if (saved && saved.chartOrder.length > 0) {
+      // Rebuild charts from saved params
+      const restoredCharts = {};
+      for (const cid of saved.chartOrder) {
+        restoredCharts[cid] = createSlot(saved.chartParams[cid] ? { params: saved.chartParams[cid] } : {});
+      }
+      state = {
+        ...state,
+        charts: restoredCharts,
+        chartOrder: saved.chartOrder,
+        nextChartId: saved.nextChartId || saved.chartOrder.length + 1,
+        focusedChartId: saved.focusedChartId || saved.chartOrder[0],
+        chartLayout: { ...state.chartLayout, tree: saved.tree },
+      };
+    }
+
     await loadDatasetById(id);
   } catch (err) {
     state = setError(state, err.message);

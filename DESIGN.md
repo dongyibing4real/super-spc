@@ -239,6 +239,51 @@ Below the compare strip, a secondary info bar shows data provenance.
 ### Data Readout Bar (planned)
 Selected-point detail with per-method values. Not yet implemented — currently, selected-point information is shown in the Evidence Rail signal section.
 
+### Data Prep Page
+The data prep surface is a standalone route with a 3-column grid layout, distinct from the workspace.
+
+**Layout: `240px | 1fr | 260px`**
+```
+┌─────────────────────────────────────────────────────┐
+│ [Sidebar 140px]  │ [Data Prep Content]              │
+│                  │                                  │
+│                  │  ┌────────┬────────────┬───────┐  │
+│                  │  │Dataset │  Table     │Column │  │
+│                  │  │List    │  Area      │Info   │  │
+│                  │  │240px   │  1fr       │260px  │  │
+│                  │  └────────┴────────────┴───────┘  │
+└─────────────────────────────────────────────────────┘
+```
+
+- **Dataset list (240px):** Scrollable list of uploaded datasets. Each dataset shows a card with name, row count, upload date, active value column. "+ Upload CSV" as a dashed-border label button at the bottom. Active dataset has blue border + bg-3 background.
+- **Table area (1fr, inside `.prep-center`):** Three stacked flex children:
+  1. **Transform toolbar** — 32px min-height, bg-3 background, border-bottom. Left side: tool buttons (Filter, Find, Dedup, Missing, Trim, Sort). Right side: transform count, unsaved indicator, Undo and Save buttons.
+  2. **Inline panel** (conditional) — collapses in/out below toolbar, never opens a modal. Shows filter controls, find-replace fields, dedup column selector, or missing value strategy picker.
+  3. **Data table** — fills remaining height, IBM Plex Mono 11px, scrollable. Sticky header with column names + role badges (Y, SG). Monochrome row highlighting on hover. Footer shows row/column count and hidden column count.
+- **Column info (260px):** Right panel with two stacked panel-cards: (1) **Columns** — lists all columns with role badge, type label, and toggle visibility button. (2) **Summary** — per-column stats (n, mean, std, min, max, median) computed from the current Arquero table.
+
+**Transform toolbar buttons:**
+- Tool buttons (`prep-tool-btn`): 10px bold, 3px 8px padding, border-2 border, 4px radius. On active: blue border + blue-dim bg.
+- Undo button: same style as tool button
+- Save button (`prep-save-btn`): blue border + blue-bright text; on hover: blue-dim bg
+
+**Inline panel:**
+- Background: `--bg-2`, border-bottom: `--border-2`, padding: 8px 10px
+- Flex row with 8px gaps for controls — compact select/input elements
+- `Apply` button: primary blue button styled as `prep-panel-apply`
+
+**Column role badges:**
+- `Y` (value column): blue background
+- `SG` (subgroup column): teal background
+- Other roles use neutral bg-3
+
+**Data table:**
+- Container: `.prep-center { display: flex; flex-direction: column; min-height: 0; overflow: hidden }` — critical to keep toolbar + table in one grid column
+- Table wrap: `flex: 1; overflow: auto; min-height: 0` — fills remaining space and scrolls
+
+**Architecture note (DataRow model):**
+The Data Prep layer uses a client-first architecture. CSV is parsed client-side via PapaParse (raw strings, no type coercion). Data is stored as `raw_json` in `DataRow` records — a flat key→string map. Value and subgroup columns are derived at analysis time from column roles, never stored as mapped fields. Arquero is the in-memory transform engine; transforms are immutable operations stacked on `rawRows` and replayed on undo.
+
 ### Capability Indices
 - **Location:** Chart pane titlebar, inline with method name
 - **Shows:** Cpk and Ppk values when capability analysis is available
@@ -379,6 +424,7 @@ Detailed feature specs have been extracted from this file into individual docume
 | **States** | [.claude/design/empty-error-loading-v1.md](.claude/design/empty-error-loading-v1.md) | Empty, error, and loading states for all surfaces |
 | **Accessibility** | [.claude/design/accessibility-v1.md](.claude/design/accessibility-v1.md) | Keyboard nav, screen readers, WCAG AA, touch targets |
 | **Axis Spec** | [.claude/spec/src-chart/axis-interaction-spec-v1.md](.claude/spec/src-chart/axis-interaction-spec-v1.md) | Unified axis pan/scale/tick system (JMP-style) |
+| **Data Prep Research** | [.claude/spec/src-data/data-prep-research-v1.md](.claude/spec/src-data/data-prep-research-v1.md) | 30-feature roadmap across 5 phases; JMP/Minitab/Tableau competitive matrix; Phase 1 complete |
 | **Algo Spec** | [.claude/spec/algo/control-charts-spec-v1.md](.claude/spec/algo/control-charts-spec-v1.md) | Algorithm package design for 24 chart types |
 | **Algo Plan** | [.claude/plan/algo/control-charts-plan-v1.md](.claude/plan/algo/control-charts-plan-v1.md) | 32-task implementation plan for algo package |
 | **API Spec** | [.claude/spec/api/backend-architecture-v1.md](.claude/spec/api/backend-architecture-v1.md) | FastAPI + SQLite architecture, schema, API surface |
@@ -446,16 +492,27 @@ Detailed feature specs have been extracted from this file into individual docume
 - [x] MEWMA (exact + asymptotic covariance)
 
 ### Data Management
-- [ ] CSV import with column mapping
+- [x] CSV import with column mapping — client-side PapaParse, dtype detection, SPC role suggestion (Y/SG auto-named)
 - [ ] Excel import
-- [ ] Data table viewer (read-only with select/exclude)
+- [x] Data table viewer — virtual scroll (500-row cap), sticky header, sortable columns, column hide/show
 - [ ] Column properties (spec limits, control limits, sigma, modeling type)
 - [ ] Drag-and-drop variable zone assignment
 - [ ] Multiple Y variables (multi-chart workspace)
 - [ ] By-group analysis (separate chart per group level)
 - [ ] Column Switcher (swap Y variable without rebuilding)
-- [ ] Missing value handling (connect through missing, include missing categories)
-- [ ] Sort by row order
+- [x] Missing value handling — remove rows, fill mean/median/zero/custom/down/up
+- [x] Sort by column (asc/desc, Arquero-based)
+- [x] Row filtering — equals/not-equals/contains/gt/lt/between/is-null/is-not-null, Arquero escape() safe
+- [x] Find & replace — across all columns or specific column, single or all occurrences
+- [x] Remove duplicates — configurable key columns, keep first/last
+- [x] Trim & clean text — strip whitespace, remove non-printable chars, case standardization
+- [x] Column reorder & hide — toggle visibility, hidden columns preserved in data
+- [ ] Rename column (Phase 2)
+- [ ] Change data type (Phase 2)
+- [ ] Calculated column / formula (Phase 2)
+- [ ] Recode values (Phase 2)
+- [ ] Binning (Phase 2)
+- [ ] Split / concatenate columns (Phase 2)
 
 ### Configuration
 - [ ] Chart type auto-detection from data characteristics
@@ -506,3 +563,5 @@ Detailed feature specs have been extracted from this file into individual docume
 | 2026-03-26 | **Navigation sidebar: full text labels** | 2-letter abbreviations (WK, DP, ML) were cryptic. Redesigned to 140px text sidebar with full labels, brand block, and pipeline status. Responsive collapse to 48px at <1200px. |
 | 2026-03-27 | **Algo package: 24 chart types implemented** | Full `algo/` Python package with 24 chart types (up from 16 planned), 8 Nelson tests, 6 Westgard rules, CUSUM ARL profiler, 7 sigma estimators, constants tables n=2..50. Added standalone R/S/MR charts, Run Chart with runs test, Presummarize, CUSUM V-Mask, Hotelling T² (Phase I+II with contributions decomposition), MEWMA (exact + asymptotic). 1076 tests (pytest + hypothesis property-based). Pure numpy/scipy, attrs models, no higher-level dependencies. |
 | 2026-03-28 | **DESIGN.md alignment with product** | Recipe rail restructured from Variables/Config/Layers to Dataset + Primary + Challenger sections — dual-config approach enables side-by-side method comparison directly in the rail. Method Comparison Bar replaced with Compare Strip (horizontal stat cards) + Lineage Strip. Layer toggles removed from recipe rail. Capability indices live in chart pane titlebar. Data Readout Bar deferred (selected-point info in Evidence Rail for now). |
+| 2026-03-29 | **DataRow model: client-first CSV architecture** | Replaced Measurement model (stored value+subgroup as mapped columns) with DataRow (stores raw_json only). CSV parsed client-side via PapaParse — no server-side CSV parsing. Value and subgroup derived at analysis time from column roles. POST /datasets accepts JSON rows rather than file upload. Rationale: full round-trip fidelity, no dtype coercion surprises, client-side Arquero transforms without round-tripping data to server. |
+| 2026-03-29 | **Data Prep Phase 1 — 7 transforms, inline panel pattern** | Implemented: row filtering, sort, find-replace, dedup, missing value handling, trim/clean text, column reorder/hide. All transforms are immutable Arquero operations stacked and replayed on undo. UI: toolbar with active-state tool buttons, inline collapsible panels (no modals). Layout: 3-column grid (240px dataset list \| 1fr prep-center \| 260px column info). Critical bug found and fixed: renderPrepTable() must return a single .prep-center wrapper — emitting 3 sibling elements breaks grid placement, squashing table to 260px. |

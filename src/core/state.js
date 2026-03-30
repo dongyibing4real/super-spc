@@ -20,7 +20,7 @@ function buildSignalNarrative(state, point) {
     return { title: "Select a point to inspect.", confidence: "Pending", statusTone: "neutral" };
   }
 
-  const primary = getPrimary(state);
+  const primary = getFocused(state);
   const violations = primary.violations || [];
   const idx = state.selectedPointIndex;
   const pointViolations = violations.filter(v => v.indices.includes(idx));
@@ -58,7 +58,7 @@ function buildSignalNarrative(state, point) {
 }
 
 function buildWhyTriggered(state, point) {
-  const violations = getPrimary(state).violations || [];
+  const violations = getFocused(state).violations || [];
   if (violations.length === 0) {
     return ["No rule violations detected in this dataset."];
   }
@@ -80,7 +80,7 @@ function buildWhyTriggered(state, point) {
 /** Rules (deduplicated by testId) that fired at a specific point index. */
 function buildRulesAtPoint(state, idx) {
   if (idx == null) return [];
-  const violations = getPrimary(state).violations || [];
+  const violations = getFocused(state).violations || [];
   const seen = new Set();
   const result = [];
   for (const v of violations) {
@@ -93,7 +93,7 @@ function buildRulesAtPoint(state, idx) {
 }
 
 function buildEvidence(state, point) {
-  const primary = getPrimary(state);
+  const primary = getFocused(state);
   const sigma = primary.sigma;
 
   // Deduplicate violations by rule before counting
@@ -144,7 +144,7 @@ function buildEvidence(state, point) {
 
 function buildRecommendations(state, point) {
   const checks = [];
-  const violations = getPrimary(state).violations || [];
+  const violations = getFocused(state).violations || [];
 
   if (violations.some(v => v.testId === "1")) {
     checks.push("Investigate points beyond control limits — check for assignable causes.");
@@ -166,25 +166,17 @@ function buildRecommendations(state, point) {
 }
 
 function buildComparisonStrip(state) {
-  const primary = getPrimary(state);
-  const violations = primary.violations || [];
+  const focused = getFocused(state);
+  const violations = focused.violations || [];
   const violationCount = violations.reduce((sum, v) => sum + v.indices.length, 0);
   const ruleCount = violations.length;
-
-  if (state.chartOrder.length > 1) {
-    return [
-      { label: "OOC points", value: String(violationCount), tone: violationCount > 0 ? "critical" : "positive" },
-      { label: "Rules triggered", value: String(ruleCount), tone: ruleCount > 0 ? "warning" : "positive" },
-      { label: "Method", value: primary.context.chartType?.label || "—", tone: "neutral" },
-      { label: "Limits scope", value: primary.limits.scope, tone: "neutral" },
-    ];
-  }
 
   return [
     { label: "OOC points", value: String(violationCount), tone: violationCount > 0 ? "critical" : "positive" },
     { label: "Rules triggered", value: String(ruleCount), tone: ruleCount > 0 ? "warning" : "positive" },
-    { label: "Sigma method", value: primary.sigma?.method || "—", tone: "neutral" },
-    { label: "Limits scope", value: primary.limits.scope, tone: "neutral" },
+    { label: "Method", value: focused.context.chartType?.label || "—", tone: "neutral" },
+    { label: "Limits scope", value: focused.limits.scope, tone: "neutral" },
+    { label: "Charts", value: String(state.chartOrder.length), tone: "neutral" },
   ];
 }
 
@@ -255,9 +247,52 @@ function updateSlot(state, id, updates) {
   };
 }
 
-/** Helper to read the primary chart slot */
+/** Helper to read the primary chart slot (first in order) */
 export function getPrimary(state) {
   return state.charts[state.chartOrder[0]];
+}
+
+/** Helper to read the focused chart slot */
+export function getFocused(state) {
+  return state.charts[state.focusedChartId] || getPrimary(state);
+}
+
+/* ═══ Split tree helpers ═══ */
+
+/** Find the tree node at a given path (array of 0/1 indices) */
+function getNodeAtPath(tree, path) {
+  let node = tree;
+  for (const idx of path) {
+    if (!node.children) return null;
+    node = node.children[idx];
+  }
+  return node;
+}
+
+/** Immutably replace a tree node at a given path */
+function replaceNodeAtPath(tree, path, replacement) {
+  if (path.length === 0) return replacement;
+  const [head, ...rest] = path;
+  const newChildren = tree.children.map((child, i) =>
+    i === head ? replaceNodeAtPath(child, rest, replacement) : child
+  );
+  return { ...tree, children: newChildren, sizes: [...tree.sizes] };
+}
+
+/** Collect all chartIds from a tree (leaf traversal) */
+export function collectChartIds(node) {
+  if (node.type === "pane") return [node.chartId];
+  return node.children.flatMap(collectChartIds);
+}
+
+/** Find the path to a pane by chartId */
+function findPanePath(node, chartId, path = []) {
+  if (node.type === "pane") return node.chartId === chartId ? path : null;
+  for (let i = 0; i < node.children.length; i++) {
+    const result = findPanePath(node.children[i], chartId, [...path, i]);
+    if (result) return result;
+  }
+  return null;
 }
 
 export function createInitialState() {
@@ -271,6 +306,9 @@ export function createInitialState() {
     points: [],
     transforms: [],
     findings: [],
+    structuralFindings: [],
+    selectedFindingId: null,
+    findingsChartId: null,
     reportTemplate: {
       title: "SPC Investigation Report",
       sections: ["Executive summary", "Evidence ledger", "Method comparison", "Recommended actions"]
@@ -298,15 +336,16 @@ export function createInitialState() {
       confidenceBand: true,
     },
     charts: {
-      primary: createSlot(),
-      challenger: createSlot({ params: { ...DEFAULT_PARAMS, chart_type: "xbar_r" } }),
+      "chart-1": createSlot(),
     },
-    chartOrder: ["primary", "challenger"],
+    chartOrder: ["chart-1"],
+    nextChartId: 2,
+    focusedChartId: "chart-1",
     chartLayout: {
-      arrangement: "horizontal",
-      primaryPosition: "left",
-      splitRatio: 0.5,
+      tree: { type: "pane", chartId: "chart-1" },
+      minPaneSize: 300,
     },
+    chartPicker: null, // { open: true } when the add-chart picker is visible
     ui: {
       notice: null,
       contextMenu: null,
@@ -320,6 +359,13 @@ export function createInitialState() {
       error: null,
       sortColumn: 'sequence_index',
       sortDirection: 'asc',
+      rawRows: null,
+      arqueroTable: null,
+      transforms: [],
+      hiddenColumns: [],
+      columnOrder: [],
+      unsavedChanges: false,
+      activePanel: null,
     },
     columnConfig: {
       columns: [],
@@ -351,6 +397,9 @@ export function loadDataset(state, { points, slots, datasetId }) {
     selectedPointIndex: points.length > 0 ? points.length - 1 : 0,
     findings: [],
     activeFindingId: null,
+    structuralFindings: [],
+    selectedFindingId: null,
+    findingsChartId: null,
     auditLog: [`Dataset loaded with ${points.length} points.`],
     charts: updatedCharts,
   };
@@ -446,6 +495,90 @@ export function deletePrepDataset(state, datasetId) {
     : state.dataPrep;
   const activeDatasetId = state.activeDatasetId === datasetId ? null : state.activeDatasetId;
   return { ...state, datasets, dataPrep: dp, activeDatasetId };
+}
+
+/* ═══ Client-side data prep actions ═══ */
+
+export function setPrepParsedData(state, { rawRows, arqueroTable, columns }) {
+  return {
+    ...state,
+    dataPrep: {
+      ...state.dataPrep,
+      rawRows,
+      arqueroTable,
+      transforms: [],
+      hiddenColumns: [],
+      columnOrder: columns.map(c => c.name),
+      unsavedChanges: false,
+      loading: false,
+      error: null,
+    },
+    columnConfig: { ...state.columnConfig, columns, loading: false },
+  };
+}
+
+export function setPrepTable(state, arqueroTable) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, arqueroTable, unsavedChanges: true },
+  };
+}
+
+export function addPrepTransform(state, transform) {
+  return {
+    ...state,
+    dataPrep: {
+      ...state.dataPrep,
+      transforms: [...state.dataPrep.transforms, { ...transform, timestamp: Date.now() }],
+      unsavedChanges: true,
+    },
+  };
+}
+
+export function undoPrepTransform(state) {
+  const transforms = state.dataPrep.transforms.slice(0, -1);
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, transforms, unsavedChanges: transforms.length > 0 },
+  };
+}
+
+export function clearPrepTransforms(state) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, transforms: [], unsavedChanges: false },
+  };
+}
+
+export function setPrepHiddenColumns(state, hiddenColumns) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, hiddenColumns },
+  };
+}
+
+export function markPrepSaved(state) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, unsavedChanges: false },
+  };
+}
+
+export function setActivePanel(state, panel) {
+  return {
+    ...state,
+    dataPrep: {
+      ...state.dataPrep,
+      activePanel: state.dataPrep.activePanel === panel ? null : panel,
+    },
+  };
+}
+
+export function closeActivePanel(state) {
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, activePanel: null },
+  };
 }
 
 /* ═══ Column Config + Analysis Params actions ═══ */
@@ -630,18 +763,10 @@ export function recoverTransformStep(state, stepId) {
 }
 
 export function setChallengerStatus(state, status) {
-  // Manage chartOrder: "ready" includes challengers, other statuses remove them
-  const hasChallenger = state.chartOrder.length > 1;
-  let chartOrder = state.chartOrder;
-  if (status === "ready" && !hasChallenger) {
-    chartOrder = [...state.chartOrder, "challenger"];
-  } else if (status !== "ready" && hasChallenger) {
-    chartOrder = [state.chartOrder[0]];
-  }
+  // Legacy method-lab integration — kept for backwards compatibility
   return {
     ...state,
-    chartOrder,
-    auditLog: [`Challenger method status changed to ${status}.`, ...state.auditLog],
+    auditLog: [`Method status changed to ${status}.`, ...state.auditLog],
     ui: {
       ...state.ui,
       notice: {
@@ -649,10 +774,10 @@ export function setChallengerStatus(state, status) {
         title: "Method lab updated",
         body:
           status === "ready"
-            ? "Primary and challenger methods are now fully comparable."
+            ? "Methods are now fully comparable."
             : status === "partial"
               ? "Primary completed, challenger needs another run."
-              : "Challenger timed out. Primary remains authoritative."
+              : "Method timed out. Primary remains authoritative."
       }
     }
   };
@@ -818,27 +943,287 @@ export function closeContextMenu(state) {
 }
 
 export function setChartLayout(state, arrangement, primaryPosition, splitRatio) {
+  // Legacy preset support: convert arrangement name to a tree
+  if (state.chartOrder.length <= 1) return state;
+  const ids = state.chartOrder;
+  const ratio = splitRatio != null ? splitRatio : (arrangement.includes("wide") || arrangement.includes("tall") ? 0.67 : 0.5);
+  const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
+  const direction = isVert ? "column" : "row";
+  const firstId = (primaryPosition === "left" || primaryPosition === "top") ? ids[0] : ids[1];
+  const secondId = firstId === ids[0] ? ids[1] : ids[0];
+
+  if (arrangement === "single") {
+    return { ...state, chartLayout: { ...state.chartLayout, tree: { type: "pane", chartId: ids[0] } } };
+  }
   return {
     ...state,
     chartLayout: {
-      arrangement,
-      primaryPosition,
-      splitRatio: splitRatio != null ? splitRatio : (arrangement.includes("wide") || arrangement.includes("tall") ? 0.67 : 0.5),
-    }
+      ...state.chartLayout,
+      tree: {
+        type: "container", direction,
+        children: [{ type: "pane", chartId: firstId }, { type: "pane", chartId: secondId }],
+        sizes: [ratio, 1 - ratio],
+      },
+    },
   };
 }
 
-export function setXDomainOverride(state, min, max, id = "primary") {
+/* ═══ Multi-chart actions ═══ */
+
+export function focusChart(state, chartId) {
+  if (!state.charts[chartId] || state.focusedChartId === chartId) return state;
+  return { ...state, focusedChartId: chartId };
+}
+
+export function addChart(state, { chartType = "imr", splitDirection = "row" } = {}) {
+  const newId = `chart-${state.nextChartId}`;
+  const focusedSlot = getFocused(state);
+
+  // Inherit metric/subgroup/phase from focused chart
+  const newParams = {
+    ...DEFAULT_PARAMS,
+    chart_type: chartType,
+    value_column: focusedSlot.params.value_column,
+    subgroup_column: focusedSlot.params.subgroup_column,
+    phase_column: focusedSlot.params.phase_column,
+  };
+
+  // Set initial context to reflect chosen chart type (fully updated by reanalyze later)
+  const chartLabels = {
+    imr: "IMR", xbar_r: "X-Bar R", xbar_s: "X-Bar S", r: "R", s: "S", mr: "MR",
+    p: "P", np: "NP", c: "C", u: "U", laney_p: "Laney P\u2019", laney_u: "Laney U\u2019",
+    cusum: "CUSUM", ewma: "EWMA", levey_jennings: "Levey-Jennings",
+    cusum_vmask: "CUSUM V-Mask", three_way: "Three-Way", presummarize: "Presummarize",
+    run: "Run Chart", short_run: "Short Run", g: "G", t: "T",
+    hotelling_t2: "Hotelling T\u00B2", mewma: "MEWMA",
+  };
+  const label = chartLabels[chartType] || chartType;
+  const initialContext = {
+    ...focusedSlot.context,
+    chartType: { id: chartType, label, detail: "" },
+    methodBadge: label,
+  };
+  const newSlot = createSlot({ params: newParams, context: initialContext });
+  const newCharts = { ...state.charts, [newId]: newSlot };
+  const newOrder = [...state.chartOrder, newId];
+
+  // Split the focused pane in the tree
+  const focusedPath = findPanePath(state.chartLayout.tree, state.focusedChartId);
+  const newTree = focusedPath !== null
+    ? replaceNodeAtPath(state.chartLayout.tree, focusedPath, {
+        type: "container",
+        direction: splitDirection,
+        children: [
+          { type: "pane", chartId: state.focusedChartId },
+          { type: "pane", chartId: newId },
+        ],
+        sizes: [0.5, 0.5],
+      })
+    : {
+        type: "container",
+        direction: splitDirection,
+        children: [state.chartLayout.tree, { type: "pane", chartId: newId }],
+        sizes: [0.5, 0.5],
+      };
+
+  return {
+    ...state,
+    charts: newCharts,
+    chartOrder: newOrder,
+    nextChartId: state.nextChartId + 1,
+    focusedChartId: newId,
+    chartLayout: { ...state.chartLayout, tree: newTree },
+    chartPicker: null,
+  };
+}
+
+export function removeChart(state, chartId) {
+  // Cannot remove the last chart
+  if (state.chartOrder.length <= 1) return state;
+  if (!state.charts[chartId]) return state;
+
+  // Remove from charts and order
+  const newCharts = { ...state.charts };
+  delete newCharts[chartId];
+  const newOrder = state.chartOrder.filter(id => id !== chartId);
+
+  // Collapse the tree: find the pane, replace its parent container with the sibling
+  const path = findPanePath(state.chartLayout.tree, chartId);
+  let newTree = state.chartLayout.tree;
+  if (path && path.length > 0) {
+    const parentPath = path.slice(0, -1);
+    const childIndex = path[path.length - 1];
+    const parent = getNodeAtPath(newTree, parentPath);
+    if (parent && parent.children) {
+      const sibling = parent.children[1 - childIndex];
+      newTree = replaceNodeAtPath(newTree, parentPath, sibling);
+    }
+  } else if (path && path.length === 0) {
+    // Removing root pane — shouldn't happen (guarded above), but safe fallback
+    newTree = { type: "pane", chartId: newOrder[0] };
+  }
+
+  // Move focus to sibling or first chart
+  const newFocus = state.focusedChartId === chartId ? newOrder[0] : state.focusedChartId;
+
+  return {
+    ...state,
+    charts: newCharts,
+    chartOrder: newOrder,
+    focusedChartId: newFocus,
+    chartLayout: { ...state.chartLayout, tree: newTree },
+  };
+}
+
+export function resizeSplit(state, path, sizes) {
+  const node = getNodeAtPath(state.chartLayout.tree, path);
+  if (!node || node.type !== "container") return state;
+  const newTree = replaceNodeAtPath(state.chartLayout.tree, path, { ...node, sizes });
+  return { ...state, chartLayout: { ...state.chartLayout, tree: newTree } };
+}
+
+export function openChartPicker(state) {
+  return { ...state, chartPicker: { open: true } };
+}
+
+export function closeChartPicker(state) {
+  return { ...state, chartPicker: null };
+}
+
+/** Swap two charts' positions in the tree */
+export function swapCharts(state, idA, idB) {
+  const tree = state.chartLayout.tree;
+  // Find both panes and swap their chartIds
+  function swapInNode(node) {
+    if (node.type === "pane") {
+      if (node.chartId === idA) return { ...node, chartId: idB };
+      if (node.chartId === idB) return { ...node, chartId: idA };
+      return node;
+    }
+    return { ...node, children: node.children.map(swapInNode) };
+  }
+  return { ...state, chartLayout: { ...state.chartLayout, tree: swapInNode(tree) } };
+}
+
+/** Move a chart from its current position to split a target pane */
+export function moveChartToSplit(state, chartId, targetId, direction, isFirst) {
+  let tree = state.chartLayout.tree;
+
+  // Step 1: Remove chartId from the tree (collapse its parent)
+  const path = findPanePath(tree, chartId);
+  if (path && path.length > 0) {
+    const parentPath = path.slice(0, -1);
+    const childIndex = path[path.length - 1];
+    const parent = getNodeAtPath(tree, parentPath);
+    if (parent && parent.children) {
+      const sibling = parent.children[1 - childIndex];
+      tree = replaceNodeAtPath(tree, parentPath, sibling);
+    }
+  }
+
+  // Step 2: Split the target pane, inserting chartId
+  const targetPath = findPanePath(tree, targetId);
+  if (targetPath !== null) {
+    const draggedPane = { type: "pane", chartId };
+    const targetPane = { type: "pane", chartId: targetId };
+    const newContainer = {
+      type: "container",
+      direction,
+      children: isFirst ? [draggedPane, targetPane] : [targetPane, draggedPane],
+      sizes: [0.5, 0.5],
+    };
+    tree = replaceNodeAtPath(tree, targetPath, newContainer);
+  }
+
+  return {
+    ...state,
+    focusedChartId: chartId,
+    chartLayout: { ...state.chartLayout, tree },
+  };
+}
+
+/** Build a tree from a preset name and a list of chart IDs */
+export function setLayoutPreset(state, preset) {
+  const ids = state.chartOrder;
+  if (ids.length < 2) return state;
+
+  let tree;
+  switch (preset) {
+    case "side-by-side": {
+      // Horizontal chain: all charts in a row
+      tree = ids.reduce((acc, id, i) => {
+        const p = { type: "pane", chartId: id };
+        return i === 0 ? p : { type: "container", direction: "row", children: [acc, p], sizes: [i / (i + 1), 1 / (i + 1)] };
+      }, null);
+      break;
+    }
+    case "stacked": {
+      // Vertical chain: all charts stacked
+      tree = ids.reduce((acc, id, i) => {
+        const p = { type: "pane", chartId: id };
+        return i === 0 ? p : { type: "container", direction: "column", children: [acc, p], sizes: [i / (i + 1), 1 / (i + 1)] };
+      }, null);
+      break;
+    }
+    case "grid": {
+      // 2x2 grid (or best approximation): top row, bottom row
+      const half = Math.ceil(ids.length / 2);
+      const topIds = ids.slice(0, half);
+      const bottomIds = ids.slice(half);
+
+      const buildRow = (rowIds) => rowIds.reduce((acc, id, i) => {
+        const p = { type: "pane", chartId: id };
+        return i === 0 ? p : { type: "container", direction: "row", children: [acc, p], sizes: [0.5, 0.5] };
+      }, null);
+
+      const topRow = buildRow(topIds);
+      const bottomRow = bottomIds.length > 0 ? buildRow(bottomIds) : null;
+
+      tree = bottomRow
+        ? { type: "container", direction: "column", children: [topRow, bottomRow], sizes: [0.5, 0.5] }
+        : topRow;
+      break;
+    }
+    default:
+      return state;
+  }
+
+  return { ...state, chartLayout: { ...state.chartLayout, tree } };
+}
+
+export function setXDomainOverride(state, min, max, id) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
   return updateSlot(state, id, { overrides: { ...state.charts[id].overrides, x: { min, max } } });
 }
 
-export function setYDomainOverride(state, yMin, yMax, id = "primary") {
+export function setYDomainOverride(state, yMin, yMax, id) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
   return updateSlot(state, id, { overrides: { ...state.charts[id].overrides, y: { yMin, yMax } } });
 }
 
-export function resetAxis(state, axis, id = "primary") {
+export function resetAxis(state, axis, id) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
   const overrides = state.charts[id].overrides;
   if (axis === 'x') return updateSlot(state, id, { overrides: { ...overrides, x: null } });
   if (axis === 'y') return updateSlot(state, id, { overrides: { ...overrides, y: null } });
   return state;
+}
+
+/* ═══ Structural Findings actions ═══ */
+
+export function setStructuralFindings(state, findings, chartId) {
+  return {
+    ...state,
+    structuralFindings: findings,
+    selectedFindingId: findings.length > 0 ? findings[0].id : null,
+    findingsChartId: chartId || state.focusedChartId || state.chartOrder[0],
+  };
+}
+
+export function selectStructuralFinding(state, findingId) {
+  return { ...state, selectedFindingId: findingId };
+}
+
+export function setFindingsChart(state, chartId) {
+  return { ...state, findingsChartId: chartId };
 }

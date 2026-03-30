@@ -94,7 +94,7 @@ async def test_capability_without_spec_limits(seeded_db):
 async def test_nonexistent_dataset(seeded_db):
     """Raises ValueError for missing dataset."""
     request = AnalysisRequest(sigma_method="moving_range")
-    with pytest.raises(ValueError, match="No measurements found"):
+    with pytest.raises(ValueError, match="No data rows found"):
         await run_analysis(seeded_db, "nonexistent", request)
 
 

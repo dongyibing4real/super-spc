@@ -72,7 +72,7 @@ from algo.common.types import ControlLimits, ZoneBreakdown
 from algo.common.zones import compute_zones
 from algo.capability import compute_capability
 
-from ..models import Analysis, DatasetColumn, Measurement
+from ..models import Analysis, DataRow, DatasetColumn
 from ..schemas import (
     AnalysisRequest,
     AnalysisResult,
@@ -104,13 +104,13 @@ SIGMA_DISPATCHERS = {
 
 
 def _group_by_subgroup(
-    measurements: list[Measurement],
+    measurements: list[DataRow],
     subgroup_column: str | None = None,
 ) -> tuple[list[str], dict[str, list[float]]]:
     """Group measurements by subgroup preserving order.
 
     Resolves subgroup key from: (1) explicit subgroup_column in raw_json,
-    (2) Measurement.subgroup field, (3) DEFAULT_SUBGROUP_KEY fallback.
+    (2) DataRow.subgroup field, (3) DEFAULT_SUBGROUP_KEY fallback.
 
     Returns (ordered_keys, groups_dict) where groups_dict maps key -> list of values.
     """
@@ -153,9 +153,9 @@ def _build_subgroup_arrays(
 
 
 def _split_by_phase(
-    measurements: list[Measurement],
+    measurements: list[DataRow],
     phase_column: str | None,
-) -> list[tuple[str, list[Measurement]]]:
+) -> list[tuple[str, list[DataRow]]]:
     """Split measurements into phase groups by unique phase value.
 
     When a Phase variable is assigned, all measurements sharing the same phase
@@ -167,7 +167,7 @@ def _split_by_phase(
     if not phase_column:
         return [("all", measurements)]
 
-    groups: dict[str, list[Measurement]] = {}
+    groups: dict[str, list[DataRow]] = {}
     ordered_keys: list[str] = []
 
     for m in measurements:
@@ -182,7 +182,7 @@ def _split_by_phase(
     return [(key, groups[key]) for key in ordered_keys]
 
 
-def _has_subgroups(measurements: list[Measurement]) -> bool:
+def _has_subgroups(measurements: list[DataRow]) -> bool:
     """Check whether measurements have meaningful subgroup labels."""
     return any(m.subgroup is not None for m in measurements)
 
@@ -235,7 +235,7 @@ class DispatchResult(NamedTuple):
 
 
 def _flatten_subgroups(
-    measurements: list[Measurement],
+    measurements: list[DataRow],
 ) -> tuple[np.ndarray, np.ndarray]:
     """Group measurements by subgroup and flatten into (data_array, sizes_array)."""
     ordered_keys, groups = _group_by_subgroup(measurements)
@@ -261,7 +261,7 @@ _IMR_COMPATIBLE_METHODS = {"moving_range", "median_moving_range"}
 
 def _dispatch_imr(
     values: np.ndarray, request: AnalysisRequest,
-    measurements: list[Measurement] | None = None,
+    measurements: list[DataRow] | None = None,
 ) -> DispatchResult:
     """IMR chart dispatch. Returns (chart_values, ucl, cl, lcl, k_sigma, sigma_out, zones).
 
@@ -334,7 +334,7 @@ def _dispatch_imr(
 
 
 def _dispatch_xbar_r(
-    measurements: list[Measurement], request: AnalysisRequest,
+    measurements: list[DataRow], request: AnalysisRequest,
 ) -> DispatchResult:
     """XBar-R chart dispatch."""
     flat_data, subgroup_sizes = _flatten_subgroups(measurements)
@@ -345,7 +345,7 @@ def _dispatch_xbar_r(
 
 
 def _dispatch_xbar_s(
-    measurements: list[Measurement], request: AnalysisRequest,
+    measurements: list[DataRow], request: AnalysisRequest,
 ) -> DispatchResult:
     """XBar-S chart dispatch."""
     flat_data, subgroup_sizes = _flatten_subgroups(measurements)
@@ -366,7 +366,7 @@ def _dispatch_levey_jennings(
 
 
 def _dispatch_attribute_chart(
-    chart_type: str, measurements: list[Measurement], request: AnalysisRequest,
+    chart_type: str, measurements: list[DataRow], request: AnalysisRequest,
 ) -> DispatchResult:
     """Dispatch for attribute charts (p, np, c, u, laney_p, laney_u)."""
     ordered_keys, groups = _group_by_subgroup(measurements)
@@ -422,7 +422,7 @@ def _dispatch_attribute_chart(
 
 def _dispatch_ewma(
     values: np.ndarray, request: AnalysisRequest,
-    measurements: list[Measurement] | None = None,
+    measurements: list[DataRow] | None = None,
 ) -> DispatchResult:
     """EWMA chart dispatch.
 
@@ -472,7 +472,7 @@ def _dispatch_ewma(
 
 def _dispatch_cusum(
     values: np.ndarray, request: AnalysisRequest,
-    measurements: list[Measurement] | None = None,
+    measurements: list[DataRow] | None = None,
 ) -> DispatchResult:
     """CUSUM chart dispatch.
 
@@ -517,7 +517,7 @@ def _dispatch_cusum(
 
 
 def _dispatch_r_chart(
-    measurements: list[Measurement], request: AnalysisRequest,
+    measurements: list[DataRow], request: AnalysisRequest,
 ) -> DispatchResult:
     """R (Range) chart dispatch."""
     flat_data, subgroup_sizes = _flatten_subgroups(measurements)
@@ -528,7 +528,7 @@ def _dispatch_r_chart(
 
 
 def _dispatch_s_chart(
-    measurements: list[Measurement], request: AnalysisRequest,
+    measurements: list[DataRow], request: AnalysisRequest,
 ) -> DispatchResult:
     """S (Standard Deviation) chart dispatch."""
     flat_data, subgroup_sizes = _flatten_subgroups(measurements)
@@ -549,7 +549,7 @@ def _dispatch_mr_chart(
 
 
 def _dispatch_presummarize(
-    measurements: list[Measurement], request: AnalysisRequest,
+    measurements: list[DataRow], request: AnalysisRequest,
 ) -> DispatchResult:
     """Presummarize chart dispatch. Requires target and sigma in request."""
     if request.target is None or request.sigma is None:
@@ -619,7 +619,7 @@ def _dispatch_t_chart(
 
 
 def _dispatch_three_way(
-    measurements: list[Measurement], request: AnalysisRequest,
+    measurements: list[DataRow], request: AnalysisRequest,
 ) -> DispatchResult:
     """Three-Way chart dispatch. Returns between-subgroup chart as primary."""
     ordered_keys, groups = _group_by_subgroup(measurements)
@@ -649,7 +649,7 @@ def _dispatch_three_way(
 
 
 def _dispatch_short_run(
-    measurements: list[Measurement], request: AnalysisRequest,
+    measurements: list[DataRow], request: AnalysisRequest,
 ) -> DispatchResult:
     """Short Run chart dispatch. Uses subgroup field as product ID."""
     values = np.array([m.value for m in measurements], dtype=float)
@@ -700,7 +700,7 @@ def _dispatch_run_chart(
 
 def _dispatch_cusum_vmask(
     values: np.ndarray, request: AnalysisRequest,
-    measurements: list[Measurement] | None = None,
+    measurements: list[DataRow] | None = None,
 ) -> DispatchResult:
     """CUSUM V-Mask chart dispatch.
 
@@ -743,8 +743,8 @@ def _dispatch_cusum_vmask(
                           request.k_sigma, sigma_out, zone_breakdown)
 
 
-def _extract_multivariate(measurements: list[Measurement]) -> np.ndarray:
-    """Extract 2-D multivariate data from raw_json on each Measurement."""
+def _extract_multivariate(measurements: list[DataRow]) -> np.ndarray:
+    """Extract 2-D multivariate data from raw_json on each DataRow."""
     rows = []
     for m in measurements:
         raw = json.loads(m.raw_json) if m.raw_json else {}
@@ -759,7 +759,7 @@ def _extract_multivariate(measurements: list[Measurement]) -> np.ndarray:
 
 
 def _dispatch_hotelling_t2(
-    measurements: list[Measurement], request: AnalysisRequest,
+    measurements: list[DataRow], request: AnalysisRequest,
 ) -> DispatchResult:
     """Hotelling T-squared chart dispatch."""
     data_2d = _extract_multivariate(measurements)
@@ -786,7 +786,7 @@ def _dispatch_hotelling_t2(
 
 
 def _dispatch_mewma(
-    measurements: list[Measurement], request: AnalysisRequest,
+    measurements: list[DataRow], request: AnalysisRequest,
 ) -> DispatchResult:
     """MEWMA chart dispatch."""
     data_2d = _extract_multivariate(measurements)
@@ -817,28 +817,33 @@ _NO_CAPABILITY_TYPES = {"hotelling_t2", "mewma", "run"}
 
 def _dispatch_chart(
     chart_type: str,
-    phase_measurements: list[Measurement],
+    phase_measurements: list[DataRow],
     request: AnalysisRequest,
     value_column: str | None = None,
     subgroup_column: str | None = None,
 ) -> DispatchResult:
     """Dispatch to the appropriate chart-type algorithm for one phase group.
 
-    When value_column or subgroup_column is set, overrides m.value / m.subgroup
-    from raw_json before dispatching, so all downstream functions see the right data.
+    ALWAYS extracts m.value and m.subgroup from raw_json using the column names.
+    value_column is required — DataRow has no persisted value/subgroup columns.
     """
+    if not value_column:
+        raise ValueError(
+            "No value column assigned. Assign a column with role='value' before running analysis."
+        )
+
     for m in phase_measurements:
         raw = json.loads(m.raw_json) if m.raw_json else {}
-        if value_column:
-            val = raw.get(value_column)
-            if val is not None:
-                m.value = float(val)
+        val = raw.get(value_column)
+        if val is not None:
+            m.value = float(val)
+        else:
+            m.value = 0.0
         if subgroup_column:
             sg_val = raw.get(subgroup_column)
-            if sg_val is not None:
-                m.subgroup = str(sg_val)
-            elif not m.subgroup:
-                m.subgroup = None
+            m.subgroup = str(sg_val) if sg_val is not None else None
+        else:
+            m.subgroup = None
 
     values = np.array([m.value for m in phase_measurements], dtype=float)
     ms = phase_measurements  # short alias
@@ -898,7 +903,7 @@ _SUBGROUPED_CHART_TYPES = {
 
 def _derive_chart_labels(
     chart_type: str,
-    phase_measurements: list[Measurement],
+    phase_measurements: list[DataRow],
     n_chart_values: int,
 ) -> list[str]:
     """Derive x-axis labels for chart values.
@@ -929,7 +934,7 @@ def _derive_chart_labels(
 
 def _analyze_one_phase(
     chart_type: str,
-    phase_measurements: list[Measurement],
+    phase_measurements: list[DataRow],
     request: AnalysisRequest,
     value_column: str | None = None,
     subgroup_column: str | None = None,
@@ -988,20 +993,20 @@ async def run_analysis(
             f"Choose from: {', '.join(sorted(VALID_CHART_TYPES))}"
         )
 
-    # 1. Fetch measurements
+    # 1. Fetch data rows
     stmt = (
-        select(Measurement)
-        .where(Measurement.dataset_id == dataset_id)
-        .order_by(Measurement.sequence_index)
+        select(DataRow)
+        .where(DataRow.dataset_id == dataset_id)
+        .order_by(DataRow.sequence_index)
     )
     result = await session.execute(stmt)
     measurements = list(result.scalars().all())
     if not measurements:
-        raise ValueError(f"No measurements found for dataset {dataset_id}")
+        raise ValueError(f"No data rows found for dataset {dataset_id}")
 
-    # 2. Derive column overrides — request params take priority over DB roles.
-    #    value_column: which column to use as Y (overrides Measurement.value)
-    #    subgroup_column: which column to group by (overrides Measurement.subgroup)
+    # 2. Derive column assignments — request params take priority over DB roles.
+    #    value_column: which column to use as Y (REQUIRED — read from raw_json)
+    #    subgroup_column: which column to group by (read from raw_json)
     #    phase_column: which column for phase splitting
     value_column = request.value_column
     subgroup_column = request.subgroup_column
@@ -1022,6 +1027,11 @@ async def run_analysis(
                 subgroup_column = name
             elif role == "phase" and not phase_column:
                 phase_column = name
+
+    if not value_column:
+        raise ValueError(
+            "No value column assigned. Assign a column with role='value' before running analysis."
+        )
 
     # 3. Split by phase
     phase_groups = _split_by_phase(measurements, phase_column)

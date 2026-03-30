@@ -1,4 +1,4 @@
-import { deriveWorkspace } from "../core/state.js";
+import { deriveWorkspace, getFocused } from "../core/state.js";
 import { toneClass } from "../helpers.js";
 import { renderRecipeRail } from "../components/recipe-rail.js";
 import { renderChartArena } from "../components/chart-arena.js";
@@ -7,8 +7,8 @@ export function renderEvidenceRail(state, workspace) {
   const { signal, selectedPoint, rulesAtPoint, whyTriggered, evidence, activeFinding } = workspace;
   const tone = toneClass(signal.statusTone);
   const chartEvidence = evidence.filter(e => e.category === "chart");
-  const primarySlot = state.charts[state.chartOrder[0]];
-  const chartLabel = primarySlot?.context?.chartType?.label || "—";
+  const focusedSlot = getFocused(state);
+  const chartLabel = focusedSlot?.context?.chartType?.label || "—";
 
   return `
     <aside class="evidence-rail">
@@ -90,7 +90,7 @@ export function renderWorkspace(state) {
         </div>
         <div class="lineage-strip">
           <div><span>Data</span><strong>2026-03-25 11:12</strong></div>
-          <div><span>Limits</span><strong>${state.charts[state.chartOrder[0]].limits.version}</strong></div>
+          <div><span>Limits</span><strong>${getFocused(state).limits.version}</strong></div>
           <div><span>Transforms</span><strong>${workspace.lineageCount}</strong></div>
           <div><span>Excluded</span><strong>${workspace.excludedCount}</strong></div>
           <div><span>Pipeline</span><strong>${state.pipeline.status}</strong></div>

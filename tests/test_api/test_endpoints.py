@@ -36,18 +36,18 @@ def test_get_dataset_not_found(client):
 
 
 def test_get_points(client):
-    resp = client.get(f"/api/datasets/{SEED_DATASET_ID}/points")
+    resp = client.get(f"/api/datasets/{SEED_DATASET_ID}/rows")
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 20
     # Check ordering
     assert data[0]["sequence_index"] == 0
     assert data[19]["sequence_index"] == 19
-    assert data[0]["value"] == 10.0
+    assert data[0]["raw_data"]["value"] == "10.0"
 
 
 def test_get_points_not_found(client):
-    resp = client.get("/api/datasets/nonexistent/points")
+    resp = client.get("/api/datasets/nonexistent/rows")
     assert resp.status_code == 404
 
 
