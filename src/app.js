@@ -445,6 +445,10 @@ root.addEventListener("click", async (e) => {
   if (!t) {
     if (state.activeChipEditor) commitRecipeRail(setActiveChipEditor(state, state.activeChipEditor));
     if (state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
+    if (state.ui.addChartPickerOpen && !e.target.closest('.add-chart-picker')) {
+      state = { ...state, ui: { ...state.ui, addChartPickerOpen: false } };
+      commitRecipeRail(state);
+    }
     if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-tool-btn')) {
       commit(closeActivePanel(state));
     }
@@ -509,8 +513,21 @@ root.addEventListener("click", async (e) => {
       }
       break;
     }
+    case "toggle-add-chart-picker": {
+      state = { ...state, ui: { ...state.ui, addChartPickerOpen: !state.ui.addChartPickerOpen } };
+      commitRecipeRail(state);
+      break;
+    }
+    case "add-chart-type": {
+      const chartType = t.dataset.type || "imr";
+      state = { ...state, ui: { ...state.ui, addChartPickerOpen: false } };
+      state = addChart(state, { chartType });
+      commit(state);
+      saveLayout();
+      if (state.activeDatasetId) reanalyze();
+      break;
+    }
     case "add-chart-from-rail": {
-      // Split focused pane horizontally, clone focused chart type
       const focusedType = getFocused(state).params.chart_type;
       state = addChart(state, { chartType: focusedType });
       commit(state);

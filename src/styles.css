@@ -581,6 +581,50 @@ h1, h2, h3, h4, h5, h6 {
 .rail-add-label {
   /* inherits font from parent */
 }
+.rail-add-chart-wrap {
+  position: relative;
+}
+
+/* Chart type picker dropdown */
+.add-chart-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  padding: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.add-chart-option {
+  flex: 1 0 auto;
+  min-width: 48px;
+  padding: 4px 8px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--t-2);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+.add-chart-option:hover {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+  color: var(--blue-bright);
+}
+.add-chart-option.selected {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+  color: var(--blue-bright);
+}
 
 /* Chips inside cards — full-bleed highlight */
 .rail-card .recipe-chip {

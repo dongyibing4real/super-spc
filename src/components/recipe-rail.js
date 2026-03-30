@@ -152,6 +152,24 @@ function renderExpandedChartCard(state, chartId, slot, ae, cols) {
   `;
 }
 
+const ADD_CHART_TYPES = [
+  ["imr", "IMR"], ["xbar_s", "X\u0304-S"], ["xbar_r", "X\u0304-R"],
+  ["p", "P"], ["np", "NP"], ["c", "C"], ["u", "U"],
+  ["cusum", "CUSUM"], ["ewma", "EWMA"], ["run", "Run"],
+];
+
+function renderAddChartPicker(state) {
+  const focusedType = state.charts[state.focusedChartId]?.params?.chart_type || "imr";
+  return `
+    <div class="add-chart-picker">
+      ${ADD_CHART_TYPES.map(([type, label]) =>
+        `<button class="add-chart-option ${type === focusedType ? "selected" : ""}"
+                data-action="add-chart-type" data-type="${type}" type="button">${label}</button>`
+      ).join("")}
+    </div>
+  `;
+}
+
 export function renderRecipeRail(state) {
   const ae = state.activeChipEditor;
   const cols = state.columnConfig.columns || [];
@@ -193,10 +211,13 @@ export function renderRecipeRail(state) {
       ${focusedCard}
       ${collapsedCards}
       <div class="recipe-divider"></div>
-      <button class="rail-add-chart" data-action="add-chart-from-rail" type="button">
-        <span class="rail-add-icon">+</span>
-        <span class="rail-add-label">Add Chart</span>
-      </button>
+      <div class="rail-add-chart-wrap">
+        <button class="rail-add-chart" data-action="toggle-add-chart-picker" type="button">
+          <span class="rail-add-icon">+</span>
+          <span class="rail-add-label">Add Chart</span>
+        </button>
+        ${state.ui.addChartPickerOpen ? renderAddChartPicker(state) : ""}
+      </div>
     </div>
   `;
 }
