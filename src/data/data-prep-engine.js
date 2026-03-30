@@ -38,6 +38,37 @@ export function createTable(rows, columns) {
 }
 
 /**
+ * Infer the JavaScript type actually stored in a column by sampling non-null values.
+ * This is needed because createTable() coerces numeric-dtype columns to JS numbers,
+ * while DOM input values are always strings. Without this, strict === fails:
+ * e.g. the table stores 15 (number) but the filter value is "15" (string).
+ *
+ * @param {import('arquero').ColumnTable} table
+ * @param {string} column
+ * @returns {'number'|'string'|'boolean'}
+ */
+function inferColumnType(table, column) {
+  const arr = table.array(column);
+  for (let i = 0; i < Math.min(arr.length, 20); i++) {
+    if (arr[i] != null) return typeof arr[i];
+  }
+  return 'string';
+}
+
+/**
+ * Coerce a DOM string value to match the actual stored column type.
+ * createTable() only produces 'number' or 'string' columns from CSV data,
+ * so only those two cases are needed.
+ * @param {string} value
+ * @param {'number'|'string'} colType
+ * @returns {number|string}
+ */
+function coerceToColumnType(value, colType) {
+  if (colType === 'number') return Number(value);
+  return value;
+}
+
+/**
  * Filter rows by column value.
  *
  * Uses Arquero's escape() helper so that the column name and comparison
@@ -51,10 +82,14 @@ export function createTable(rows, columns) {
  */
 export function filterRows(table, column, operator, value) {
   switch (operator) {
-    case 'eq':
-      return table.filter(escape(d => d[column] === value));
-    case 'neq':
-      return table.filter(escape(d => d[column] !== value));
+    case 'eq': {
+      const cmp = coerceToColumnType(value, inferColumnType(table, column));
+      return table.filter(escape(d => d[column] === cmp));
+    }
+    case 'neq': {
+      const cmp = coerceToColumnType(value, inferColumnType(table, column));
+      return table.filter(escape(d => d[column] !== cmp));
+    }
     case 'gt':
       return table.filter(escape(d => d[column] > Number(value)));
     case 'lt':

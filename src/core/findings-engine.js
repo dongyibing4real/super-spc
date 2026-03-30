@@ -6,7 +6,6 @@
  */
 
 import { computeStats, capClass, SIGMA_METHOD_LABELS } from "../helpers.js";
-import { getPrimary } from "./state.js";
 
 /* ═══ Finding shape (JSDoc) ═══════════════════════════
  * @typedef {Object} Finding
@@ -383,8 +382,9 @@ const GENERATOR_REGISTRY = [
  * Run all generators against current state and return findings array.
  * Errors in individual generators are isolated — one failure doesn't block others.
  */
-export function generateFindings(state) {
-  const slot = getPrimary(state);
+export function generateFindings(state, chartId) {
+  const id = chartId || state.chartOrder[0];
+  const slot = state.charts[id];
   if (!slot) return [];
 
   const points = state.points || [];
