@@ -1659,7 +1659,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 .prep-table th.sortable { cursor: pointer; user-select: none; }
 .prep-table th.sortable:hover { color: var(--t-1); }
-.prep-table th .sort-arrow { font-size: 9px; margin-left: 3px; color: var(--blue-bright); }
+.prep-table th .sort-arrow { font-size: 9px; margin-left: 2px; }
+.prep-table th .sort-arrow--idle { color: var(--t-4); }
+.prep-table th .sort-arrow--active { color: var(--blue-bright); }
 
 .prep-table td {
   padding: 4px 10px;

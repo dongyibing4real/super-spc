@@ -351,7 +351,9 @@ function renderPrepTable(state) {
     displayRows = sorted.map(p => p.raw_data || p.metadata || {});
   }
 
-  const arrow = (col) => sortColumn === col ? `<span class="sort-arrow">${sortDirection === "asc" ? "\u25b2" : "\u25bc"}</span>` : "";
+  const arrow = (col) => sortColumn === col
+    ? `<span class="sort-arrow sort-arrow--active">${sortDirection === "asc" ? "\u25b2" : "\u25bc"}</span>`
+    : `<span class="sort-arrow sort-arrow--idle">\u2195</span>`;
 
   // Profiles for column headers — use cached results, compute lazily if missing
   const cache = dataPrep.profileCache || {};
