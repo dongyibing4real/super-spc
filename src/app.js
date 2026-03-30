@@ -769,9 +769,108 @@ root.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
 });
 
-/* ═══ Drag-to-arrange chart panes (Phase 2 — simplified for now) ═══ */
-// Drag-to-rearrange is deferred to Phase 2. For now, pane titlebars
-// serve as focus targets only. The grip icon hints at future drag capability.
+/* ═══ Drag-to-arrange chart panes ═══ */
+let dragState = null;
+
+root.addEventListener("pointerdown", (e) => {
+  const handle = e.target.closest("[data-drag-handle]");
+  if (!handle) return;
+  // Only drag when multiple panes exist
+  if (state.chartOrder.length < 2) return;
+  const pane = handle.closest(".chart-pane");
+  const arena = pane?.closest(".chart-arena");
+  if (!pane || !arena) return;
+
+  e.preventDefault();
+  const chartId = handle.dataset.dragHandle;
+  const rect = arena.getBoundingClientRect();
+
+  const ghost = pane.cloneNode(true);
+  ghost.classList.add("drag-ghost");
+  ghost.style.width = pane.offsetWidth + "px";
+  ghost.style.height = pane.offsetHeight + "px";
+  document.body.appendChild(ghost);
+  pane.classList.add("dragging");
+
+  const zones = ["left", "right", "top", "bottom"].map(pos => {
+    const zone = document.createElement("div");
+    zone.classList.add("drop-zone");
+    zone.dataset.dropPosition = pos;
+    arena.style.position = "relative";
+    arena.appendChild(zone);
+    Object.assign(zone.style, {
+      position: "absolute", zIndex: "100",
+      ...(pos === "left"   ? { left: 0, top: 0, width: "50%", height: "100%" } : {}),
+      ...(pos === "right"  ? { right: 0, top: 0, width: "50%", height: "100%" } : {}),
+      ...(pos === "top"    ? { left: 0, top: 0, width: "100%", height: "50%" } : {}),
+      ...(pos === "bottom" ? { left: 0, bottom: 0, width: "100%", height: "50%" } : {}),
+    });
+    return zone;
+  });
+
+  dragState = { chartId, pane, arena, ghost, zones, arenaRect: rect };
+});
+
+root.addEventListener("pointermove", (e) => {
+  if (!dragState) return;
+  const { ghost, zones, arenaRect } = dragState;
+  ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + "px";
+  ghost.style.top = (e.clientY - 20) + "px";
+
+  const x = e.clientX - arenaRect.left;
+  const y = e.clientY - arenaRect.top;
+  const w = arenaRect.width;
+  const h = arenaRect.height;
+
+  let activePos = null;
+  if (x < w * 0.35) activePos = "left";
+  else if (x > w * 0.65) activePos = "right";
+  else if (y < h * 0.35) activePos = "top";
+  else if (y > h * 0.65) activePos = "bottom";
+
+  zones.forEach(z => z.classList.toggle("active", z.dataset.dropPosition === activePos));
+  dragState.activePos = activePos;
+});
+
+function endDrag() {
+  if (!dragState) return;
+  const { pane, ghost, zones, activePos, chartId } = dragState;
+  pane.classList.remove("dragging");
+  ghost.remove();
+  zones.forEach(z => z.remove());
+
+  if (activePos && state.chartOrder.length >= 2) {
+    // Rebuild the tree with the new direction based on drop position
+    const direction = (activePos === "left" || activePos === "right") ? "row" : "column";
+    const ids = state.chartOrder;
+    // Put the dragged chart in the dropped position, others fill the other side
+    const otherIds = ids.filter(id => id !== chartId);
+
+    // Build a simple tree: dragged chart on the drop side, rest on the other
+    let draggedPane = { type: "pane", chartId };
+    let otherNode = otherIds.length === 1
+      ? { type: "pane", chartId: otherIds[0] }
+      : otherIds.reduce((acc, id, i) => {
+          const p = { type: "pane", chartId: id };
+          return i === 0 ? p : { type: "container", direction, children: [acc, p], sizes: [0.5, 0.5] };
+        }, null);
+
+    const isFirst = activePos === "left" || activePos === "top";
+    const newTree = {
+      type: "container",
+      direction,
+      children: isFirst ? [draggedPane, otherNode] : [otherNode, draggedPane],
+      sizes: [0.5, 0.5],
+    };
+
+    state = { ...state, chartLayout: { ...state.chartLayout, tree: newTree } };
+    commitLayout(state);
+  }
+  dragState = null;
+}
+
+root.addEventListener("pointerup", endDrag);
+root.addEventListener("pointercancel", endDrag);
 
 /* ═══ Resize split divider (tree-path-aware) ═══ */
 let dividerDrag = null;

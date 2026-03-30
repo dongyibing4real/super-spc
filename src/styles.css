@@ -904,16 +904,58 @@ h1, h2, h3, h4, h5, h6 {
   opacity: 0.9;
 }
 
-/* Pane Title Bar */
+/* Pane Title Bar (draggable) */
 .chart-pane-titlebar {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
   background: var(--chart-surface);
-  cursor: default;
+  cursor: grab;
   user-select: none;
   border-bottom: 1px solid var(--chart-border);
+}
+
+.chart-pane-titlebar:active { cursor: grabbing; }
+
+.chart-pane.dragging {
+  opacity: 0.3;
+}
+
+.grip-icon {
+  color: var(--chart-text-3);
+  font-size: 10px;
+  opacity: 0.5;
+}
+
+/* Drag ghost */
+.drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.7;
+  border: 2px solid var(--blue, #2D72D2);
+  border-radius: 4px;
+  background: var(--chart-bg);
+  overflow: hidden;
+}
+
+/* Drop zones */
+.drop-zone {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 100;
+  transition: opacity 120ms ease-out;
+  background: rgba(45, 114, 210, 0.06);
+  border: 2px dashed transparent;
+  border-radius: 4px;
+}
+
+.drop-zone.active {
+  opacity: 1;
+  border-color: rgba(45, 114, 210, 0.4);
+  background: rgba(45, 114, 210, 0.1);
 }
 
 .grip-icon {

@@ -26,7 +26,8 @@ function renderChartPane(state, chartId) {
 
   return `
     <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}">
-      <div class="chart-pane-titlebar">
+      <div class="chart-pane-titlebar" data-drag-handle="${chartId}">
+        <span class="grip-icon">\u2817</span>
         <span class="method-dot ${chartId}"></span>
         <span class="pane-role">${chartIndex}</span>
         <strong class="pane-method">${method}</strong>
