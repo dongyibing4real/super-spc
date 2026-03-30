@@ -897,6 +897,22 @@ h1, h2, h3, h4, h5, h6 {
   opacity: 1;
 }
 
+/* Pane table toggle button */
+.pane-table-btn {
+  background: none;
+  border: none;
+  color: var(--chart-text-3);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.pane-table-btn:hover { background: rgba(45,114,210,0.15); color: var(--blue, #2D72D2); }
+.pane-table-btn.active { color: var(--blue, #2D72D2); }
+
+.pane-data-table { flex: 1 1 0; min-height: 0; overflow: auto; }
+
 /* Pane close button */
 .pane-close {
   background: none;

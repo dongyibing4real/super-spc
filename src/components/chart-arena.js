@@ -26,16 +26,21 @@ function renderChartPane(state, chartId) {
         </div>
       ` : ""}
       <div class="pane-actions">
+        <button class="pane-table-btn ${slot.showDataTable ? "active" : ""}" data-action="toggle-pane-table" data-chart-id="${chartId}" title="Data table">☰</button>
         <button class="pane-close" data-action="remove-chart" data-chart-id="${chartId}" title="Close chart">×</button>
       </div>
     </div>`;
 
+  const showTable = slot.showDataTable;
   return `
     <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}">
       ${titlebar}
-      <div class="chart-stage" id="chart-mount-${chartId}" tabindex="0" data-chart-focus="true" aria-label="${chartId} control chart">
-        ${isFocused && state.ui.contextMenu ? renderContextMenu(state) : ""}
-      </div>
+      ${showTable
+        ? `<div class="pane-data-table">${renderDataTable(state, chartId)}</div>`
+        : `<div class="chart-stage" id="chart-mount-${chartId}" tabindex="0" data-chart-focus="true" aria-label="${chartId} control chart">
+            ${isFocused && state.ui.contextMenu ? renderContextMenu(state) : ""}
+          </div>`
+      }
     </div>
   `;
 }
@@ -68,10 +73,10 @@ export function renderGhostRows(rows, incomingId) {
 
 /* ═══ Data table renderer ═══ */
 
-export function renderDataTable(state) {
+export function renderDataTable(state, chartId) {
   if (state.points.length === 0) return '<div class="empty-table">No data loaded.</div>';
 
-  const focusedSlot = state.charts[state.focusedChartId];
+  const focusedSlot = state.charts[chartId || state.focusedChartId];
   const violations = focusedSlot?.violations || [];
   const violatedIndices = new Set();
   violations.forEach(v => v.indices.forEach(i => violatedIndices.add(i)));

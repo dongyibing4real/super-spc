@@ -65,6 +65,7 @@ import {
   insertChart,
   computeGridPreview,
   migrateTreeToRows,
+  togglePaneDataTable,
 } from "./core/state.js";
 import { createChart } from "./components/chart/index.js";
 import {
@@ -508,6 +509,11 @@ root.addEventListener("click", async (e) => {
     case "toggle-export-failure": commit(toggleReportFailureMode(state)); break;
     case "clear-notice":       commitNotice(clearNotice(state)); break;
     case "toggle-data-table":  commit(toggleDataTable(state)); break;
+    case "toggle-pane-table": {
+      const cid = t.dataset.chartId;
+      if (cid) commit(togglePaneDataTable(state, cid));
+      break;
+    }
     case "add-chart-from-rail": {
       // Split focused pane horizontally, clone focused chart type
       const focusedType = getFocused(state).params.chart_type;

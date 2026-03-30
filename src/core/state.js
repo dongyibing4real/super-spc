@@ -236,6 +236,7 @@ export function createSlot(overrides = {}) {
     chartLabels: [],
     phases: [],
     selectedPointIndex: null,
+    showDataTable: false,
     ...overrides,
   };
 }
@@ -484,6 +485,12 @@ export function loadDataset(state, { points, slots, datasetId }) {
 
 export function toggleDataTable(state) {
   return { ...state, showDataTable: !state.showDataTable };
+}
+
+export function togglePaneDataTable(state, chartId) {
+  const slot = state.charts[chartId];
+  if (!slot) return state;
+  return updateSlot(state, chartId, { showDataTable: !slot.showDataTable });
 }
 
 export function setLoadingState(state, loading) {
