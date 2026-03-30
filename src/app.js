@@ -56,7 +56,6 @@ import {
   addColumnMeta,
   toggleRowExclusion,
   clearAllExclusions,
-  setExpandedProfileColumn,
   setProfileCache,
   focusChart,
   addChart,
@@ -77,7 +76,7 @@ import { transformPoints, transformAnalysis, buildDefaultContext } from "./data/
 import { parseCSV } from "./data/csv-engine.js";
 import { createTable, filterRows, sortTable, findReplace, removeDuplicates, handleMissing, cleanText, renameColumn, changeColumnType, previewTypeConversion, addCalculatedColumn, recodeValues, binColumn, splitColumn, concatColumns } from "./data/data-prep-engine.js";
 
-import { getCapability, capClass, detectRuleViolations, applyParamsToContext } from "./helpers.js";
+import { getCapability, capClass, detectRuleViolations, applyParamsToContext, CHART_TYPE_LABELS } from "./helpers.js";
 import { deriveWorkspace } from "./core/state.js";
 import { renderSidebar } from "./components/sidebar.js";
 
@@ -943,11 +942,6 @@ root.addEventListener("click", async (e) => {
       }
       break;
     }
-    case "toggle-profile-column": {
-      const col = t.dataset.column;
-      if (col) commit(setExpandedProfileColumn(state, col));
-      break;
-    }
   }
 });
 
@@ -1012,33 +1006,59 @@ root.addEventListener("keydown", (e) => {
 let dividerDrag = null;
 
 /* ═══ Header drag — zone-inference + ghost preview ═══ */
+let pendingDrag = null;  // recorded on pointerdown, promoted to dragState after threshold
 let dragState = null;
 let ghostOverlay = null;
+let ghostRafId = null;
 
-/** Compute which drop zone the cursor is in relative to a pane element */
-function getDropZone(paneEl, clientX, clientY) {
+/** Compute drop zone with hysteresis to prevent flickering at boundaries */
+function getDropZone(paneEl, clientX, clientY, prevZone) {
   const r = paneEl.getBoundingClientRect();
   if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) return null;
   const relX = (clientX - r.left) / r.width;
   const relY = (clientY - r.top) / r.height;
-  if (relY < 0.25) return "top";
-  if (relY > 0.75) return "bottom";
-  if (relX < 0.25) return "left";
-  if (relX > 0.75) return "right";
-  return "center";
+  let zone;
+  if (relY < 0.25) zone = "top";
+  else if (relY > 0.75) zone = "bottom";
+  else if (relX < 0.25) zone = "left";
+  else if (relX > 0.75) zone = "right";
+  else zone = "center";
+
+  // DRAG-006: hysteresis — stay on previous zone if cursor is within 15px of a boundary
+  if (prevZone && prevZone !== zone) {
+    const HYSTERESIS = 15;
+    const topB = r.top + r.height * 0.25;
+    const botB = r.bottom - r.height * 0.25;
+    const lefB = r.left + r.width * 0.25;
+    const rigB = r.right - r.width * 0.25;
+    const nearBoundary =
+      Math.abs(clientY - topB) < HYSTERESIS ||
+      Math.abs(clientY - botB) < HYSTERESIS ||
+      Math.abs(clientX - lefB) < HYSTERESIS ||
+      Math.abs(clientX - rigB) < HYSTERESIS;
+    if (nearBoundary) return prevZone;
+  }
+  return zone;
 }
 
+// DRAG-005: rAF-throttled overlay update
 function updateGhostOverlay(ghostTree, incomingId) {
   if (!ghostOverlay || !ghostTree) return;
-  ghostOverlay.innerHTML = renderGhostNode(ghostTree, incomingId);
-  ghostOverlay.style.display = "flex";
+  if (ghostRafId) cancelAnimationFrame(ghostRafId);
+  ghostRafId = requestAnimationFrame(() => {
+    ghostOverlay.innerHTML = renderGhostNode(ghostTree, incomingId);
+    ghostOverlay.style.display = "flex";
+    ghostRafId = null;
+  });
 }
 
 function hideGhostOverlay() {
+  if (ghostRafId) { cancelAnimationFrame(ghostRafId); ghostRafId = null; }
   if (ghostOverlay) ghostOverlay.style.display = "none";
 }
 
 function removeGhostOverlay() {
+  if (ghostRafId) { cancelAnimationFrame(ghostRafId); ghostRafId = null; }
   if (ghostOverlay) { ghostOverlay.remove(); ghostOverlay = null; }
 }
 
@@ -1061,34 +1081,16 @@ root.addEventListener("pointerdown", (e) => {
     return;
   }
 
-  // ── Header drag to move/split ──
+  // ── Header drag — record pending, promote after 4px threshold (DRAG-003) ──
   const handle = e.target.closest("[data-drag-handle]");
   if (!handle) return;
   if (state.chartOrder.length < 2) return;
   const pane = handle.closest(".chart-pane");
   if (!pane) return;
-  if (e.target.closest("button")) return; // don't drag when clicking split/close buttons
+  if (e.target.closest("button")) return;
 
   e.preventDefault();
-  const chartId = handle.dataset.dragHandle;
-
-  // Ghost cursor follower (small label showing the dragged chart)
-  const ghost = document.createElement("div");
-  ghost.className = "drag-ghost";
-  ghost.textContent = state.charts[chartId]?.context?.chartType?.label || "Chart";
-  document.body.appendChild(ghost);
-  pane.classList.add("dragging");
-
-  // Ghost overlay on the arena (shows predicted layout)
-  const arenaEl = root.querySelector(".chart-arena");
-  if (arenaEl) {
-    ghostOverlay = document.createElement("div");
-    ghostOverlay.className = "arena-ghost-overlay";
-    ghostOverlay.style.display = "none";
-    arenaEl.appendChild(ghostOverlay);
-  }
-
-  dragState = { chartId, pane, ghost, dropTarget: null, dropZone: null };
+  pendingDrag = { chartId: handle.dataset.dragHandle, pane, startX: e.clientX, startY: e.clientY, pointerId: e.pointerId };
 });
 
 root.addEventListener("pointermove", (e) => {
@@ -1104,6 +1106,42 @@ root.addEventListener("pointermove", (e) => {
     return;
   }
 
+  // ── Promote pending drag once 4px threshold is crossed (DRAG-003) ──
+  if (pendingDrag && !dragState) {
+    const dx = e.clientX - pendingDrag.startX;
+    const dy = e.clientY - pendingDrag.startY;
+    if (Math.sqrt(dx * dx + dy * dy) < 4) return;
+
+    const { chartId, pane, pointerId } = pendingDrag;
+    pendingDrag = null;
+
+    // DRAG-001: capture pointer so fast moves don't lose events
+    pane.setPointerCapture(pointerId);
+    // DRAG-007: suppress text selection during drag
+    document.body.style.userSelect = "none";
+
+    // Ghost cursor follower — DRAG-008: use params.chart_type not context
+    const ghost = document.createElement("div");
+    ghost.className = "drag-ghost";
+    ghost.textContent = CHART_TYPE_LABELS[state.charts[chartId]?.params?.chart_type] || "Chart";
+    document.body.appendChild(ghost);
+    pane.classList.add("dragging");
+
+    // Ghost overlay on the arena
+    const arenaEl = root.querySelector(".chart-arena");
+    if (arenaEl) {
+      ghostOverlay = document.createElement("div");
+      ghostOverlay.className = "arena-ghost-overlay";
+      ghostOverlay.style.display = "none";
+      arenaEl.appendChild(ghostOverlay);
+    }
+
+    dragState = { chartId, pane, ghost, dropTarget: null, dropZone: null };
+
+    // DRAG-004: show overlay immediately over source pane
+    updateGhostOverlay(state.chartLayout.tree, chartId);
+  }
+
   // ── Header drag: zone inference + ghost preview ──
   if (!dragState) return;
   const { ghost, chartId } = dragState;
@@ -1112,11 +1150,11 @@ root.addEventListener("pointermove", (e) => {
   ghost.style.left = (e.clientX + 12) + "px";
   ghost.style.top = (e.clientY - 10) + "px";
 
-  // Find target pane and zone
+  // Find target pane and zone (pass prevZone for hysteresis)
   let foundTarget = null;
   let foundZone = null;
   for (const p of root.querySelectorAll(".chart-pane:not(.dragging)")) {
-    const zone = getDropZone(p, e.clientX, e.clientY);
+    const zone = getDropZone(p, e.clientX, e.clientY, dragState.dropZone);
     if (zone) { foundTarget = p.dataset.chartId; foundZone = zone; break; }
   }
 
@@ -1127,7 +1165,8 @@ root.addEventListener("pointermove", (e) => {
     const ghostTree = computeDragResult(state.chartLayout.tree, chartId, foundTarget, foundZone);
     updateGhostOverlay(ghostTree, chartId);
   } else {
-    hideGhostOverlay();
+    // Back over source pane — show current layout with source highlighted
+    updateGhostOverlay(state.chartLayout.tree, chartId);
   }
 });
 
@@ -1147,11 +1186,13 @@ function endDividerDrag() {
 }
 
 function endDrag() {
+  pendingDrag = null;
   if (!dragState) return;
   const { pane, ghost, chartId, dropTarget, dropZone } = dragState;
   pane.classList.remove("dragging");
   ghost.remove();
   removeGhostOverlay();
+  document.body.style.userSelect = ""; // DRAG-007: restore text selection
 
   if (dropTarget && dropZone && dropTarget !== chartId) {
     const newTree = computeDragResult(state.chartLayout.tree, chartId, dropTarget, dropZone);
@@ -1164,8 +1205,9 @@ function endDrag() {
   dragState = null;
 }
 
-root.addEventListener("pointerup", () => { endDividerDrag(); endDrag(); });
-root.addEventListener("pointercancel", () => { endDividerDrag(); endDrag(); });
+// DRAG-002: bind to document so release outside root is always caught
+document.addEventListener("pointerup", () => { endDividerDrag(); endDrag(); });
+document.addEventListener("pointercancel", () => { endDividerDrag(); endDrag(); });
 
 /* ═══ Pane titlebar right-click — split/close context menu ═══ */
 let paneMenu = null;

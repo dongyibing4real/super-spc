@@ -1040,7 +1040,11 @@ h1, h2, h3, h4, h5, h6 {
 }
 .chart-pane-titlebar:active { cursor: grabbing; }
 
-.chart-pane.dragging { opacity: 0.3; }
+.chart-pane.dragging {
+  opacity: 0.4;
+  outline: 2px dashed var(--blue, #2D72D2);
+  outline-offset: -2px;
+}
 
 .grip-icon {
   color: var(--chart-text-3);
@@ -1802,63 +1806,45 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--green-dim); border-radius: 2px; padding: 0 3px;
 }
 
-/* ── Phase 3: column profiling (Kaggle-style cards) ── */
-.col-profile-list {
-  display: flex; flex-direction: column; gap: 8px; margin-top: 4px;
+/* ── Phase 3: column header profile ── */
+.prep-table th.th-with-profile {
+  vertical-align: top; padding: 6px 8px 6px; min-width: 80px;
 }
-.col-profile-card {
-  background: var(--bg-3); border-radius: var(--r-xs); padding: 8px 10px;
-  border: 1px solid var(--border-1);
+.th-name-row {
+  display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
+  margin-bottom: 5px;
 }
-.col-profile-hidden { opacity: 0.45; }
-.col-profile-header {
-  display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;
-}
-.col-profile-name { font-size: 11px; font-weight: 600; color: var(--t-1); }
-.col-profile-badges { display: flex; align-items: center; gap: 4px; }
-.col-dtype-pill {
-  font-size: 9px; font-weight: 600; color: var(--t-4); background: var(--bg-4);
-  border-radius: 3px; padding: 1px 5px; text-transform: uppercase; letter-spacing: 0.04em;
-}
-.col-profile-valid-badge {
-  font-size: 8px; font-weight: 700; color: var(--green);
-  background: var(--green-dim); border-radius: 2px; padding: 0 3px;
-}
-.col-profile-empty { font-size: 10px; color: var(--t-4); padding: 4px 0; }
+.th-profile { display: flex; flex-direction: column; gap: 2px; }
 
-/* Completeness bar */
-.col-completeness { margin-bottom: 6px; }
-.col-completeness-track {
-  height: 4px; background: var(--bg-4); border-radius: 2px; overflow: hidden; margin-bottom: 3px;
+/* Thin completeness bar (only shown when missing > 0) */
+.th-mini-complete {
+  height: 2px; background: var(--bg-4); border-radius: 1px; overflow: hidden; margin-bottom: 2px;
 }
-.col-completeness-fill { height: 100%; background: var(--blue); border-radius: 2px; }
-.col-completeness-label { font-size: 9px; color: var(--t-4); }
+.th-mini-complete-fill { height: 100%; background: var(--blue); }
 
-/* Numeric histogram */
-.col-hist {
-  display: flex; align-items: flex-end; gap: 1px; height: 36px; margin-bottom: 6px;
+/* Numeric mini histogram */
+.th-mini-hist {
+  display: flex; align-items: flex-end; gap: 1px; height: 22px;
 }
-.col-hist-bar {
-  flex: 1; background: rgba(59,130,246,0.45); border-radius: 1px 1px 0 0; min-height: 2px;
+.th-hist-bar {
+  flex: 1; background: rgba(59,130,246,0.4); border-radius: 1px 1px 0 0; min-height: 1px;
 }
 
-/* Text top-value bars (Kaggle horizontal bars) */
-.col-top-values { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
-.col-top-row { display: flex; align-items: center; gap: 5px; }
-.col-top-label { font-size: 9px; width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t-2); flex-shrink: 0; }
-.col-top-track { flex: 1; height: 6px; background: var(--bg-4); border-radius: 3px; overflow: hidden; }
-.col-top-bar { height: 100%; background: rgba(139,92,246,0.5); border-radius: 3px; }
-.col-top-pct { font-size: 9px; color: var(--t-4); width: 30px; text-align: right; flex-shrink: 0; }
+/* Text top-value mini bars */
+.th-mini-top { display: flex; flex-direction: column; gap: 2px; }
+.th-top-row { display: flex; align-items: center; gap: 3px; }
+.th-top-label {
+  font-family: "IBM Plex Mono", monospace; font-size: 8px; color: var(--t-3);
+  width: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;
+}
+.th-top-track { flex: 1; height: 5px; background: var(--bg-4); border-radius: 2px; overflow: hidden; }
+.th-top-bar { height: 100%; background: rgba(139,92,246,0.45); border-radius: 2px; }
 
-/* Stats row */
-.col-profile-stats {
-  display: flex; gap: 10px; flex-wrap: wrap;
+/* Stats line */
+.th-mini-stats {
+  font-family: "IBM Plex Mono", monospace; font-size: 8px; color: var(--t-4);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
 }
-.col-stat {
-  display: flex; flex-direction: column; gap: 1px;
-  font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 600; color: var(--t-1);
-}
-.col-stat-label { font-family: "Inter", system-ui, sans-serif; font-size: 8px; font-weight: 600; color: var(--t-4); text-transform: uppercase; letter-spacing: 0.06em; }
 
 @media (max-width: 900px) {
   .dataprep-grid { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; height: auto; }
