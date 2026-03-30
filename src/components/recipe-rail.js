@@ -103,42 +103,95 @@ function renderChartChips(state, prefix, params, context, ae, cols) {
   `).join("");
 }
 
+function collapsedSummary(slot) {
+  if (!slot) return "\u2014";
+  const metric = slot.context.metric?.label || "\u2014";
+  const sigma = slot.context.sigma?.label || "";
+  const tests = (slot.params.nelson_tests || []).map(id => `R${id}`).join(",");
+  const parts = [metric, sigma, tests].filter(Boolean);
+  return parts.join(" \u00b7 ") || "\u2014";
+}
+
+function renderCollapsedChartCard(state, chartId) {
+  const slot = state.charts[chartId];
+  if (!slot) return "";
+  const chartLabel = slot.context.chartType?.label || "\u2014";
+  const idx = state.chartOrder.indexOf(chartId) + 1;
+  const summary = collapsedSummary(slot);
+
+  return `
+    <div class="rail-card rail-card--collapsed" data-action="focus-chart" data-chart-id="${chartId}">
+      <div class="rail-card-header rail-card-header--collapsed">
+        <span class="rail-card-dot"></span>
+        <span class="rail-card-label">${chartLabel}</span>
+        <span class="rail-card-id">Chart ${idx}</span>
+      </div>
+      <div class="rail-card-summary">${summary}</div>
+    </div>
+  `;
+}
+
+function renderExpandedChartCard(state, chartId, slot, ae, cols) {
+  const chartLabel = slot.context.chartType?.label || "\u2014";
+  const idx = state.chartOrder.indexOf(chartId) + 1;
+
+  return `
+    <div class="rail-card rail-card--focused" data-chart-id="${chartId}">
+      <div class="rail-card-header rail-card-header--focused">
+        <span class="rail-card-dot"></span>
+        <span class="rail-card-label">${chartLabel}</span>
+        <span class="rail-card-id">Chart ${idx}</span>
+      </div>
+      ${renderChartChips(state, chartId, slot.params, slot.context, ae, cols)}
+      <button class="recipe-chip recipe-chip--table ${slot.showDataTable ? "chip-editing" : ""}"
+              data-action="toggle-pane-table" data-chart-id="${chartId}" type="button">
+        <span class="chip-label">Data Table</span>
+        <strong>${slot.showDataTable ? "Visible" : "Hidden"}</strong>
+      </button>
+    </div>
+  `;
+}
+
 export function renderRecipeRail(state) {
   const ae = state.activeChipEditor;
   const cols = state.columnConfig.columns || [];
   const activeDs = state.datasets.find(ds => ds.id === state.activeDatasetId);
   const datasetVal = activeDs ? activeDs.name : "No dataset";
-
-  // Use focused chart for the rail
   const focusedId = state.focusedChartId;
   const focusedSlot = state.charts[focusedId];
-  if (!focusedSlot) return `<div class="recipe-rail"><div class="rail-card">No chart selected</div></div>`;
 
-  const chartLabel = focusedSlot.context.chartType?.label || "\u2014";
+  // Dataset card (shared, always at top)
+  const datasetCard = `
+    <div class="rail-card rail-card--dataset">
+      <div class="rail-card-header rail-card-header--dataset">
+        <span class="rail-card-dot"></span>
+        <span class="rail-card-label">Dataset</span>
+      </div>
+      <button class="recipe-chip ${ae === "dataset" ? "chip-editing" : ""}"
+        data-action="toggle-chip-editor" data-chip="dataset" type="button">
+        <strong>${ae === "dataset"
+          ? chipSelect("switch-dataset", state.datasets.map(ds => [String(ds.id), `${ds.name} (${ds.point_count} pts)`]), String(state.activeDatasetId || ""))
+          : datasetVal}</strong>
+      </button>
+    </div>`;
+
+  // Focused chart card (expanded)
+  const focusedCard = focusedSlot
+    ? renderExpandedChartCard(state, focusedId, focusedSlot, ae, cols)
+    : "";
+
+  // Collapsed cards for non-focused charts
+  const collapsedCards = state.chartOrder
+    .filter(id => id !== focusedId)
+    .map(id => renderCollapsedChartCard(state, id))
+    .join("");
 
   return `
     <div class="recipe-rail">
-      <div class="rail-card rail-card--dataset">
-        <div class="rail-card-header rail-card-header--dataset">
-          <span class="rail-card-dot"></span>
-          <span class="rail-card-label">Dataset</span>
-        </div>
-        <button class="recipe-chip ${ae === "dataset" ? "chip-editing" : ""}"
-          data-action="toggle-chip-editor" data-chip="dataset" type="button">
-          <strong>${ae === "dataset"
-            ? chipSelect("switch-dataset", state.datasets.map(ds => [String(ds.id), `${ds.name} (${ds.point_count} pts)`]), String(state.activeDatasetId || ""))
-            : datasetVal}</strong>
-        </button>
-      </div>
+      ${datasetCard}
       <div class="recipe-divider"></div>
-      <div class="rail-card rail-card--${focusedId}">
-        <div class="rail-card-header rail-card-header--focused">
-          <span class="rail-card-dot"></span>
-          <span class="rail-card-label">${chartLabel}</span>
-          <span class="rail-card-id">Chart ${state.chartOrder.indexOf(focusedId) + 1}</span>
-        </div>
-        ${renderChartChips(state, focusedId, focusedSlot.params, focusedSlot.context, ae, cols)}
-      </div>
+      ${focusedCard}
+      ${collapsedCards}
       <div class="recipe-divider"></div>
       <button class="rail-add-chart" data-action="add-chart-from-rail" type="button">
         <span class="rail-add-icon">+</span>

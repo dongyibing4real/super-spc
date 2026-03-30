@@ -501,6 +501,14 @@ root.addEventListener("click", async (e) => {
       if (cid) commit(togglePaneDataTable(state, cid));
       break;
     }
+    case "focus-chart": {
+      const cid = t.dataset.chartId;
+      if (cid && cid !== state.focusedChartId && state.charts[cid]) {
+        state = focusChart(state, cid);
+        commit(state);
+      }
+      break;
+    }
     case "add-chart-from-rail": {
       // Split focused pane horizontally, clone focused chart type
       const focusedType = getFocused(state).params.chart_type;
