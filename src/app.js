@@ -521,6 +521,11 @@ root.addEventListener("click", async (e) => {
     case "add-chart-type": {
       const chartType = t.dataset.type || "imr";
       state = { ...state, ui: { ...state.ui, addChartPickerOpen: false } };
+      if (isWorkspaceFull()) {
+        state = { ...state, ui: { ...state.ui, notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." } } };
+        commit(state);
+        break;
+      }
       state = addChart(state, { chartType });
       commit(state);
       saveLayout();
@@ -528,6 +533,11 @@ root.addEventListener("click", async (e) => {
       break;
     }
     case "add-chart-from-rail": {
+      if (isWorkspaceFull()) {
+        state = { ...state, ui: { ...state.ui, notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." } } };
+        commit(state);
+        break;
+      }
       const focusedType = getFocused(state).params.chart_type;
       state = addChart(state, { chartType: focusedType });
       commit(state);
@@ -1405,6 +1415,16 @@ root.addEventListener("click", (e) => {
   if (!t) return;
   main();
 });
+
+/* ═══ Layout capacity ═══ */
+function isWorkspaceFull() {
+  const arenaEl = root.querySelector(".chart-arena");
+  if (!arenaEl) return false;
+  const maxPerRow = Math.floor(arenaEl.clientWidth / 250);
+  const maxRows = Math.floor(arenaEl.clientHeight / 180);
+  const maxCharts = maxPerRow * maxRows;
+  return collectChartIds(state.chartLayout).length >= maxCharts;
+}
 
 /* ═══ Layout persistence ═══ */
 const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
