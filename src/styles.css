@@ -836,9 +836,25 @@ h1, h2, h3, h4, h5, h6 {
   flex: 1;             /* fill arena when solo, fill grid cell in split */
 }
 
-/* Focused pane indicator — top accent bar on titlebar */
+/* Focused pane indicator — VS Code style: accent bar + subtle bg shift */
 .chart-pane.pane-focused .chart-pane-titlebar {
   box-shadow: inset 0 2px 0 var(--blue, #2D72D2);
+  background: var(--chart-bg);
+}
+
+/* Unfocused pane titlebar is slightly dimmer */
+.chart-pane:not(.pane-focused) .chart-pane-titlebar {
+  opacity: 0.7;
+}
+.chart-pane:not(.pane-focused):hover .chart-pane-titlebar {
+  opacity: 1;
+}
+
+/* Metric label in pane titlebar */
+.pane-metric {
+  font-size: 10px;
+  color: var(--chart-text-3);
+  font-weight: 500;
 }
 
 /* Pane close button */

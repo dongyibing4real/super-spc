@@ -19,26 +19,31 @@ function renderChartPane(state, chartId) {
   if (!slot) return "";
 
   const isFocused = state.focusedChartId === chartId;
-  const isLastChart = state.chartOrder.length <= 1;
+  const isOnlyChart = state.chartOrder.length <= 1;
   const caps = getCapability(state, chartId);
   const method = slot.context.chartType?.label || "";
+  const metric = slot.context.metric?.label || "";
   const chartIndex = state.chartOrder.indexOf(chartId) + 1;
 
-  return `
-    <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}">
+  // VS Code behavior: hide titlebar when only 1 chart (no ambiguity needed)
+  const titlebar = isOnlyChart ? "" : `
       <div class="chart-pane-titlebar" data-drag-handle="${chartId}">
         <span class="grip-icon">\u2817</span>
         <span class="method-dot ${chartId}"></span>
-        <span class="pane-role">${chartIndex}</span>
         <strong class="pane-method">${method}</strong>
+        <span class="pane-metric">${metric}</span>
         ${caps.cpk ? `
           <div class="pane-caps">
             <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(caps.cpk)}">${caps.cpk}</span></span>
             <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(caps.ppk)}">${caps.ppk}</span></span>
           </div>
         ` : ""}
-        ${!isLastChart ? `<button class="pane-close" data-action="remove-chart" data-chart-id="${chartId}" title="Close chart">\u00d7</button>` : ""}
-      </div>
+        <button class="pane-close" data-action="remove-chart" data-chart-id="${chartId}" title="Close chart">\u00d7</button>
+      </div>`;
+
+  return `
+    <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}">
+      ${titlebar}
       <div class="chart-stage" id="chart-mount-${chartId}" tabindex="0" data-chart-focus="true" aria-label="${chartId} control chart">
         ${isFocused && state.ui.contextMenu ? renderContextMenu(state) : ""}
       </div>
