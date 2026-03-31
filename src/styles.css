@@ -604,46 +604,61 @@ h1, h2, h3, h4, h5, h6 {
   text-overflow: ellipsis;
 }
 
-/* Add Chart button in recipe rail */
+/* Add Chart button in recipe rail — matches nav-item/chip vocabulary */
 .rail-add-chart {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  padding: 8px 10px;
+  min-height: 36px;
+  padding: 0 10px;
   background: none;
-  border: 1px dashed var(--border-2);
-  border-radius: 4px;
+  border: none;
+  border-top: 1px solid var(--border-2);
+  border-radius: 0;
   color: var(--t-3);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background var(--dur-short) var(--ease), color var(--dur-short) var(--ease), border-color var(--dur-short) var(--ease);
+  transition: background var(--dur-short) var(--ease), color var(--dur-short) var(--ease);
 }
 .rail-add-chart:hover {
-  border-color: var(--blue);
   color: var(--blue-bright);
   background: var(--blue-dim);
 }
 .rail-add-icon {
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 12px;
   line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.rail-add-chart:hover .rail-add-icon {
+  opacity: 1;
 }
 .rail-add-label {
   /* inherits font from parent */
 }
-/* Pending new chart card */
+/* Pending new chart card — consistent with focused card style */
 .rail-card--pending {
-  margin: 4px 8px;
-  border: 1px dashed var(--blue);
-  border-radius: var(--r-sm, 4px);
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--border-2);
+  border-left: 2px solid var(--blue);
+  border-radius: 0;
   background: var(--blue-dim);
 }
 .rail-card-header--pending {
-  background: var(--blue-dim);
-  border-bottom: 1px solid rgba(45,114,210,0.2);
+  background: transparent;
+  border-bottom: 1px solid rgba(45,114,210,0.18);
+  display: flex;
+  align-items: center;
 }
 .rail-card-header--pending .rail-card-dot {
   width: 6px; height: 6px;
@@ -657,6 +672,30 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.1em;
+}
+/* × dismiss button in pending card header */
+.rail-card-close {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--blue-bright);
+  opacity: 0.5;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity var(--dur-short) var(--ease), background var(--dur-short) var(--ease);
+  flex-shrink: 0;
+}
+.rail-card-close:hover {
+  opacity: 1;
+  background: rgba(45, 114, 210, 0.15);
 }
 .rail-card-actions {
   display: flex;
@@ -673,6 +712,9 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  white-space: nowrap; /* prevent "ADD / CHART" two-line wrap */
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
   transition: background var(--dur-short) var(--ease), color var(--dur-short) var(--ease);
 }

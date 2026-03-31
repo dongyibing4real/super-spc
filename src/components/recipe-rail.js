@@ -181,11 +181,12 @@ function renderPendingChartCard(state) {
       <div class="rail-card-header rail-card-header--pending">
         <span class="rail-card-dot"></span>
         <span class="rail-card-label">New Chart</span>
+        <button class="rail-card-close" data-action="cancel-add-chart" type="button" aria-label="Cancel new chart" title="Cancel">✕</button>
       </div>
       ${renderChartChips(state, "_pending", pending, context, ae, cols)}
       <div class="rail-card-actions">
         <button class="rail-card-btn rail-card-btn--cancel" data-action="cancel-add-chart" type="button">Cancel</button>
-        <button class="rail-card-btn rail-card-btn--confirm" data-action="confirm-add-chart" type="button">Add Chart</button>
+        <button class="rail-card-btn rail-card-btn--confirm" data-action="confirm-add-chart" type="button">Add</button>
       </div>
     </div>
   `;
