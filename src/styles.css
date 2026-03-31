@@ -2039,7 +2039,7 @@ h1, h2, h3, h4, h5, h6 {
   width: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;
 }
 .th-top-track { flex: 1; height: 5px; background: var(--bg-4); border-radius: 2px; overflow: hidden; }
-.th-top-bar { height: 100%; background: rgba(139,92,246,0.45); border-radius: 2px; }
+.th-top-bar { height: 100%; background: rgba(50,164,103,0.45); border-radius: 2px; }
 
 /* Stats line */
 .th-mini-stats {
@@ -2097,7 +2097,7 @@ h1, h2, h3, h4, h5, h6 {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .col-top-track { flex: 1; height: 5px; background: var(--bg-5); border-radius: 2px; overflow: hidden; }
-.col-top-bar { height: 100%; background: rgba(139,92,246,0.45); border-radius: 2px; }
+.col-top-bar { height: 100%; background: rgba(50,164,103,0.45); border-radius: 2px; }
 .col-top-pct { font-size: 8px; color: var(--t-4); width: 28px; text-align: right; flex-shrink: 0; }
 
 /* Stats row within profile card */
