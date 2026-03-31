@@ -571,18 +571,42 @@ export function profileColumn(table, colName, dtype) {
 
   if (dtype === 'numeric') {
     const nums = values.map(Number).filter(v => !isNaN(v)).sort((a, b) => a - b);
-    if (nums.length === 0) return { ...base, mean: 0, std: 0, min: 0, max: 0, q1: 0, q3: 0, histogram: [] };
+    if (nums.length === 0) return { ...base, mean: 0, std: 0, min: 0, max: 0, q1: 0, q3: 0, median: 0, p10: 0, p90: 0, skewness: 0, kurtosis: 0, cv: 0, outlierCount: 0, histogram: [] };
+    const m = nums.length;
     const sum = nums.reduce((s, v) => s + v, 0);
-    const mean = sum / nums.length;
-    const variance = nums.reduce((s, v) => s + (v - mean) ** 2, 0) / nums.length;
+    const mean = sum / m;
+    const variance = nums.reduce((s, v) => s + (v - mean) ** 2, 0) / m;
     const std = Math.sqrt(variance);
     const min = nums[0];
-    const max = nums[nums.length - 1];
-    const q1 = nums[Math.floor(nums.length * 0.25)];
-    const q3 = nums[Math.floor(nums.length * 0.75)];
+    const max = nums[m - 1];
+    const q1 = nums[Math.floor(m * 0.25)];
+    const q3 = nums[Math.floor(m * 0.75)];
+    const median = m % 2 === 0
+      ? (nums[m / 2 - 1] + nums[m / 2]) / 2
+      : nums[Math.floor(m / 2)];
+    const p10 = nums[Math.floor(m * 0.10)];
+    const p90 = nums[Math.floor(m * 0.90)];
 
-    // 8-bin equal-width histogram, normalized to max=1.0
-    const bins = 8;
+    // Skewness and excess kurtosis (population moments)
+    let m3 = 0, m4 = 0;
+    if (std > 0) {
+      for (const v of nums) {
+        const z = (v - mean) / std;
+        m3 += z ** 3;
+        m4 += z ** 4;
+      }
+    }
+    const skewness = std > 0 ? m3 / m : 0;
+    const kurtosis = std > 0 ? m4 / m - 3 : 0; // excess kurtosis
+
+    // CV and outliers beyond ±3σ
+    const cv = mean !== 0 ? (std / Math.abs(mean)) * 100 : null;
+    const sigma3 = 3 * std;
+    let outlierCount = 0;
+    for (const v of nums) { if (Math.abs(v - mean) > sigma3) outlierCount++; }
+
+    // 12-bin equal-width histogram, normalized to max=1.0
+    const bins = 12;
     const range = max - min || 1;
     const width = range / bins;
     const counts = new Array(bins).fill(0);
@@ -593,23 +617,30 @@ export function profileColumn(table, colName, dtype) {
     const maxCount = Math.max(...counts, 1);
     const histogram = counts.map(c => c / maxCount);
 
-    return { ...base, mean, std, min, max, q1, q3, histogram };
+    return { ...base, mean, std, min, max, q1, q3, median, p10, p90, skewness, kurtosis, cv, outlierCount, histogram };
   }
 
   // Text dtype
+  let emptyStrings = 0;
+  for (const v of values) { if (String(v).trim() === '') emptyStrings++; }
   const freq = {};
   for (const v of values) { const s = String(v); freq[s] = (freq[s] || 0) + 1; }
-  const topValues = Object.entries(freq)
+  const allTopValues = Object.entries(freq)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
     .map(([value, count]) => ({ value, count }));
+  const topValues = allTopValues.slice(0, 10);
   const lengths = values.map(v => String(v).length);
   const minLength = lengths.length > 0 ? Math.min(...lengths) : 0;
   const maxLength = lengths.length > 0 ? Math.max(...lengths) : 0;
 
-  // Top-3 proportion bars for text sparkline
+  // Balance: ratio of max to min frequency among top values (1.0 = perfectly even)
   const total = values.length || 1;
+  const minFreq = allTopValues.length > 0 ? allTopValues[allTopValues.length - 1].count : 0;
+  const maxFreq = allTopValues.length > 0 ? allTopValues[0].count : 0;
+  const balanceRatio = minFreq > 0 ? maxFreq / minFreq : null; // 1.0 = even, high = skewed
+
+  // Top-3 proportion bars for text sparkline
   const histogram = topValues.slice(0, 3).map(t => t.count / total);
 
-  return { ...base, topValues, minLength, maxLength, histogram };
+  return { ...base, topValues, minLength, maxLength, emptyStrings, balanceRatio, histogram };
 }

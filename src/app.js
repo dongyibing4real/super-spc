@@ -26,7 +26,6 @@ import {
   setFindingsChart,
   setStructuralFindings,
   setPrepError,
-  setPrepSort,
   resetAxis,
   setChallengerStatus,
   setDatasets,
@@ -58,6 +57,7 @@ import {
   clearAllExclusions,
   setProfileCache,
   setExpandedProfileColumn,
+  clearPrepTransforms,
   focusChart,
   addChart,
   removeChart,
@@ -524,7 +524,7 @@ root.addEventListener("click", async (e) => {
       state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
       commitRecipeRail(state);
     }
-    if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-tool-btn') && !e.target.closest('.prep-tool-group-btns')) {
+    if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-col-toolbar') && !e.target.closest('.prep-row-sidebar')) {
       commit(closeActivePanel(state));
     }
     return;
@@ -718,8 +718,8 @@ root.addEventListener("click", async (e) => {
       }
       break;
     }
-    case "sort-prep": {
-      commit(setPrepSort(state, t.dataset.column));
+    case "select-column": {
+      commit(setExpandedProfileColumn(state, t.dataset.column));
       break;
     }
     case "toggle-column-visibility": {
@@ -727,10 +727,6 @@ root.addEventListener("click", async (e) => {
       const hidden = state.dataPrep.hiddenColumns || [];
       const next = hidden.includes(col) ? hidden.filter(c => c !== col) : [...hidden, col];
       commit(setPrepHiddenColumns(state, next));
-      break;
-    }
-    case "select-profile-column": {
-      commit(setExpandedProfileColumn(state, t.dataset.column));
       break;
     }
     case "prep-undo-to":
@@ -806,6 +802,37 @@ root.addEventListener("click", async (e) => {
         } catch (err) {
           commit(setPrepError(state, err.message));
         }
+      }
+      break;
+    }
+    case "prep-export-csv": {
+      const exportTable = state.dataPrep.arqueroTable;
+      const exportCols = state.columnConfig.columns || [];
+      if (exportTable && exportCols.length > 0) {
+        const header = exportCols.map(c => c.name).join(',');
+        const rows = exportTable.objects().map(row =>
+          exportCols.map(c => {
+            const v = row[c.name];
+            if (v == null) return '';
+            const s = String(v);
+            return s.includes(',') || s.includes('"') || s.includes('\n')
+              ? `"${s.replace(/"/g, '""')}"` : s;
+          }).join(',')
+        );
+        const csv = [header, ...rows].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const ds = state.datasets.find(d => d.id === state.dataPrep.selectedDatasetId);
+        a.href = url; a.download = `${ds?.name || 'export'}.csv`;
+        a.click(); URL.revokeObjectURL(url);
+      }
+      break;
+    }
+    case "prep-reset": {
+      if (state.dataPrep.transforms.length > 0) {
+        state = clearPrepTransforms(state);
+        commit(state);
       }
       break;
     }
@@ -1251,6 +1278,40 @@ function removeGhostOverlay() {
 let dividerDrag = null; // { type: "col"|"row", row: number, col?: number, arenaRect }
 
 root.addEventListener("pointerdown", (e) => {
+  // ── Sidebar resize drag ──
+  const sidebarHandle = e.target.closest(".prep-sidebar-handle");
+  if (sidebarHandle) {
+    e.preventDefault();
+    const sidebar = sidebarHandle.parentElement;
+    const startX = e.clientX;
+    const startW = sidebar.offsetWidth;
+    const onMove = (ev) => {
+      const w = Math.max(0, Math.min(200, startW + ev.clientX - startX));
+      sidebar.style.width = w + 'px';
+      sidebar.dataset.sidebarWidth = w;
+      const btns = sidebar.querySelectorAll('.prep-row-btn');
+      btns.forEach(b => {
+        b.textContent = w >= 80 ? b.dataset.label : w >= 48 ? b.dataset.short : '';
+      });
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      const finalW = parseInt(sidebar.style.width, 10);
+      localStorage.setItem('prep-sidebar-width', finalW);
+      if (finalW < 16) {
+        sidebar.style.width = '0px';
+        sidebar.classList.add('collapsed');
+        localStorage.setItem('prep-sidebar-width', '0');
+      } else {
+        sidebar.classList.remove('collapsed');
+      }
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    return;
+  }
+
   // ── Grid divider drag ──
   const div = e.target.closest(".grid-divider");
   if (div) {
@@ -1418,6 +1479,22 @@ function endDividerDrag() {
 // DRAG-002: bind to document so release outside root is always caught
 document.addEventListener("pointerup", () => { endDividerDrag(); endDrag(); });
 document.addEventListener("pointercancel", () => { endDividerDrag(); endDrag(); });
+
+// Double-click sidebar handle to toggle collapse/expand
+root.addEventListener("dblclick", (e) => {
+  const handle = e.target.closest(".prep-sidebar-handle");
+  if (handle) {
+    const sidebar = handle.parentElement;
+    const isCollapsed = sidebar.classList.contains('collapsed') || parseInt(sidebar.style.width, 10) < 16;
+    const w = isCollapsed ? 80 : 0;
+    sidebar.style.width = w + 'px';
+    sidebar.classList.toggle('collapsed', w === 0);
+    localStorage.setItem('prep-sidebar-width', w);
+    const btns = sidebar.querySelectorAll('.prep-row-btn');
+    btns.forEach(b => { b.textContent = w >= 80 ? b.dataset.label : w >= 48 ? b.dataset.short : ''; });
+    return;
+  }
+});
 
 // Double-click divider to reset weights
 root.addEventListener("dblclick", (e) => {

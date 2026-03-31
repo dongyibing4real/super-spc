@@ -472,8 +472,6 @@ export function createInitialState() {
       datasetPoints: [],
       loading: false,
       error: null,
-      sortColumn: 'sequence_index',
-      sortDirection: 'asc',
       rawRows: null,
       originalColumns: [],
       arqueroTable: null,
@@ -605,15 +603,6 @@ export function setPrepError(state, message) {
   };
 }
 
-export function setPrepSort(state, column) {
-  const dp = state.dataPrep;
-  const direction = dp.sortColumn === column && dp.sortDirection === 'asc' ? 'desc' : 'asc';
-  return {
-    ...state,
-    dataPrep: { ...dp, sortColumn: column, sortDirection: direction }
-  };
-}
-
 export function deletePrepDataset(state, datasetId) {
   const datasets = state.datasets.filter(d => d.id !== datasetId);
   const dp = state.dataPrep.selectedDatasetId === datasetId
@@ -704,10 +693,7 @@ export function setActivePanel(state, panel) {
   const toggled = state.dataPrep.activePanel === panel ? null : panel;
   return {
     ...state,
-    dataPrep: {
-      ...state.dataPrep,
-      activePanel: toggled,
-    },
+    dataPrep: { ...state.dataPrep, activePanel: toggled },
   };
 }
 
