@@ -485,6 +485,7 @@ export function createInitialState() {
       excludedRows: [],
       expandedProfileColumn: null,
       profileCache: {},
+      confirmingDeleteId: null,
     },
     columnConfig: {
       columns: [],
@@ -669,6 +670,15 @@ export function undoPrepTransform(state) {
   };
 }
 
+/** Tail-trim: undo all transforms from stepIndex onward (view-only ledger, end-trimmable). */
+export function undoPrepTransformTo(state, stepIndex) {
+  const transforms = state.dataPrep.transforms.slice(0, stepIndex);
+  return {
+    ...state,
+    dataPrep: { ...state.dataPrep, transforms, unsavedChanges: transforms.length > 0 },
+  };
+}
+
 export function clearPrepTransforms(state) {
   return {
     ...state,
@@ -691,11 +701,12 @@ export function markPrepSaved(state) {
 }
 
 export function setActivePanel(state, panel) {
+  const toggled = state.dataPrep.activePanel === panel ? null : panel;
   return {
     ...state,
     dataPrep: {
       ...state.dataPrep,
-      activePanel: state.dataPrep.activePanel === panel ? null : panel,
+      activePanel: toggled,
     },
   };
 }

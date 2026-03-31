@@ -1806,38 +1806,74 @@ h1, h2, h3, h4, h5, h6 {
 .prep-toolbar {
   display: flex; justify-content: space-between; align-items: stretch;
   background: var(--bg-3); border-bottom: 1px solid var(--border-2);
-  min-height: 42px; overflow: visible;
+  min-height: 44px; overflow: visible;
 }
 .prep-toolbar-left { display: flex; align-items: stretch; flex: 1; }
-.prep-toolbar-right { display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+.prep-toolbar-right { display: flex; align-items: center; gap: 4px; padding: 0 10px; }
 
-/* Labeled operation groups */
+/* Labeled semantic groups — each group is a titled segmented control */
 .prep-tool-group {
-  display: flex; flex-direction: column;
-  padding: 5px 8px 0;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 6px 10px 0;
   border-right: 1px solid var(--border-1);
 }
 .prep-tool-group:last-child { border-right: none; }
 .prep-tool-group-label {
   font-size: 8px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.09em; color: var(--t-4); line-height: 1;
-  margin-bottom: 4px; white-space: nowrap;
+  letter-spacing: 0.08em; color: var(--t-4); line-height: 1;
+  margin-bottom: 5px; white-space: nowrap; padding-left: 1px;
 }
-.prep-tool-group-btns { display: flex; align-items: flex-end; gap: 2px; flex: 1; padding-bottom: 5px; }
+/* Segmented control container: the border here IS the button affordance */
+.prep-tool-group-btns {
+  display: flex; align-items: stretch; margin-bottom: 6px;
+  border: 1px solid var(--border-2); border-radius: 3px;
+  overflow: visible;
+}
 
+/* Individual operation buttons — no border, just right-side separator */
 .prep-tool-btn {
-  font-size: 10px; font-weight: 600; padding: 3px 7px;
-  background: transparent; border: 1px solid transparent;
-  color: var(--t-3); border-radius: 3px; cursor: pointer; white-space: nowrap;
+  font-size: 10px; font-weight: 500; padding: 4px 8px; line-height: 1.2;
+  background: transparent;
+  border: none; border-right: 1px solid var(--border-1);
+  color: var(--t-3); cursor: pointer; white-space: nowrap;
+  border-radius: 0; min-height: 24px;
+  transition: background 0.1s, color 0.1s;
 }
+.prep-tool-btn:first-child { border-radius: 2px 0 0 2px; }
+.prep-tool-btn:last-child  { border-right: none; border-radius: 0 2px 2px 0; }
+.prep-tool-btn:only-child  { border-right: none; border-radius: 2px; }
 .prep-tool-btn:hover { background: var(--bg-4); color: var(--t-1); }
+
+/* Active: blue-tinted fill — visually distinct from hover, clearly selected */
+.prep-tool-btn.active {
+  background: var(--blue-dim); color: var(--blue-bright);
+  border-right-color: var(--border-2);
+  position: relative;
+}
+/* Hairline accent on top of active button to echo panel below */
+.prep-tool-btn.active::after {
+  content: ''; position: absolute; top: -1px; left: 0; right: 0;
+  height: 2px; background: var(--blue);
+}
+
+/* Utility buttons in toolbar-right (undo/save/restore) */
+.prep-tool-btn-sm {
+  font-size: 10px; font-weight: 600; padding: 3px 8px;
+  background: var(--bg-4); border: 1px solid var(--border-2);
+  color: var(--t-3); border-radius: 3px; cursor: pointer; white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.prep-tool-btn-sm:hover { border-color: var(--border-3); color: var(--t-1); background: var(--bg-5); }
 .prep-save-btn { border-color: var(--blue) !important; color: var(--blue-bright); }
 .prep-save-btn:hover { background: var(--blue-dim); }
+
 .prep-transform-count { font-size: 9px; color: var(--t-4); font-weight: 600; }
+.prep-excluded-count { font-size: 9px; color: var(--t-3); font-weight: 600; }
 .prep-unsaved {
   font-size: 9px; font-weight: 700; color: var(--amber, #D4A017);
   background: rgba(212,160,23,0.12); padding: 2px 6px; border-radius: 3px;
 }
+
 .column-toggle {
   background: none; border: none; cursor: pointer; padding: 0 2px;
   font-size: 10px; color: var(--t-4); line-height: 1;
@@ -1845,18 +1881,10 @@ h1, h2, h3, h4, h5, h6 {
 .column-toggle:hover { color: var(--t-2); }
 .column-item { display: flex; align-items: center; gap: 4px; padding: 2px 0; }
 .column-item.column-hidden { opacity: 0.4; }
-
-/* ── data prep: inline panels ── */
-/* Active tab: punch through the toolbar bottom border and connect to panel below */
-.prep-tool-btn.active {
-  border-color: var(--border-2); border-bottom-color: var(--bg-2);
-  color: var(--blue-bright); background: var(--bg-2);
-  margin-bottom: -1px; position: relative; z-index: 2;
-  border-radius: 3px 3px 0 0;
-}
 .prep-panel {
   background: var(--bg-2); border-bottom: 1px solid var(--border-2);
   padding: 8px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  border-top: 2px solid var(--blue-dim);
 }
 .prep-panel-label {
   font-size: 10px; font-weight: 600; color: var(--t-3); white-space: nowrap;
@@ -1937,21 +1965,27 @@ h1, h2, h3, h4, h5, h6 {
 .prep-table .row-excluded td { opacity: 0.25; }
 .prep-table .row-excluded td:first-child { opacity: 1; }
 .prep-table td:first-child input[type="checkbox"] {
-  margin-right: 4px; vertical-align: middle;
+  margin-right: 5px; vertical-align: middle;
   appearance: none; -webkit-appearance: none;
-  width: 11px; height: 11px; flex-shrink: 0;
-  background: var(--bg-4); border: 1px solid var(--border-2);
-  border-radius: 2px; cursor: pointer; position: relative; top: -1px;
-  transition: background 60ms, border-color 60ms;
+  width: 13px; height: 13px; flex-shrink: 0;
+  background: var(--bg-3); border: 1px solid var(--border-3);
+  border-radius: 3px; cursor: pointer; position: relative; top: -1px;
+  transition: background 80ms, border-color 80ms, box-shadow 80ms;
+}
+.prep-table td:first-child input[type="checkbox"]:hover {
+  border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue-dim);
 }
 .prep-table td:first-child input[type="checkbox"]:checked {
   background: var(--blue); border-color: var(--blue);
 }
 .prep-table td:first-child input[type="checkbox"]:checked::after {
   content: ''; position: absolute;
-  left: 2px; top: 0px; width: 4px; height: 7px;
+  left: 3px; top: 1px; width: 5px; height: 8px;
   border: 1.5px solid #fff; border-top: none; border-left: none;
   transform: rotate(45deg);
+}
+.prep-table .row-excluded td:first-child input[type="checkbox"] {
+  background: var(--bg-5); border-color: var(--border-2);
 }
 .prep-excluded-count {
   font-size: 9px; font-weight: 600; color: var(--amber);
@@ -2006,6 +2040,127 @@ h1, h2, h3, h4, h5, h6 {
 .th-mini-stats {
   font-family: "IBM Plex Mono", monospace; font-size: 8px; color: var(--t-4);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
+}
+
+/* ── Column profile cards (right panel) ── */
+.col-profile-list { display: flex; flex-direction: column; gap: 6px; }
+.col-profile-card {
+  padding: 8px; border-radius: 4px;
+  background: var(--bg-3); border: 1px solid var(--border-1);
+  transition: border-color 0.15s;
+}
+.col-profile-card:hover { border-color: var(--border-2); }
+.col-profile-hidden { opacity: 0.4; }
+.col-profile-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 4px;
+  margin-bottom: 5px;
+}
+.col-profile-name {
+  font-size: 10px; font-weight: 600; color: var(--t-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+}
+.col-profile-badges { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.col-dtype-pill {
+  font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--t-4); background: var(--bg-5); padding: 1px 4px; border-radius: 2px;
+}
+.col-profile-valid-badge {
+  font-size: 8px; font-weight: 700; color: var(--green);
+  background: var(--green-dim); border-radius: 2px; padding: 0 3px;
+}
+.col-profile-empty { font-size: 9px; color: var(--t-4); }
+.col-completeness { margin-bottom: 4px; }
+.col-completeness-track {
+  height: 3px; background: var(--bg-5); border-radius: 2px; overflow: hidden; margin-bottom: 2px;
+}
+.col-completeness-fill { height: 100%; background: var(--blue); border-radius: 2px; }
+.col-completeness-label { font-size: 8px; color: var(--t-4); }
+
+/* Histogram for numeric columns */
+.col-hist { display: flex; align-items: flex-end; gap: 1px; height: 24px; margin-bottom: 4px; }
+.col-hist-bar {
+  flex: 1; background: rgba(45,114,210,0.4); border-radius: 1px 1px 0 0; min-height: 1px;
+  transition: background 0.1s;
+}
+.col-profile-card:hover .col-hist-bar { background: rgba(45,114,210,0.6); }
+
+/* Top values for text columns */
+.col-top-values { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.col-top-row { display: flex; align-items: center; gap: 4px; }
+.col-top-label {
+  font-size: 8px; color: var(--t-3); width: 56px; flex-shrink: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.col-top-track { flex: 1; height: 5px; background: var(--bg-5); border-radius: 2px; overflow: hidden; }
+.col-top-bar { height: 100%; background: rgba(139,92,246,0.45); border-radius: 2px; }
+.col-top-pct { font-size: 8px; color: var(--t-4); width: 28px; text-align: right; flex-shrink: 0; }
+
+/* Stats row within profile card */
+.col-profile-stats { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.col-stat { font-size: 8px; color: var(--t-3); }
+.col-stat-label {
+  font-size: 7px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--t-4); margin-right: 2px;
+}
+
+/* Selected column card */
+.col-profile-card { cursor: pointer; }
+.col-profile-selected { border-color: var(--blue); background: var(--blue-dim); }
+
+/* Detailed profile view */
+.col-detail-panel { padding: 10px; }
+.col-detail-header { margin-bottom: 6px; }
+.col-detail-back {
+  font-size: 10px; font-weight: 600; color: var(--t-3);
+  background: none; border: none; cursor: pointer; padding: 0;
+  transition: color 0.1s;
+}
+.col-detail-back:hover { color: var(--blue-bright); }
+.col-detail-title {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; margin-bottom: 4px;
+}
+.col-detail-section { margin-top: 10px; }
+.col-detail-label {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--t-4); margin-bottom: 4px;
+}
+.col-hist-lg { height: 40px; }
+
+/* ── Transform ledger strip ── */
+.prep-ledger {
+  display: flex; align-items: center; gap: 2px;
+  padding: 3px 10px; background: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+  overflow-x: auto; flex-shrink: 0;
+}
+.ledger-step {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 6px; border-radius: 3px;
+  font-size: 9px; color: var(--t-3);
+  background: var(--bg-3); border: 1px solid var(--border-1);
+  white-space: nowrap; flex-shrink: 0;
+}
+.ledger-step-last { border-color: var(--border-2); }
+.ledger-step-idx {
+  font-size: 8px; font-weight: 700; color: var(--t-4);
+  min-width: 10px; text-align: center;
+}
+.ledger-step-type { font-weight: 600; color: var(--t-2); }
+.ledger-step-detail {
+  font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: var(--t-4);
+  max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+}
+.ledger-undo {
+  background: none; border: none; cursor: pointer;
+  font-size: 12px; color: var(--t-4); padding: 0 2px; line-height: 1;
+  transition: color 0.1s;
+}
+.ledger-undo:hover { color: var(--red); }
+
+/* ── Delete confirmation inline ── */
+.ds-confirm-msg {
+  font-size: 10px; font-weight: 600; color: var(--red);
 }
 
 @media (max-width: 900px) {

@@ -49,6 +49,7 @@ import {
   markPrepSaved,
   setPrepHiddenColumns,
   undoPrepTransform,
+  undoPrepTransformTo,
   setActivePanel,
   closeActivePanel,
   updateColumnMeta,
@@ -56,6 +57,7 @@ import {
   toggleRowExclusion,
   clearAllExclusions,
   setProfileCache,
+  setExpandedProfileColumn,
   focusChart,
   addChart,
   removeChart,
@@ -431,13 +433,25 @@ async function loadDatasetById(datasetId) {
       }
     }
 
-    // 3. Run analysis per chart with per-chart params (includes column overrides)
-    const analyses = await Promise.all(
+    // 3. Run analysis per chart with per-chart params (gracefully handle per-chart failures)
+    const analysisResults = await Promise.allSettled(
       state.chartOrder.map(id => runAnalysis(datasetId, state.charts[id].params))
     );
     const ds = state.datasets.find((d) => d.id === datasetId);
     const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
-    const slots = buildSlots(analyses, baseContext);
+    const slots = {};
+    state.chartOrder.forEach((id, i) => {
+      if (analysisResults[i].status === "fulfilled") {
+        const p = state.charts[id].params;
+        const t = transformAnalysis(analysisResults[i].value, p.usl, p.lsl);
+        slots[id] = {
+          context: applyParamsToContext(baseContext, p),
+          limits: { ...t.limits, target: p.target ?? null }, capability: t.capability, violations: t.violations,
+          sigma: t.sigma, zones: t.zones, chartValues: t.chartValues,
+          chartLabels: t.chartLabels, phases: t.phases,
+        };
+      }
+    });
     state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId });
     state = setStructuralFindings(state, generateFindings(state));
     render();
@@ -510,7 +524,7 @@ root.addEventListener("click", async (e) => {
       state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
       commitRecipeRail(state);
     }
-    if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-tool-btn')) {
+    if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-tool-btn') && !e.target.closest('.prep-tool-group-btns')) {
       commit(closeActivePanel(state));
     }
     return;
@@ -671,12 +685,22 @@ root.addEventListener("click", async (e) => {
     }
     case "delete-dataset": {
       const dsId = t.dataset.datasetId;
-      if (!confirm("Delete this dataset? This cannot be undone.")) break;
-      try {
-        await deleteDataset(dsId);
-        const datasets = await fetchDatasets();
-        commit(deletePrepDataset(setDatasets(state, datasets), dsId));
-      } catch (err) { commit(setPrepError(state, err.message)); }
+      if (state.dataPrep.confirmingDeleteId === dsId) {
+        // Second click — confirmed
+        state = { ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: null } };
+        try {
+          await deleteDataset(dsId);
+          const datasets = await fetchDatasets();
+          commit(deletePrepDataset(setDatasets(state, datasets), dsId));
+        } catch (err) { commit(setPrepError(state, err.message)); }
+      } else {
+        // First click — enter confirmation state
+        commit({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: dsId } });
+      }
+      break;
+    }
+    case "cancel-delete": {
+      commit({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: null } });
       break;
     }
     case "load-prep-to-chart": {
@@ -705,9 +729,15 @@ root.addEventListener("click", async (e) => {
       commit(setPrepHiddenColumns(state, next));
       break;
     }
+    case "select-profile-column": {
+      commit(setExpandedProfileColumn(state, t.dataset.column));
+      break;
+    }
+    case "prep-undo-to":
     case "prep-undo": {
+      const stepIdx = a === "prep-undo-to" ? parseInt(t.dataset.step, 10) : undefined;
       if (state.dataPrep.transforms.length > 0) {
-        state = undoPrepTransform(state);
+        state = stepIdx != null ? undoPrepTransformTo(state, stepIdx) : undoPrepTransform(state);
         // Replay transforms from original table using original columns
         const origCols = state.dataPrep.originalColumns || state.columnConfig.columns;
         if (state.dataPrep.rawRows && origCols.length > 0) {
@@ -716,7 +746,6 @@ root.addEventListener("click", async (e) => {
           for (const tr of state.dataPrep.transforms) {
             try {
               table = applyTransform(table, tr);
-              // Rebuild column metadata for Phase 2 transforms
               if (tr.type === 'rename') {
                 columns = columns.map(c => c.name === tr.params.oldName ? { ...c, name: tr.params.newName } : c);
               } else if (tr.type === 'change_type') {
@@ -734,6 +763,7 @@ root.addEventListener("click", async (e) => {
           }
           state = setPrepTable(state, table);
           state = setColumns(state, columns);
+          state = setProfileCache(state, {}); // clear stale profiles
           if (state.dataPrep.transforms.length === 0) {
             state = markPrepSaved(state);
           }
