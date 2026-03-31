@@ -2176,7 +2176,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex; align-items: center; gap: 4px; margin-top: 3px; flex-wrap: wrap;
 }
 .col-skew-signal {
-  font-size: 8px; font-weight: 500; color: var(--t-4);
+  font-size: 8px; font-weight: 500; color: var(--t-3);
   font-style: italic; white-space: nowrap;
 }
 .col-outlier-badge {
