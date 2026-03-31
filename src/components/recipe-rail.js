@@ -94,14 +94,23 @@ function renderChartChips(state, prefix, params, context, ae, cols) {
       : specSummary(params), ""],
   ];
 
-  return chips.map(([id, label, value, detail]) => `
-    <button class="recipe-chip ${ae === id ? "chip-editing" : ""}"
-      data-action="toggle-chip-editor" data-chip="${id}" type="button">
+  return chips.map(([id, label, value, detail]) => {
+    const isEditing = ae === id;
+    const isSpecsUnset = id.endsWith("-specs") && value === "Not set";
+    const warnClass = isSpecsUnset ? "chip--warn" : "";
+    const titleAttr = isSpecsUnset
+      ? 'title="Set LSL / USL to enable Cpk, Ppk capability analysis"'
+      : "";
+    const valueStr = typeof value === "string" ? value : "";
+    return `
+    <button class="recipe-chip ${isEditing ? "chip-editing" : ""} ${warnClass}"
+      data-action="toggle-chip-editor" data-chip="${id}" type="button" ${titleAttr}>
       <span class="chip-label">${label}</span>
-      <strong>${typeof value === "string" && !value.startsWith("<") ? value : ""}${typeof value === "string" && value.startsWith("<") ? value : ""}</strong>
+      <strong>${valueStr}</strong>
       ${detail ? `<span class="chip-detail">${detail}</span>` : ""}
     </button>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function collapsedSummary(slot) {

@@ -5,10 +5,7 @@ export function renderSidebar(state) {
     <aside class="sidebar">
       <div class="brand-block">
         <div class="logo">SP</div>
-        <div>
-          <h1>Super SPC</h1>
-          <span class="muted">v0.1.0</span>
-        </div>
+        <h1>Super SPC</h1>
       </div>
       <span class="nav-section-label">Views</span>
       <nav class="nav-list">

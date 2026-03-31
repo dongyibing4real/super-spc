@@ -41,7 +41,11 @@ export function renderEvidenceRail(state, workspace) {
       <div class="rail-section">
         <p class="eyebrow">Violations</p>
         <ul class="rail-list">
-          ${whyTriggered.map(item => `<li>${item}</li>`).join("")}
+          ${whyTriggered.map(item =>
+            typeof item === "string"
+              ? `<li>${item}</li>`
+              : `<li>${item.description} — <strong class="violation-count">${item.count} point${item.count !== 1 ? "s" : ""}</strong> flagged.</li>`
+          ).join("")}
         </ul>
       </div>
 
@@ -58,13 +62,13 @@ export function renderEvidenceRail(state, workspace) {
       </div>
 
       <!-- ── FINDING ───────────────────────────────── -->
-      <div class="rail-section">
+      <div class="rail-section finding-section">
         <p class="eyebrow">Finding</p>
         <h3>${activeFinding?.title || "No draft"}</h3>
         <p>${activeFinding?.summary || "Create from signal."}</p>
         <div class="rail-actions">
-          <button data-action="create-finding" type="button">Create</button>
-          <button data-action="navigate" data-route="findings" type="button">View all</button>
+          <button class="btn btn-primary rail-cta" data-action="create-finding" type="button">Create</button>
+          <button class="btn rail-secondary" data-action="navigate" data-route="findings" type="button">View all</button>
         </div>
       </div>
 

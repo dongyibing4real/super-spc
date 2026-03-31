@@ -72,9 +72,9 @@ function buildWhyTriggered(state, point) {
     }
     byRule.get(v.testId).count += v.indices.length;
   }
-  return [...byRule.values()].map(r =>
-    `${r.description} — ${r.count} point${r.count !== 1 ? "s" : ""} flagged.`
-  );
+  return [...byRule.values()]
+    .sort((a, b) => b.count - a.count)
+    .map(r => ({ description: r.description, count: r.count }));
 }
 
 /** Rules (deduplicated by testId) that fired at a specific point index. */

@@ -53,7 +53,14 @@
   --cyan: #0EA5E9;
   --cyan-dim: rgba(14,165,233,0.15);
 
-  /* Chart accent palette (8 colors, round-robin) */
+  /* Chart accent palette (8 colors, round-robin by chartOrder index)
+     accent-0 = Chart 1, accent-1 = Chart 2, …, accent-7 = Chart 8.
+     These are DATA SERIES colors only — used for left-stripe on unfocused panes,
+     rail-card dots, and the method-dot. They are NOT used for UI focus states.
+     --accent-3 (purple #8B5CF6): fires only on the 4th chart in a workspace.
+       Intentional series encoding, not a UI chrome color — safe to keep.
+     --accent-7 (cyan #0EA5E9): fires only on the 8th chart. Reserved for
+       data series; the focused-pane border always uses --blue (see below). */
   --accent-0: var(--blue);       --accent-dim-0: var(--blue-dim);
   --accent-1: var(--teal-bright);--accent-dim-1: var(--teal-dim);
   --accent-2: var(--amber);      --accent-dim-2: var(--amber-dim);
@@ -143,13 +150,6 @@ h1, h2, h3, h4, h5, h6 {
   white-space: nowrap;
 }
 
-.brand-block .muted {
-  display: block;
-  font-size: 9px;
-  color: var(--t-4);
-  font-family: "IBM Plex Mono", monospace;
-  margin-top: 1px;
-}
 
 .logo {
   width: 24px; height: 24px;
@@ -169,7 +169,7 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--t-4);
+  color: var(--t-3); /* was --t-4: 3.4:1 on bg-0, fails WCAG AA */
 }
 
 .nav-list {
@@ -210,7 +210,6 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--blue-dim); color: var(--blue-bright);
   font-weight: 600;
   border-left: 2px solid var(--blue); border-radius: 0 var(--r-sm) var(--r-sm) 0;
-  box-shadow: inset 2px 0 8px rgba(45,114,210,0.08);
 }
 
 .sidebar-foot {
@@ -338,7 +337,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--t-2);
   font-size: 11px;
   font-weight: 600;
-  transition: all 0.06s ease;
+  transition: background var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
 }
 
 .btn:hover { border-color: var(--border-3); color: var(--t-1); background: var(--bg-4); }
@@ -393,7 +392,7 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--t-4);
+  color: var(--t-3); /* was --t-4: 2.3–3.4:1 fails WCAG AA; --t-3 passes on bg-0/bg-2 */
   margin: 0;
 }
 
@@ -621,7 +620,7 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   cursor: pointer;
-  transition: all 100ms ease;
+  transition: background var(--dur-short) var(--ease), color var(--dur-short) var(--ease), border-color var(--dur-short) var(--ease);
 }
 .rail-add-chart:hover {
   border-color: var(--blue);
@@ -674,7 +673,7 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   cursor: pointer;
-  transition: all 100ms ease;
+  transition: background var(--dur-short) var(--ease), color var(--dur-short) var(--ease);
 }
 .rail-card-btn--cancel {
   background: var(--bg-2);
@@ -702,6 +701,31 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0 -1px;
 }
 
+/* Editability affordance — reveal chevron + left border on hover */
+.rail-card .recipe-chip:not(.chip-editing) {
+  position: relative;
+  transition: background var(--dur-short) var(--ease), border-left-color var(--dur-short) var(--ease);
+}
+.rail-card .recipe-chip:not(.chip-editing)::after {
+  content: "›";
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  color: var(--t-4);
+  opacity: 0;
+  transition: opacity var(--dur-short) var(--ease);
+  pointer-events: none;
+}
+.rail-card .recipe-chip:not(.chip-editing):hover {
+  background: var(--bg-3);
+  border-left-color: var(--border-3);
+}
+.rail-card .recipe-chip:not(.chip-editing):hover::after {
+  opacity: 1;
+}
+
 /* ── Primary chips (Variables) — prominent ── */
 .recipe-chip {
   display: flex;
@@ -712,7 +736,7 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 0;
   background: transparent;
   cursor: pointer;
-  transition: background 0.06s ease;
+  transition: background var(--dur-short) var(--ease);
   border-left: 2px solid transparent;
   color: var(--t-1);
 }
@@ -723,13 +747,25 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: inset 2px 0 6px rgba(45,114,210,0.06);
 }
 
+/* ── Warning state: specs not set ── */
+.recipe-chip.chip--warn strong {
+  color: var(--amber);
+}
+.recipe-chip.chip--warn .chip-label {
+  color: var(--amber);
+  opacity: 0.75;
+}
+.recipe-chip.chip--warn:not(.chip-editing):hover::after {
+  color: var(--amber);
+}
+
 .chip-label {
   display: block;
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--t-4);
+  color: var(--t-3); /* was --t-4: 2.67:1 on bg-2, fails WCAG AA */
   margin-bottom: 1px;
 }
 
@@ -1075,13 +1111,15 @@ h1, h2, h3, h4, h5, h6 {
   transition: border-color 150ms ease;
 }
 
-/* Unfocused pane — left accent stripe */
+/* Unfocused pane — left accent stripe uses series color (data identity) */
 .chart-pane:not(.pane-focused) {
   border-left-color: var(--pane-accent, var(--blue));
 }
-/* Focused pane — full accent border */
+/* Focused pane — always blue: focus is a UI chrome state, not series identity.
+   Keeping focus color consistent across all chart indices prevents cyan/purple
+   focus rings when the 7th or 8th chart in a workspace is selected. */
 .chart-pane.pane-focused {
-  border-color: var(--pane-accent, var(--blue));
+  border-color: var(--blue);
 }
 .chart-pane.pane-focused .chart-pane-titlebar {
   background: var(--chart-bg);
@@ -1396,7 +1434,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .rail-section:first-child { padding-top: 0; }
 .rail-section:last-child { border-bottom: none; }
-.rail-section .eyebrow { color: var(--t-4); margin-bottom: 4px; }
+.rail-section .eyebrow { color: var(--t-3); margin-bottom: 4px; }
 
 .rail-section h3 {
   font-size: 13px;
@@ -1421,12 +1459,12 @@ h1, h2, h3, h4, h5, h6 {
   margin-top: 2px;
 }
 .rail-tier-label .eyebrow {
-  color: var(--t-4);
+  color: var(--t-3);
 }
 .rail-tier-badge {
   font-size: 9px;
   font-weight: 600;
-  color: var(--t-4);
+  color: var(--t-3);
   font-family: "IBM Plex Mono", monospace;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1477,7 +1515,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .rail-section.signal-hero .eyebrow {
   font-size: 9px;
-  color: var(--t-3);
+  color: var(--t-2); /* --bg-3 background: --t-3 gives only 4.35:1; --t-2 gives 7.67:1 */
 }
 
 .rail-section.signal-hero h3 {
@@ -1555,22 +1593,43 @@ h1, h2, h3, h4, h5, h6 {
 .rail-actions {
   display: flex;
   gap: 4px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
-.rail-actions button {
+/* size both buttons to fill the rail equally */
+.rail-actions .btn {
   flex: 1;
-  padding: 4px 8px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--border-2);
-  background: var(--bg-3);
-  color: var(--t-3);
-  font-size: 10px;
-  font-weight: 600;
-  transition: all 0.06s ease;
+  justify-content: center;
+  font-size: 11px;
+  padding: 5px 8px;
 }
 
-.rail-actions button:hover { background: var(--bg-4); color: var(--t-1); }
+/* "View all" secondary — muted ghost */
+.rail-actions .rail-secondary {
+  background: transparent;
+  border-color: var(--border-2);
+  color: var(--t-4);
+}
+.rail-actions .rail-secondary:hover {
+  background: var(--bg-3);
+  color: var(--t-2);
+  border-color: var(--border-3);
+}
+
+/* finding section pinned to bottom of evidence rail */
+.finding-section {
+  margin-top: auto;
+  border-bottom: none;
+  border-top: 1px solid var(--border-2);
+  padding-top: 10px;
+}
+
+/* violation count — bold, slightly brighter */
+.violation-count {
+  color: var(--t-1);
+  font-weight: 700;
+  font-family: "IBM Plex Mono", monospace;
+}
 
 /* ═══════════════════════════════════════════════════
    ROUTE PANELS
@@ -2328,7 +2387,7 @@ button:focus-visible { outline-offset: 0; }
   align-items: center;
   gap: 1px;
 }
-.health-metric .eyebrow { font-size: 9px; color: var(--t-4); }
+.health-metric .eyebrow { font-size: 9px; color: var(--t-3); }
 .health-metric strong { font-size: 12px; }
 .health-metric strong.good { color: var(--green); }
 .health-metric strong.warning { color: var(--amber); }
@@ -2511,7 +2570,7 @@ button:focus-visible { outline-offset: 0; }
   background: var(--bg-2);
   border-radius: 2px;
 }
-.finding-context-grid .eyebrow { font-size: 9px; color: var(--t-4); }
+.finding-context-grid .eyebrow { font-size: 9px; color: var(--t-3); }
 .finding-context-grid strong { font-size: 11px; color: var(--t-2); }
 
 /* Summary stats table */
@@ -2584,4 +2643,151 @@ button:focus-visible { outline-offset: 0; }
   .chart-rail-card { min-width: 140px; }
   .findings-dashboard-grid { grid-template-columns: 1fr; }
   .findings-ai-cards { grid-template-columns: 1fr; }
+}
+
+/* ═══════════════════════════════════════════════════
+   KEYBOARD SHORTCUT OVERLAY
+   Triggered by pressing "?" from the workspace.
+   ═══════════════════════════════════════════════════ */
+
+.shortcut-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shortcut-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: default;
+}
+
+.shortcut-overlay-panel {
+  position: relative;
+  z-index: 1;
+  background: var(--bg-2);
+  border: 1px solid var(--border-3);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  width: 320px;
+  padding: 0 0 16px;
+  animation: overlay-in 150ms ease-out;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.shortcut-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border-2);
+  margin-bottom: 10px;
+}
+
+.shortcut-overlay-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-1);
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.shortcut-overlay-close {
+  background: none;
+  border: none;
+  color: var(--t-3);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  border-radius: 3px;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.shortcut-overlay-close:hover {
+  color: var(--t-1);
+  background: var(--bg-3);
+}
+
+.shortcut-list {
+  margin: 0;
+  padding: 0 16px;
+}
+
+.shortcut-group-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  padding: 10px 0 4px;
+}
+
+.shortcut-group-label:first-child {
+  padding-top: 2px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.shortcut-row dt {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.shortcut-row dd {
+  margin: 0;
+  font-size: 12px;
+  color: var(--t-2);
+  text-align: right;
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-3);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--t-2);
+  line-height: 1;
+  box-shadow: none;
+}
+
+/* ═══════════════════════════════════════════════════
+   REDUCED MOTION — respect vestibular sensitivity
+   Per .impeccable.md: "Reduced motion support"
+   ═══════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .route-panel, .workspace-layout {
+    animation: none;
+  }
+  .rail-card--focused {
+    animation: none;
+  }
 }

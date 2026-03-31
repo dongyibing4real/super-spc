@@ -161,6 +161,31 @@ function buildChartData(id) {
 }
 
 /* ═══ Main render ═══ */
+function renderShortcutOverlay() {
+  return `
+    <div class="shortcut-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+      <div class="shortcut-overlay-backdrop" data-action="close-shortcut-overlay"></div>
+      <div class="shortcut-overlay-panel">
+        <div class="shortcut-overlay-header">
+          <h2 class="shortcut-overlay-title">Keyboard Shortcuts</h2>
+          <button class="shortcut-overlay-close" data-action="close-shortcut-overlay" type="button" aria-label="Close">✕</button>
+        </div>
+        <dl class="shortcut-list">
+          <div class="shortcut-group-label">Violations</div>
+          <div class="shortcut-row"><dt><kbd>n</kbd></dt><dd>Next violation point</dd></div>
+          <div class="shortcut-row"><dt><kbd>p</kbd></dt><dd>Previous violation point</dd></div>
+          <div class="shortcut-group-label">Analysis</div>
+          <div class="shortcut-row"><dt><kbd>f</kbd></dt><dd>Create finding from selection</dd></div>
+          <div class="shortcut-group-label">Navigation</div>
+          <div class="shortcut-row"><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Move selected point</dd></div>
+          <div class="shortcut-row"><dt><kbd>?</kbd></dt><dd>Toggle this help overlay</dd></div>
+          <div class="shortcut-row"><dt><kbd>Esc</kbd></dt><dd>Close overlays / cancel</dd></div>
+        </dl>
+      </div>
+    </div>
+  `;
+}
+
 function render() {
   morphInner(root, `
     <div class="app-shell">
@@ -170,6 +195,7 @@ function render() {
         ${renderRoute()}
       </main>
     </div>
+    ${state.ui?.shortcutOverlay ? renderShortcutOverlay() : ""}
   `);
 
   if (state.route === "workspace") {
@@ -464,6 +490,10 @@ root.addEventListener("click", async (e) => {
   }
   const a = t.dataset.action;
   switch (a) {
+    case "close-shortcut-overlay":
+      state = { ...state, ui: { ...state.ui, shortcutOverlay: false } };
+      render();
+      return;
     case "navigate": {
       commit(navigate(state, t.dataset.route));
       if (t.dataset.route === "dataprep" && state.dataPrep.selectedDatasetId && state.dataPrep.datasetPoints.length === 0) {
@@ -1032,6 +1062,56 @@ root.addEventListener("keydown", (e) => {
       : items[(idx - 1 + items.length) % items.length];
     next?.focus();
     return;
+  }
+
+  // Dismiss shortcut overlay with Escape or ?
+  if (state.ui.shortcutOverlay) {
+    if (e.key === "Escape" || e.key === "?") {
+      e.preventDefault();
+      state = { ...state, ui: { ...state.ui, shortcutOverlay: false } };
+      render();
+      return;
+    }
+  }
+
+  // Global shortcuts — skip when typing in an input/textarea/select
+  const tag = document.activeElement?.tagName;
+  const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  if (!inInput && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (e.key === "?") {
+      e.preventDefault();
+      state = { ...state, ui: { ...state.ui, shortcutOverlay: true } };
+      render();
+      return;
+    }
+
+    if (e.key === "f" && state.route === "workspace") {
+      e.preventDefault();
+      commitEvidenceRail(createFindingFromSelection(state));
+      return;
+    }
+
+    if ((e.key === "n" || e.key === "p") && state.route === "workspace") {
+      e.preventDefault();
+      const focused = getFocused(state);
+      if (!focused) return;
+      const violations = focused.violations || [];
+      // Collect all flagged point indices, deduplicated and sorted
+      const indices = [...new Set(
+        violations.flatMap(v => v.indices || [])
+      )].sort((a, b) => a - b);
+      if (indices.length === 0) return;
+      const cur = state.selectedPointIndex ?? -1;
+      let target;
+      if (e.key === "n") {
+        target = indices.find(i => i > cur) ?? indices[0];
+      } else {
+        const prev = [...indices].reverse().find(i => i < cur);
+        target = prev ?? indices[indices.length - 1];
+      }
+      commitChart(selectPoint(state, target));
+      return;
+    }
   }
 
   const ch = e.target.closest("[data-chart-focus], [data-action='select-point']");
