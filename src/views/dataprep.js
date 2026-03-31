@@ -110,30 +110,21 @@ function renderUtilityBar(state) {
     </div>`;
 }
 
-function renderColumnToolbar(state) {
+function renderTransformToolbar(state) {
   const ap = state.dataPrep.activePanel;
   return `
-    <div class="prep-col-toolbar">
+    <div class="prep-transform-toolbar">
+      <span class="prep-toolbar-group-label">Col</span>
       ${COL_OPS.map(op => `
         <button data-action="${op.action}" type="button"
           class="prep-col-btn${op.panel && ap === op.panel ? ' active' : ''}">${op.label}</button>
       `).join('')}
-    </div>`;
-}
-
-function renderRowSidebar(state) {
-  const ap = state.dataPrep.activePanel;
-  const w = typeof window !== 'undefined'
-    ? parseInt(localStorage.getItem('prep-sidebar-width') || '80', 10) : 80;
-
-  return `
-    <div class="prep-row-sidebar" style="width:${w}px" data-sidebar-width="${w}">
+      <div class="prep-toolbar-divider"></div>
+      <span class="prep-toolbar-group-label">Row</span>
       ${ROW_OPS.map(op => `
         <button data-action="${op.action}" type="button"
-          class="prep-row-btn${op.panel && ap === op.panel ? ' active' : ''}"
-          data-label="${op.label}" data-short="${op.short}">${w >= 80 ? op.label : w >= 48 ? op.short : ''}</button>
+          class="prep-col-btn${op.panel && ap === op.panel ? ' active' : ''}">${op.label}</button>
       `).join('')}
-      <div class="prep-sidebar-handle" data-action="sidebar-resize"></div>
     </div>`;
 }
 
@@ -478,11 +469,10 @@ function renderPrepTable(state) {
   return `
     <div class="prep-center">
     ${renderUtilityBar(state)}
-    ${renderColumnToolbar(state)}
+    ${renderTransformToolbar(state)}
     ${renderPrepPanel(state)}
     ${renderTransformLedger(state)}
     <div class="prep-table-area">
-      ${renderRowSidebar(state)}
       <div class="prep-table-wrap" data-action="prep-table-scroll">
         <table class="prep-table">
           <thead><tr>
