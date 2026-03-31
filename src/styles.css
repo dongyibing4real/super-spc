@@ -2166,7 +2166,7 @@ h1, h2, h3, h4, h5, h6 {
 .col-profile-stats { display: flex; flex-wrap: wrap; gap: 2px 8px; }
 .col-stat { font-size: 8px; color: var(--t-2); font-family: 'IBM Plex Mono', monospace; }
 .col-stat-label {
-  font-size: 7px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--t-4); margin-right: 2px; font-family: 'Inter', sans-serif;
 }
 .col-stat-warn { color: var(--amber); }
