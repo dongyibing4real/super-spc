@@ -2071,11 +2071,11 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ── Phase 3: column header profile ── */
 .prep-table th.th-with-profile {
-  vertical-align: top; padding: 6px 8px 6px; min-width: 80px;
+  vertical-align: top; padding: 4px 8px 4px; min-width: 80px;
 }
 .th-name-row {
   display: flex; align-items: center; gap: 3px; flex-wrap: nowrap;
-  overflow: hidden; margin-bottom: 5px; color: var(--t-2);
+  overflow: hidden; margin-bottom: 3px; color: var(--t-2);
 }
 .th-profile { display: flex; flex-direction: column; gap: 2px; }
 
@@ -2094,7 +2094,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Text top-value mini bars */
-.th-mini-top { display: flex; flex-direction: column; gap: 2px; }
+.th-mini-top { display: flex; flex-direction: column; gap: 1px; max-height: 28px; overflow: hidden; }
 .th-top-row { display: flex; align-items: center; gap: 3px; }
 .th-top-label {
   font-family: "IBM Plex Mono", monospace; font-size: 8px; color: var(--t-3);
