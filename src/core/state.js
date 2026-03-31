@@ -208,7 +208,7 @@ const DEFAULT_LIMITS = {
   version: "", scope: "Dataset"
 };
 
-const DEFAULT_PARAMS = {
+export const DEFAULT_PARAMS = {
   chart_type: "imr",
   sigma_method: "moving_range",
   k_sigma: 3.0,
@@ -217,6 +217,9 @@ const DEFAULT_PARAMS = {
   subgroup_column: null,
   phase_column: null,
   n_trials: null,
+  usl: null,
+  lsl: null,
+  target: null,
 };
 
 export function createSlot(overrides = {}) {
@@ -233,6 +236,7 @@ export function createSlot(overrides = {}) {
     chartLabels: [],
     phases: [],
     selectedPointIndex: null,
+    showDataTable: false,
     ...overrides,
   };
 }
@@ -257,42 +261,152 @@ export function getFocused(state) {
   return state.charts[state.focusedChartId] || getPrimary(state);
 }
 
-/* ═══ Split tree helpers ═══ */
+/* ═══ Freeform Split Layout (binary split tree) ═══ */
 
-/** Find the tree node at a given path (array of 0/1 indices) */
-function getNodeAtPath(tree, path) {
-  let node = tree;
-  for (const idx of path) {
-    if (!node.children) return null;
-    node = node.children[idx];
-  }
-  return node;
-}
 
-/** Immutably replace a tree node at a given path */
-function replaceNodeAtPath(tree, path, replacement) {
-  if (path.length === 0) return replacement;
-  const [head, ...rest] = path;
-  const newChildren = tree.children.map((child, i) =>
-    i === head ? replaceNodeAtPath(child, rest, replacement) : child
-  );
-  return { ...tree, children: newChildren, sizes: [...tree.sizes] };
-}
+/* ── Tree helpers (kept temporarily for migration only) ─────── */
 
-/** Collect all chartIds from a tree (leaf traversal) */
-export function collectChartIds(node) {
+function _collect(node) {
+  if (!node) return [];
   if (node.type === "pane") return [node.chartId];
-  return node.children.flatMap(collectChartIds);
+  return node.children.flatMap(_collect);
 }
 
-/** Find the path to a pane by chartId */
-function findPanePath(node, chartId, path = []) {
-  if (node.type === "pane") return node.chartId === chartId ? path : null;
-  for (let i = 0; i < node.children.length; i++) {
-    const result = findPanePath(node.children[i], chartId, [...path, i]);
-    if (result) return result;
+/** Migrate legacy tree layout to row-grid on load */
+export function migrateTreeToRows(layout) {
+  if (layout.rows && layout.colWeights) return layout;
+  if (layout.rows) {
+    // Has rows but no weights — add default weights
+    return { rows: layout.rows, colWeights: layout.rows.map(r => r.map(() => 1)), rowWeights: layout.rows.map(() => 1) };
   }
-  return null;
+  if (layout.tree) {
+    const ids = _collect(layout.tree);
+    return { rows: [ids], colWeights: [ids.map(() => 1)], rowWeights: [1] };
+  }
+  if (layout.slots) {
+    const ids = [...layout.slots];
+    return { rows: [ids], colWeights: [ids.map(() => 1)], rowWeights: [1] };
+  }
+  return { rows: [], colWeights: [], rowWeights: [] };
+}
+
+/** Get all chart IDs visible in the current layout */
+export function collectChartIds(layout) {
+  if (!layout?.rows) {
+    // Legacy fallback — auto-migrate
+    if (layout?.tree) return _collect(layout.tree);
+    if (layout?.slots) return [...layout.slots];
+    return [];
+  }
+  return layout.rows.flat();
+}
+
+/** Insert a chart at a position relative to a target chart */
+export function insertChart(state, chartId, targetId, zone) {
+  const rows = state.chartLayout.rows.map(r => [...r]);
+  const colWeights = state.chartLayout.colWeights.map(r => [...r]);
+  const rowWeights = [...state.chartLayout.rowWeights];
+
+  if (zone === "center") {
+    // Swap: exchange positions and weights
+    const aR = rows.findIndex(r => r.includes(chartId));
+    const aC = rows[aR].indexOf(chartId);
+    const bR = rows.findIndex(r => r.includes(targetId));
+    const bC = rows[bR].indexOf(targetId);
+    rows[aR][aC] = targetId;
+    rows[bR][bC] = chartId;
+    const tmpW = colWeights[aR][aC];
+    colWeights[aR][aC] = colWeights[bR][bC];
+    colWeights[bR][bC] = tmpW;
+    return { ...state, chartLayout: { rows, colWeights, rowWeights } };
+  }
+
+  const tR = rows.findIndex(r => r.includes(targetId));
+
+  // Remove chartId from current position
+  const sR = rows.findIndex(r => r.includes(chartId));
+  if (sR >= 0) {
+    const sC = rows[sR].indexOf(chartId);
+    rows[sR].splice(sC, 1);
+    colWeights[sR].splice(sC, 1);
+    if (rows[sR].length === 0) {
+      rows.splice(sR, 1);
+      colWeights.splice(sR, 1);
+      rowWeights.splice(sR, 1);
+    }
+  }
+
+  // Recompute target after removal
+  const tR2 = rows.findIndex(r => r.includes(targetId));
+  const tC2 = rows[tR2].indexOf(targetId);
+
+  switch (zone) {
+    case "right":
+      rows[tR2].splice(tC2 + 1, 0, chartId);
+      colWeights[tR2].splice(tC2 + 1, 0, 1);
+      break;
+    case "left":
+      rows[tR2].splice(tC2, 0, chartId);
+      colWeights[tR2].splice(tC2, 0, 1);
+      break;
+    case "bottom":
+      rows.splice(tR2 + 1, 0, [chartId]);
+      colWeights.splice(tR2 + 1, 0, [1]);
+      rowWeights.splice(tR2 + 1, 0, 1);
+      break;
+    case "top":
+      rows.splice(tR2, 0, [chartId]);
+      colWeights.splice(tR2, 0, [1]);
+      rowWeights.splice(tR2, 0, 1);
+      break;
+  }
+
+  return { ...state, chartLayout: { rows, colWeights, rowWeights } };
+}
+
+/** Compute a preview of the grid after a drag-drop — does NOT modify state */
+export function computeGridPreview(layout, draggingId, targetId, zone) {
+  const { rows, colWeights, rowWeights } = layout;
+  if (!draggingId || !targetId || draggingId === targetId) return layout;
+
+  if (zone === "center") {
+    const preview = rows.map(r => r.map(id =>
+      id === draggingId ? targetId : id === targetId ? draggingId : id
+    ));
+    return { rows: preview, colWeights, rowWeights };
+  }
+
+  // Remove dragging from current position, keeping weights in sync
+  const pRows = [];
+  const pColW = [];
+  const pRowW = [];
+  for (let r = 0; r < rows.length; r++) {
+    const filtered = [];
+    const filteredW = [];
+    for (let c = 0; c < rows[r].length; c++) {
+      if (rows[r][c] !== draggingId) {
+        filtered.push(rows[r][c]);
+        filteredW.push(colWeights[r][c]);
+      }
+    }
+    if (filtered.length > 0) {
+      pRows.push(filtered);
+      pColW.push(filteredW);
+      pRowW.push(rowWeights[r]);
+    }
+  }
+
+  const tR = pRows.findIndex(r => r.includes(targetId));
+  if (tR < 0) return layout;
+  const tC = pRows[tR].indexOf(targetId);
+
+  switch (zone) {
+    case "right":  pRows[tR].splice(tC + 1, 0, draggingId); pColW[tR].splice(tC + 1, 0, 1); break;
+    case "left":   pRows[tR].splice(tC, 0, draggingId); pColW[tR].splice(tC, 0, 1); break;
+    case "bottom": pRows.splice(tR + 1, 0, [draggingId]); pColW.splice(tR + 1, 0, [1]); pRowW.splice(tR + 1, 0, 1); break;
+    case "top":    pRows.splice(tR, 0, [draggingId]); pColW.splice(tR, 0, [1]); pRowW.splice(tR, 0, 1); break;
+  }
+  return { rows: pRows, colWeights: pColW, rowWeights: pRowW };
 }
 
 export function createInitialState() {
@@ -342,14 +456,15 @@ export function createInitialState() {
     nextChartId: 2,
     focusedChartId: "chart-1",
     chartLayout: {
-      tree: { type: "pane", chartId: "chart-1" },
-      minPaneSize: 300,
+      rows: [["chart-1"]],
+      colWeights: [[1]],
+      rowWeights: [1],
     },
-    chartPicker: null, // { open: true } when the add-chart picker is visible
     ui: {
       notice: null,
       contextMenu: null,
-      layersExpanded: false
+      layersExpanded: false,
+      pendingNewChart: null,
     },
     auditLog: [],
     dataPrep: {
@@ -360,12 +475,16 @@ export function createInitialState() {
       sortColumn: 'sequence_index',
       sortDirection: 'asc',
       rawRows: null,
+      originalColumns: [],
       arqueroTable: null,
       transforms: [],
       hiddenColumns: [],
       columnOrder: [],
       unsavedChanges: false,
       activePanel: null,
+      excludedRows: [],
+      expandedProfileColumn: null,
+      profileCache: {},
     },
     columnConfig: {
       columns: [],
@@ -407,6 +526,12 @@ export function loadDataset(state, { points, slots, datasetId }) {
 
 export function toggleDataTable(state) {
   return { ...state, showDataTable: !state.showDataTable };
+}
+
+export function togglePaneDataTable(state, chartId) {
+  const slot = state.charts[chartId];
+  if (!slot) return state;
+  return updateSlot(state, chartId, { showDataTable: !slot.showDataTable });
 }
 
 export function setLoadingState(state, loading) {
@@ -505,6 +630,7 @@ export function setPrepParsedData(state, { rawRows, arqueroTable, columns }) {
     dataPrep: {
       ...state.dataPrep,
       rawRows,
+      originalColumns: columns, // preserved for undo replay (immune to rename/type changes)
       arqueroTable,
       transforms: [],
       hiddenColumns: [],
@@ -581,7 +707,83 @@ export function closeActivePanel(state) {
   };
 }
 
-/* ═══ Column Config + Analysis Params actions ═══ */
+/**
+ * Update column metadata (for rename, change dtype).
+ * Also updates hiddenColumns if a column name changed.
+ */
+export function updateColumnMeta(state, oldName, updates) {
+  const columns = state.columnConfig.columns.map(c =>
+    c.name === oldName ? { ...c, ...updates } : c
+  );
+  let hiddenColumns = state.dataPrep.hiddenColumns;
+  if (updates.name && updates.name !== oldName) {
+    hiddenColumns = hiddenColumns.map(h => h === oldName ? updates.name : h);
+  }
+  return {
+    ...state,
+    columnConfig: { ...state.columnConfig, columns },
+    dataPrep: { ...state.dataPrep, hiddenColumns },
+  };
+}
+
+/**
+ * Add new column metadata (for calculated, split, concat, recode-to-new, bin).
+ * @param {Object} state
+ * @param {Array<{name: string, dtype: string, role: string|null}>} newColumns
+ */
+export function addColumnMeta(state, newColumns) {
+  const startOrdinal = state.columnConfig.columns.length;
+  const withOrdinals = newColumns.map((c, i) => ({
+    ...c,
+    role: c.role ?? null,
+    ordinal: startOrdinal + i,
+  }));
+  return {
+    ...state,
+    columnConfig: {
+      ...state.columnConfig,
+      columns: [...state.columnConfig.columns, ...withOrdinals],
+    },
+  };
+}
+
+// ═══ Phase 3 — Row Exclusion ═══
+
+export function toggleRowExclusion(state, rowIdx) {
+  const excluded = [...state.dataPrep.excludedRows];
+  const pos = excluded.indexOf(rowIdx);
+  if (pos >= 0) excluded.splice(pos, 1);
+  else excluded.push(rowIdx);
+  return { ...state, dataPrep: { ...state.dataPrep, excludedRows: excluded } };
+}
+
+export function bulkExcludeRows(state, indices) {
+  const excluded = [...new Set([...state.dataPrep.excludedRows, ...indices])];
+  return { ...state, dataPrep: { ...state.dataPrep, excludedRows: excluded } };
+}
+
+export function clearAllExclusions(state) {
+  return { ...state, dataPrep: { ...state.dataPrep, excludedRows: [] } };
+}
+
+// ═══ Phase 3 — Data Profiling ═══
+
+export function setExpandedProfileColumn(state, colName) {
+  const current = state.dataPrep.expandedProfileColumn;
+  return {
+    ...state,
+    dataPrep: {
+      ...state.dataPrep,
+      expandedProfileColumn: current === colName ? null : colName,
+    },
+  };
+}
+
+export function setProfileCache(state, cache) {
+  return { ...state, dataPrep: { ...state.dataPrep, profileCache: cache } };
+}
+
+/* ═══ Column Config + Analysis Params actions ��══ */
 
 export function setColumns(state, columns) {
   return {
@@ -942,44 +1144,18 @@ export function closeContextMenu(state) {
   return { ...state, ui: { ...state.ui, contextMenu: null } };
 }
 
-export function setChartLayout(state, arrangement, primaryPosition, splitRatio) {
-  // Legacy preset support: convert arrangement name to a tree
-  if (state.chartOrder.length <= 1) return state;
-  const ids = state.chartOrder;
-  const ratio = splitRatio != null ? splitRatio : (arrangement.includes("wide") || arrangement.includes("tall") ? 0.67 : 0.5);
-  const isVert = arrangement === "vertical" || arrangement === "primary-tall" || arrangement === "challenger-tall";
-  const direction = isVert ? "column" : "row";
-  const firstId = (primaryPosition === "left" || primaryPosition === "top") ? ids[0] : ids[1];
-  const secondId = firstId === ids[0] ? ids[1] : ids[0];
-
-  if (arrangement === "single") {
-    return { ...state, chartLayout: { ...state.chartLayout, tree: { type: "pane", chartId: ids[0] } } };
-  }
-  return {
-    ...state,
-    chartLayout: {
-      ...state.chartLayout,
-      tree: {
-        type: "container", direction,
-        children: [{ type: "pane", chartId: firstId }, { type: "pane", chartId: secondId }],
-        sizes: [ratio, 1 - ratio],
-      },
-    },
-  };
-}
-
-/* ═══ Multi-chart actions ═══ */
+/* ═══ Split Layout actions ═══ */
 
 export function focusChart(state, chartId) {
   if (!state.charts[chartId] || state.focusedChartId === chartId) return state;
   return { ...state, focusedChartId: chartId };
 }
 
-export function addChart(state, { chartType = "imr", splitDirection = "row" } = {}) {
+/** Add a new chart using row-grid auto-placement rules */
+export function addChart(state, { chartType = "imr" } = {}) {
   const newId = `chart-${state.nextChartId}`;
   const focusedSlot = getFocused(state);
 
-  // Inherit metric/subgroup/phase from focused chart
   const newParams = {
     ...DEFAULT_PARAMS,
     chart_type: chartType,
@@ -987,8 +1163,6 @@ export function addChart(state, { chartType = "imr", splitDirection = "row" } = 
     subgroup_column: focusedSlot.params.subgroup_column,
     phase_column: focusedSlot.params.phase_column,
   };
-
-  // Set initial context to reflect chosen chart type (fully updated by reanalyze later)
   const chartLabels = {
     imr: "IMR", xbar_r: "X-Bar R", xbar_s: "X-Bar S", r: "R", s: "S", mr: "MR",
     p: "P", np: "NP", c: "C", u: "U", laney_p: "Laney P\u2019", laney_u: "Laney U\u2019",
@@ -998,72 +1172,65 @@ export function addChart(state, { chartType = "imr", splitDirection = "row" } = 
     hotelling_t2: "Hotelling T\u00B2", mewma: "MEWMA",
   };
   const label = chartLabels[chartType] || chartType;
-  const initialContext = {
-    ...focusedSlot.context,
-    chartType: { id: chartType, label, detail: "" },
-    methodBadge: label,
-  };
-  const newSlot = createSlot({ params: newParams, context: initialContext });
-  const newCharts = { ...state.charts, [newId]: newSlot };
-  const newOrder = [...state.chartOrder, newId];
+  const newSlot = createSlot({
+    params: newParams,
+    context: { ...focusedSlot.context, chartType: { id: chartType, label, detail: "" }, methodBadge: label },
+  });
 
-  // Split the focused pane in the tree
-  const focusedPath = findPanePath(state.chartLayout.tree, state.focusedChartId);
-  const newTree = focusedPath !== null
-    ? replaceNodeAtPath(state.chartLayout.tree, focusedPath, {
-        type: "container",
-        direction: splitDirection,
-        children: [
-          { type: "pane", chartId: state.focusedChartId },
-          { type: "pane", chartId: newId },
-        ],
-        sizes: [0.5, 0.5],
-      })
-    : {
-        type: "container",
-        direction: splitDirection,
-        children: [state.chartLayout.tree, { type: "pane", chartId: newId }],
-        sizes: [0.5, 0.5],
-      };
+  // Auto-placement: fill last row first, then new row below
+  const { rows, colWeights, rowWeights } = state.chartLayout;
+  const lastRow = rows[rows.length - 1];
+  const rowAbove = rows.length >= 2 ? rows[rows.length - 2] : null;
+  const maxInRow = rowAbove ? rowAbove.length : 2;
+  let newRows, newColWeights, newRowWeights;
+  if (lastRow.length < maxInRow) {
+    newRows = [...rows.slice(0, -1), [...lastRow, newId]];
+    newColWeights = [...colWeights.slice(0, -1), [...colWeights[colWeights.length - 1], 1]];
+    newRowWeights = rowWeights;
+  } else {
+    newRows = [...rows, [newId]];
+    newColWeights = [...colWeights, [1]];
+    newRowWeights = [...rowWeights, 1];
+  }
 
   return {
     ...state,
-    charts: newCharts,
-    chartOrder: newOrder,
+    charts: { ...state.charts, [newId]: newSlot },
+    chartOrder: [...state.chartOrder, newId],
     nextChartId: state.nextChartId + 1,
     focusedChartId: newId,
-    chartLayout: { ...state.chartLayout, tree: newTree },
-    chartPicker: null,
+    chartLayout: { rows: newRows, colWeights: newColWeights, rowWeights: newRowWeights },
   };
 }
 
+/** Remove a chart from the row-grid layout */
 export function removeChart(state, chartId) {
-  // Cannot remove the last chart
-  if (state.chartOrder.length <= 1) return state;
+  if (collectChartIds(state.chartLayout).length <= 1) return state;
   if (!state.charts[chartId]) return state;
 
-  // Remove from charts and order
+  const { rows, colWeights, rowWeights } = state.chartLayout;
+  const newRows = [];
+  const newColWeights = [];
+  const newRowWeights = [];
+  for (let r = 0; r < rows.length; r++) {
+    const filtered = [];
+    const filteredW = [];
+    for (let c = 0; c < rows[r].length; c++) {
+      if (rows[r][c] !== chartId) {
+        filtered.push(rows[r][c]);
+        filteredW.push(colWeights[r][c]);
+      }
+    }
+    if (filtered.length > 0) {
+      newRows.push(filtered);
+      newColWeights.push(filteredW);
+      newRowWeights.push(rowWeights[r]);
+    }
+  }
+
   const newCharts = { ...state.charts };
   delete newCharts[chartId];
   const newOrder = state.chartOrder.filter(id => id !== chartId);
-
-  // Collapse the tree: find the pane, replace its parent container with the sibling
-  const path = findPanePath(state.chartLayout.tree, chartId);
-  let newTree = state.chartLayout.tree;
-  if (path && path.length > 0) {
-    const parentPath = path.slice(0, -1);
-    const childIndex = path[path.length - 1];
-    const parent = getNodeAtPath(newTree, parentPath);
-    if (parent && parent.children) {
-      const sibling = parent.children[1 - childIndex];
-      newTree = replaceNodeAtPath(newTree, parentPath, sibling);
-    }
-  } else if (path && path.length === 0) {
-    // Removing root pane — shouldn't happen (guarded above), but safe fallback
-    newTree = { type: "pane", chartId: newOrder[0] };
-  }
-
-  // Move focus to sibling or first chart
   const newFocus = state.focusedChartId === chartId ? newOrder[0] : state.focusedChartId;
 
   return {
@@ -1071,124 +1238,26 @@ export function removeChart(state, chartId) {
     charts: newCharts,
     chartOrder: newOrder,
     focusedChartId: newFocus,
-    chartLayout: { ...state.chartLayout, tree: newTree },
+    chartLayout: { rows: newRows, colWeights: newColWeights, rowWeights: newRowWeights },
   };
 }
 
-export function resizeSplit(state, path, sizes) {
-  const node = getNodeAtPath(state.chartLayout.tree, path);
-  if (!node || node.type !== "container") return state;
-  const newTree = replaceNodeAtPath(state.chartLayout.tree, path, { ...node, sizes });
-  return { ...state, chartLayout: { ...state.chartLayout, tree: newTree } };
+/** Set column weight ratio between two adjacent panes in a row */
+export function setColWeight(state, rowIndex, leftCol, ratio) {
+  const colWeights = state.chartLayout.colWeights.map(r => [...r]);
+  const total = colWeights[rowIndex][leftCol] + colWeights[rowIndex][leftCol + 1];
+  colWeights[rowIndex][leftCol] = total * ratio;
+  colWeights[rowIndex][leftCol + 1] = total * (1 - ratio);
+  return { ...state, chartLayout: { ...state.chartLayout, colWeights } };
 }
 
-export function openChartPicker(state) {
-  return { ...state, chartPicker: { open: true } };
-}
-
-export function closeChartPicker(state) {
-  return { ...state, chartPicker: null };
-}
-
-/** Swap two charts' positions in the tree */
-export function swapCharts(state, idA, idB) {
-  const tree = state.chartLayout.tree;
-  // Find both panes and swap their chartIds
-  function swapInNode(node) {
-    if (node.type === "pane") {
-      if (node.chartId === idA) return { ...node, chartId: idB };
-      if (node.chartId === idB) return { ...node, chartId: idA };
-      return node;
-    }
-    return { ...node, children: node.children.map(swapInNode) };
-  }
-  return { ...state, chartLayout: { ...state.chartLayout, tree: swapInNode(tree) } };
-}
-
-/** Move a chart from its current position to split a target pane */
-export function moveChartToSplit(state, chartId, targetId, direction, isFirst) {
-  let tree = state.chartLayout.tree;
-
-  // Step 1: Remove chartId from the tree (collapse its parent)
-  const path = findPanePath(tree, chartId);
-  if (path && path.length > 0) {
-    const parentPath = path.slice(0, -1);
-    const childIndex = path[path.length - 1];
-    const parent = getNodeAtPath(tree, parentPath);
-    if (parent && parent.children) {
-      const sibling = parent.children[1 - childIndex];
-      tree = replaceNodeAtPath(tree, parentPath, sibling);
-    }
-  }
-
-  // Step 2: Split the target pane, inserting chartId
-  const targetPath = findPanePath(tree, targetId);
-  if (targetPath !== null) {
-    const draggedPane = { type: "pane", chartId };
-    const targetPane = { type: "pane", chartId: targetId };
-    const newContainer = {
-      type: "container",
-      direction,
-      children: isFirst ? [draggedPane, targetPane] : [targetPane, draggedPane],
-      sizes: [0.5, 0.5],
-    };
-    tree = replaceNodeAtPath(tree, targetPath, newContainer);
-  }
-
-  return {
-    ...state,
-    focusedChartId: chartId,
-    chartLayout: { ...state.chartLayout, tree },
-  };
-}
-
-/** Build a tree from a preset name and a list of chart IDs */
-export function setLayoutPreset(state, preset) {
-  const ids = state.chartOrder;
-  if (ids.length < 2) return state;
-
-  let tree;
-  switch (preset) {
-    case "side-by-side": {
-      // Horizontal chain: all charts in a row
-      tree = ids.reduce((acc, id, i) => {
-        const p = { type: "pane", chartId: id };
-        return i === 0 ? p : { type: "container", direction: "row", children: [acc, p], sizes: [i / (i + 1), 1 / (i + 1)] };
-      }, null);
-      break;
-    }
-    case "stacked": {
-      // Vertical chain: all charts stacked
-      tree = ids.reduce((acc, id, i) => {
-        const p = { type: "pane", chartId: id };
-        return i === 0 ? p : { type: "container", direction: "column", children: [acc, p], sizes: [i / (i + 1), 1 / (i + 1)] };
-      }, null);
-      break;
-    }
-    case "grid": {
-      // 2x2 grid (or best approximation): top row, bottom row
-      const half = Math.ceil(ids.length / 2);
-      const topIds = ids.slice(0, half);
-      const bottomIds = ids.slice(half);
-
-      const buildRow = (rowIds) => rowIds.reduce((acc, id, i) => {
-        const p = { type: "pane", chartId: id };
-        return i === 0 ? p : { type: "container", direction: "row", children: [acc, p], sizes: [0.5, 0.5] };
-      }, null);
-
-      const topRow = buildRow(topIds);
-      const bottomRow = bottomIds.length > 0 ? buildRow(bottomIds) : null;
-
-      tree = bottomRow
-        ? { type: "container", direction: "column", children: [topRow, bottomRow], sizes: [0.5, 0.5] }
-        : topRow;
-      break;
-    }
-    default:
-      return state;
-  }
-
-  return { ...state, chartLayout: { ...state.chartLayout, tree } };
+/** Set row weight ratio between two adjacent rows */
+export function setRowWeight(state, topRow, ratio) {
+  const rowWeights = [...state.chartLayout.rowWeights];
+  const total = rowWeights[topRow] + rowWeights[topRow + 1];
+  rowWeights[topRow] = total * ratio;
+  rowWeights[topRow + 1] = total * (1 - ratio);
+  return { ...state, chartLayout: { ...state.chartLayout, rowWeights } };
 }
 
 export function setXDomainOverride(state, min, max, id) {

@@ -80,21 +80,6 @@ export function renderWorkspace(state) {
       ${renderRecipeRail(state)}
       <div class="workspace-main">
         ${renderChartArena(state)}
-        <div class="compare-strip">
-          ${workspace.compareCards.map(item => `
-            <div class="compare-card ${toneClass(item.tone)}">
-              <p>${item.label}</p>
-              <strong>${item.value}</strong>
-            </div>
-          `).join("")}
-        </div>
-        <div class="lineage-strip">
-          <div><span>Data</span><strong>2026-03-25 11:12</strong></div>
-          <div><span>Limits</span><strong>${getFocused(state).limits.version}</strong></div>
-          <div><span>Transforms</span><strong>${workspace.lineageCount}</strong></div>
-          <div><span>Excluded</span><strong>${workspace.excludedCount}</strong></div>
-          <div><span>Pipeline</span><strong>${state.pipeline.status}</strong></div>
-        </div>
       </div>
       ${renderEvidenceRail(state, workspace)}
     </div>
