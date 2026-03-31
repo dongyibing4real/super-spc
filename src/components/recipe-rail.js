@@ -197,9 +197,12 @@ function renderAddChartSection(state) {
     return renderPendingChartCard(state);
   }
   return `
-    <button class="rail-add-chart" data-action="open-add-chart" type="button">
-      <span class="rail-add-icon">+</span>
-      <span class="rail-add-label">Add Chart</span>
+    <button class="rail-card rail-card--add" data-action="open-add-chart" type="button">
+      <div class="rail-card-header rail-card-header--add">
+        <span class="rail-card-dot"></span>
+        <span class="rail-card-label">New Chart</span>
+        <span class="rail-card-id">+</span>
+      </div>
     </button>
   `;
 }
@@ -245,11 +248,10 @@ export function renderRecipeRail(state) {
     <div class="recipe-rail">
       ${datasetCard}
       <div class="recipe-divider"></div>
+      ${renderAddChartSection(state)}
       ${focusedCard}
       ${countBadge}
       ${collapsedCards}
-      <div class="recipe-divider"></div>
-      ${renderAddChartSection(state)}
     </div>
   `;
 }

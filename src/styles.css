@@ -605,46 +605,53 @@ h1, h2, h3, h4, h5, h6 {
   text-overflow: ellipsis;
 }
 
-/* Add Chart button in recipe rail — matches nav-item/chip vocabulary */
-.rail-add-chart {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 36px;
-  padding: 0 10px;
-  background: none;
-  border: none;
-  border-top: 1px solid var(--border-2);
-  border-radius: 0;
-  color: var(--t-3);
-  font-size: 12px;
-  font-weight: 500;
+/* Add Chart — collapsed-card style, sits with other chart cards */
+.rail-card--add {
   cursor: pointer;
-  transition: background var(--dur-short) var(--ease), color var(--dur-short) var(--ease);
+  border-style: dashed;
+  background: transparent;
+  transition: background var(--dur-short) var(--ease), border-color var(--dur-short) var(--ease);
 }
-.rail-add-chart:hover {
-  color: var(--blue-bright);
+.rail-card--add:hover {
+  border-color: var(--blue);
   background: var(--blue-dim);
 }
-.rail-add-icon {
+.rail-card-header--add {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border: 1px solid currentColor;
+  gap: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  border-bottom: none;
+}
+.rail-card-header--add .rail-card-dot {
+  width: 6px; height: 6px;
   border-radius: 50%;
-  font-size: 12px;
-  line-height: 1;
+  background: var(--t-4);
   flex-shrink: 0;
-  opacity: 0.7;
 }
-.rail-add-chart:hover .rail-add-icon {
-  opacity: 1;
+.rail-card-header--add .rail-card-label {
+  color: var(--t-3);
+  text-transform: uppercase;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
 }
-.rail-add-label {
-  /* inherits font from parent */
+.rail-card-header--add .rail-card-id {
+  color: var(--t-4);
+  margin-left: auto;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  font-weight: 500;
+}
+.rail-card--add:hover .rail-card-header--add .rail-card-dot {
+  background: var(--blue-bright);
+}
+.rail-card--add:hover .rail-card-header--add .rail-card-label {
+  color: var(--blue-bright);
+}
+.rail-card--add:hover .rail-card-header--add .rail-card-id {
+  color: var(--blue-bright);
 }
 /* Pending new chart card — same box shape as other cards, blue accent */
 .rail-card--pending {
