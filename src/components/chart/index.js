@@ -59,14 +59,19 @@ function renderAxisTitles(xTitleLayer, yTitleLayer, data, config) {
   const plotCenterX = p.left + (W - p.left - p.right) / 2;
   const plotCenterY = p.top + (H - p.top - p.bottom) / 2;
 
-  // X-axis title — subgroup variable name (JMP: shows the grouping column)
   xTitleLayer.selectAll('*').remove();
+  yTitleLayer.selectAll('*').remove();
+
+  // Hide axis titles when pane is too small — space is better used for data
+  if (!config.showAxisTitles) return;
+
+  // X-axis title — subgroup variable name (JMP: shows the grouping column)
   const xLabel = data.subgroup?.id === 'individual'
     ? 'Observation'
     : (data.subgroup?.label || 'Observation');
   xTitleLayer.append('text')
     .attr('x', plotCenterX)
-    .attr('y', H - 4)
+    .attr('y', H - 12)
     .attr('text-anchor', 'middle')
     .style('font-size', '10px')
     .style('font-family', 'Inter, system-ui, sans-serif')
@@ -75,7 +80,6 @@ function renderAxisTitles(xTitleLayer, yTitleLayer, data, config) {
     .text(xLabel);
 
   // Y-axis title — function(measurement) (JMP convention)
-  yTitleLayer.selectAll('*').remove();
   const metricName = data.metric?.label || 'Value';
   const chartId = data.chartType?.id || 'imr';
   const yLabel = getYAxisLabel(chartId, metricName);
@@ -118,7 +122,7 @@ export function createChart(container, options = {}) {
     .attr('role', 'img')
     .attr('aria-label', 'Control chart')
     .style('display', 'block')
-    .style('overflow', 'hidden');
+    .style('overflow', 'visible');
 
   // ── Clip path: constrains all plot content to the inner plot area ──
   const clipId = `plot-clip-${Math.random().toString(36).slice(2, 8)}`;
@@ -309,6 +313,7 @@ export function createChart(container, options = {}) {
       padding: layout.padding,
       yLabelFontSize: layout.yLabelFontSize,
       edgeLabelFontSize: layout.edgeLabelFontSize,
+      showAxisTitles: layout.showAxisTitles,
       width: currentWidth,
       height: currentHeight,
       xDomainOverride: data.toggles.xDomainOverride ?? null,
@@ -385,10 +390,11 @@ export function createChart(container, options = {}) {
       .attr('height', currentHeight - p.top - p.bottom);
   }
 
-  /** Sync SVG dimensions to current container size */
+  /** Sync SVG dimensions to container's content box (excludes padding) */
   function syncSize() {
-    const w = container.clientWidth;
-    const h = container.clientHeight;
+    const cs = getComputedStyle(container);
+    const w = container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
     if (w > 0 && h > 0) {
       currentWidth = w;
       currentHeight = h;
@@ -410,8 +416,9 @@ export function createChart(container, options = {}) {
     // Deferred re-render: CSS Grid may not have settled yet after layout changes.
     // requestAnimationFrame runs after the browser paints the new layout.
     requestAnimationFrame(() => {
-      const w = container.clientWidth || 400;
-      const h = container.clientHeight || 300;
+      const cs = getComputedStyle(container);
+      const w = (container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) || 400;
+      const h = (container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) || 300;
       if (w !== currentWidth || h !== currentHeight) {
         currentWidth = w;
         currentHeight = h;

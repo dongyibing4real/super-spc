@@ -25,24 +25,40 @@ function fitFontSize(text, budget, max = 10, min = 7) {
  * Compute dynamic padding + font sizes from actual data values.
  * Called at the start of every render so the chart adapts to any dataset.
  *
+ * Height-aware: when the container is small, padding scales down proportionally
+ * to preserve at least 60% of height for the plot area. Font sizes reduce and
+ * axis title space is dropped at very small sizes.
+ *
  * @param {object} data - chart data (points, limits, metric)
  * @param {number} width - container width in px
  * @param {number} height - container height in px
- * @returns {{ padding, yLabelFontSize, edgeLabelFontSize }}
+ * @returns {{ padding, yLabelFontSize, edgeLabelFontSize, showAxisTitles }}
  */
 export function computeLayout(data, width, height) {
+  // ── Height pressure: scale factor for vertical padding ────────
+  // At height ≥ 300px: full padding. Below that, linearly compress.
+  // Floor at 0.4 prevents labels from disappearing entirely.
+  const vScale = Math.max(0.4, Math.min(1, height / 300));
+  // Whether to show axis titles (hide below 180px to save space)
+  const showAxisTitles = height >= 180;
+  // Title space contribution to padding
+  const titleSpace = showAxisTitles ? 28 : 8;
+
+  // ── Width pressure: scale factor for horizontal padding ───────
+  const hScale = Math.max(0.5, Math.min(1, width / 400));
+
   // ── Y-axis (left) ────────────────────────────────────────────
-  // Longest formatted tick value drives left padding.
   const yValues = [data.limits.ucl, data.limits.center, data.limits.lcl];
   const longestY = yValues.reduce((a, v) => {
     const s = fmt(v);
     return s.length > a.length ? s : a;
   }, '');
-  // Target: label fits in ≤15% of width, font 8–11px
-  const yBudget = Math.max(50, width * 0.15);
-  const yLabelFontSize = fitFontSize(longestY, yBudget);
+  const yBudget = Math.max(40, width * 0.15 * hScale);
+  const yMaxFont = hScale < 0.7 ? 9 : 10;
+  const yLabelFontSize = fitFontSize(longestY, yBudget, yMaxFont);
   const yLabelWidth = textWidth(longestY, yLabelFontSize);
-  const left = Math.round(Math.max(28, yLabelWidth + 18)); // +18 for axis title
+  const yTitleGap = showAxisTitles ? 18 : 8;
+  const left = Math.round(Math.max(22 * hScale, yLabelWidth + yTitleGap));
 
   // ── Edge labels (right) ──────────────────────────────────────
   const edgeTexts = [
@@ -51,19 +67,17 @@ export function computeLayout(data, width, height) {
     `LCL ${fmt(data.limits.lcl)}`,
   ];
   const longestEdge = edgeTexts.reduce((a, t) => (t.length > a.length ? t : a), '');
-  const edgeBudget = Math.max(50, width * 0.15);
-  const edgeLabelFontSize = fitFontSize(longestEdge, edgeBudget);
+  const edgeBudget = Math.max(40, width * 0.15 * hScale);
+  const edgeMaxFont = hScale < 0.7 ? 9 : 10;
+  const edgeLabelFontSize = fitFontSize(longestEdge, edgeBudget, edgeMaxFont);
   const edgeLabelWidth = textWidth(longestEdge, edgeLabelFontSize);
-  // pill starts at R+2, has 6px padding each side → total = 2 + textWidth + 12 + 2 (safety)
-  const right = Math.round(Math.max(28, edgeLabelWidth + 18));
+  const right = Math.round(Math.max(22 * hScale, edgeLabelWidth + 18 * hScale));
 
   // ── X-axis (bottom) ─────────────────────────────────────────
-  // Estimate rotation from point density vs label width, mirroring axes.js logic.
   const sampleLabel = data.points[0]?.label?.replace('LOT-', '') ?? '';
   const xBaseFontSize = sampleLabel.length > 10 ? 8 : sampleLabel.length > 6 ? 9 : 10;
   const xLabelWidth = textWidth(sampleLabel, xBaseFontSize);
 
-  // Use provisional left/right to estimate plot width → point spacing → rotation
   const plotWidth = width - left - right;
   const nPoints = data.points.length;
   const pointSpacing = nPoints > 1 ? plotWidth / (nPoints - 1) : plotWidth;
@@ -74,12 +88,6 @@ export function computeLayout(data, width, height) {
   const xFontSize = smallFont ? Math.max(7, xBaseFontSize - 2) : xBaseFontSize;
   const renderedLabelW = textWidth(sampleLabel, xFontSize);
 
-  // Vertical extent below the baseline depends on rotation angle.
-  // rotate(-90°) and rotate(-45°) pivot at the anchor point:
-  //   -90°: text runs upward — below-anchor extent is full label width
-  //   -45°: text runs up-left — below-anchor extent ≈ width × sin(45°)
-  //    0°:  text is horizontal — below-anchor extent is ~fontSize
-  // Each includes: gap from baseline to label top (12-16px) + text extent + breathing room
   let labelDescent;
   if (rotate90) {
     labelDescent = renderedLabelW + 18;
@@ -88,12 +96,24 @@ export function computeLayout(data, width, height) {
   } else {
     labelDescent = xFontSize + 22;
   }
-  const bottom = Math.round(Math.max(52, labelDescent + 28)); // +28 for axis title
+
+  // Scale bottom padding with height pressure
+  const idealBottom = labelDescent + titleSpace;
+  const minBottom = 32 * vScale;
+  let bottom = Math.round(Math.max(minBottom, idealBottom * vScale));
+
+  // ── Clamp total vertical padding to ≤ 40% of height ─────────
+  const top = Math.round(16 * vScale);
+  const maxVerticalPad = height * 0.4;
+  if (top + bottom > maxVerticalPad) {
+    bottom = Math.round(maxVerticalPad - top);
+  }
 
   return {
-    padding: { top: 16, right, bottom, left },
+    padding: { top, right, bottom, left },
     yLabelFontSize,
     edgeLabelFontSize,
+    showAxisTitles,
   };
 }
 

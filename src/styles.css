@@ -1158,14 +1158,13 @@ h1, h2, h3, h4, h5, h6 {
 .chart-pane:not(.pane-focused) {
   border-left-color: var(--pane-accent, var(--blue));
 }
-/* Focused pane — always blue: focus is a UI chrome state, not series identity.
-   Keeping focus color consistent across all chart indices prevents cyan/purple
-   focus rings when the 7th or 8th chart in a workspace is selected. */
+/* Focused pane — top accent bar in chart's own accent color (identity preserved) */
 .chart-pane.pane-focused {
-  border-color: var(--blue);
+  border-top-color: var(--pane-accent, var(--blue));
+  border-left-color: var(--pane-accent, var(--blue));
 }
 .chart-pane.pane-focused .chart-pane-titlebar {
-  background: var(--chart-bg);
+  background: var(--chart-surface);
 }
 /* Per-chart accent color via data-accent attribute */
 .chart-pane[data-accent="0"] { --pane-accent: var(--accent-0); }
@@ -1353,11 +1352,11 @@ h1, h2, h3, h4, h5, h6 {
 
 .chart-stage {
   position: relative;
-  padding: 6px 10px 2px;
+  padding: 8px 10px 8px;
   outline: none;
   flex: 1;
   min-height: 120px;
-  overflow: hidden;
+  overflow: visible;
 }
 .chart-stage:focus-visible {
   outline: 2px solid var(--blue);
@@ -1805,22 +1804,40 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ── data prep: toolbar ── */
 .prep-toolbar {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 4px 8px; gap: 6px;
-  background: var(--bg-3); border-bottom: 1px solid var(--border-1);
-  min-height: 32px;
+  display: flex; justify-content: space-between; align-items: stretch;
+  background: var(--bg-3); border-bottom: 1px solid var(--border-2);
+  min-height: 42px; overflow: visible;
 }
-.prep-toolbar-left, .prep-toolbar-right { display: flex; align-items: center; gap: 4px; }
+.prep-toolbar-left { display: flex; align-items: stretch; flex: 1; }
+.prep-toolbar-right { display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+
+/* Labeled operation groups */
+.prep-tool-group {
+  display: flex; flex-direction: column;
+  padding: 5px 8px 0;
+  border-right: 1px solid var(--border-1);
+}
+.prep-tool-group:last-child { border-right: none; }
+.prep-tool-group-label {
+  font-size: 8px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.09em; color: var(--t-4); line-height: 1;
+  margin-bottom: 4px; white-space: nowrap;
+}
+.prep-tool-group-btns { display: flex; align-items: flex-end; gap: 2px; flex: 1; padding-bottom: 5px; }
+
 .prep-tool-btn {
-  font-size: 10px; font-weight: 600; padding: 3px 8px;
-  background: transparent; border: 1px solid var(--border-2);
-  color: var(--t-3); border-radius: 4px; cursor: pointer;
+  font-size: 10px; font-weight: 600; padding: 3px 7px;
+  background: transparent; border: 1px solid transparent;
+  color: var(--t-3); border-radius: 3px; cursor: pointer; white-space: nowrap;
 }
-.prep-tool-btn:hover { border-color: var(--border-3); color: var(--t-1); }
-.prep-save-btn { border-color: var(--blue); color: var(--blue-bright); }
+.prep-tool-btn:hover { background: var(--bg-4); color: var(--t-1); }
+.prep-save-btn { border-color: var(--blue) !important; color: var(--blue-bright); }
 .prep-save-btn:hover { background: var(--blue-dim); }
 .prep-transform-count { font-size: 9px; color: var(--t-4); font-weight: 600; }
-.prep-unsaved { font-size: 9px; color: var(--amber); font-weight: 600; }
+.prep-unsaved {
+  font-size: 9px; font-weight: 700; color: var(--amber, #D4A017);
+  background: rgba(212,160,23,0.12); padding: 2px 6px; border-radius: 3px;
+}
 .column-toggle {
   background: none; border: none; cursor: pointer; padding: 0 2px;
   font-size: 10px; color: var(--t-4); line-height: 1;
@@ -1830,7 +1847,13 @@ h1, h2, h3, h4, h5, h6 {
 .column-item.column-hidden { opacity: 0.4; }
 
 /* ── data prep: inline panels ── */
-.prep-tool-btn.active { border-color: var(--blue); color: var(--blue-bright); background: var(--blue-dim); }
+/* Active tab: punch through the toolbar bottom border and connect to panel below */
+.prep-tool-btn.active {
+  border-color: var(--border-2); border-bottom-color: var(--bg-2);
+  color: var(--blue-bright); background: var(--bg-2);
+  margin-bottom: -1px; position: relative; z-index: 2;
+  border-radius: 3px 3px 0 0;
+}
 .prep-panel {
   background: var(--bg-2); border-bottom: 1px solid var(--border-2);
   padding: 8px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
