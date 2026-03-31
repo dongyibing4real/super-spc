@@ -1843,7 +1843,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 2px 6px; background: rgba(200,118,25,0.12); border-radius: 3px; white-space: nowrap;
 }
 .prep-status-chip {
-  font-size: 9px; color: var(--t-4); font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; color: var(--t-3); font-family: 'IBM Plex Mono', monospace;
   white-space: nowrap;
 }
 .prep-undo-badge {
