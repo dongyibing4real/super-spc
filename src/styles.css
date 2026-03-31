@@ -1782,9 +1782,10 @@ h1, h2, h3, h4, h5, h6 {
 .prep-table th:hover { background: var(--bg-4); }
 
 .prep-table td {
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-bottom: 1px solid var(--border-1);
   color: var(--t-2);
+  line-height: 1.2;
 }
 .prep-table tr:hover td { background: rgba(255,255,255,0.02); }
 
