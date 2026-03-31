@@ -1834,6 +1834,7 @@ h1, h2, h3, h4, h5, h6 {
   white-space: nowrap; display: flex; align-items: center; gap: 4px;
 }
 .prep-mbtn:hover:not(:disabled) { background: var(--bg-3); color: var(--t-1); }
+.prep-mbtn:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
 .prep-mbtn:disabled { opacity: 0.35; cursor: not-allowed; }
 .prep-mbtn-save-active { color: var(--blue-bright) !important; }
 .prep-mbtn-save-active:hover:not(:disabled) { background: var(--blue-dim) !important; }
@@ -1867,6 +1868,7 @@ h1, h2, h3, h4, h5, h6 {
   position: relative;
 }
 .prep-col-btn:hover { background: var(--bg-3); color: var(--t-1); }
+.prep-col-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
 .prep-col-btn.active {
   background: var(--blue-dim); color: var(--blue-bright);
 }
@@ -1894,6 +1896,7 @@ h1, h2, h3, h4, h5, h6 {
   overflow: hidden; text-overflow: ellipsis;
 }
 .prep-row-btn:hover { background: var(--bg-4); color: var(--t-1); }
+.prep-row-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
 .prep-row-btn.active {
   background: var(--blue-dim); color: var(--blue-bright);
 }
