@@ -2049,7 +2049,7 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--bg-3); border: 1px solid var(--border-1);
   transition: border-color 0.15s;
 }
-.col-profile-card:hover { border-color: var(--border-2); }
+.col-profile-card:hover { border-color: var(--border-3); background: var(--bg-4); }
 .col-profile-hidden { opacity: 0.4; }
 .col-profile-header {
   display: flex; align-items: center; justify-content: space-between; gap: 4px;
