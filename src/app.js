@@ -57,7 +57,6 @@ import {
   clearAllExclusions,
   setProfileCache,
   focusChart,
-  reorderChart,
   addChart,
   removeChart,
   collectChartIds,
@@ -305,11 +304,6 @@ function commitRecipeRail(next) {
   const rail = root.querySelector(".recipe-rail");
   if (!rail) return;
   morphEl(rail, renderRecipeRail(state));
-  // Trigger expand-enter animation on focused card after morph
-  requestAnimationFrame(() => {
-    const focused = rail.querySelector('.rail-card--focused');
-    if (focused) focused.classList.add('rail-card--expanded-enter');
-  });
 }
 
 /* ═══ FLIP animation helpers — smooth card float transitions ═══ */
@@ -318,44 +312,30 @@ function snapshotRailPositions() {
   const rail = root.querySelector(".recipe-rail");
   if (!rail) return null;
   const map = new Map();
-  rail.querySelectorAll("[data-chart-id]").forEach(el => {
-    // Only snapshot the card-level elements (avoid chips that also carry data-chart-id)
-    if (el.classList.contains("rail-card") || el.classList.contains("rail-card--focused")
-        || el.classList.contains("rail-card--collapsed")) {
-      map.set(el.dataset.chartId, el.getBoundingClientRect());
-    }
+  rail.querySelectorAll(".rail-card[data-chart-id]").forEach(el => {
+    map.set(el.dataset.chartId, el.getBoundingClientRect());
   });
   return map.size > 0 ? map : null;
 }
 
 function playRailFlip(firstMap, duration = 250) {
   if (!firstMap) return;
-  requestAnimationFrame(() => {
-    const rail = root.querySelector(".recipe-rail");
-    if (!rail) return;
-    rail.querySelectorAll("[data-chart-id]").forEach(el => {
-      if (!el.classList.contains("rail-card") && !el.classList.contains("rail-card--focused")
-          && !el.classList.contains("rail-card--collapsed")) return;
-      const first = firstMap.get(el.dataset.chartId);
-      if (!first) return;
-      const last = el.getBoundingClientRect();
-      const deltaY = first.top - last.top;
-      if (Math.abs(deltaY) < 2) return;
-      el.animate(
-        [{ transform: `translateY(${deltaY}px)` }, { transform: "translateY(0)" }],
-        { duration, easing: "cubic-bezier(0.25, 1, 0.5, 1)" }
-      );
-    });
-  });
-}
-
-function flipCommitRail(next) {
-  const snap = snapshotRailPositions();
-  state = next;
+  // Run synchronously — before the browser paints the un-inverted state.
+  // Reading getBoundingClientRect forces layout, then animate() starts
+  // from the INVERT position on the very first painted frame.
   const rail = root.querySelector(".recipe-rail");
   if (!rail) return;
-  morphEl(rail, renderRecipeRail(state));
-  playRailFlip(snap);
+  rail.querySelectorAll(".rail-card[data-chart-id]").forEach(el => {
+    const first = firstMap.get(el.dataset.chartId);
+    if (!first) return;
+    const last = el.getBoundingClientRect();
+    const deltaY = first.top - last.top;
+    if (Math.abs(deltaY) < 2) return;
+    el.animate(
+      [{ transform: `translateY(${deltaY}px)` }, { transform: "translateY(0)" }],
+      { duration, easing: "cubic-bezier(0.25, 1, 0.5, 1)", composite: "replace" }
+    );
+  });
 }
 
 /* ═══ Targeted commit — notice bar ═══ */
@@ -595,16 +575,13 @@ root.addEventListener("click", async (e) => {
       if (cid && cid !== state.focusedChartId && state.charts[cid]) {
         const snap = snapshotRailPositions();
         state = focusChart(state, cid);
-        commit(state);
+        // Targeted updates instead of full render — avoids D3 chart rebuild
+        root.querySelectorAll(".chart-pane").forEach(p => {
+          p.classList.toggle("pane-focused", p.dataset.chartId === state.focusedChartId);
+        });
+        commitRecipeRail(state);
+        commitEvidenceRail(state);
         playRailFlip(snap, 300);
-      }
-      break;
-    }
-    case "reorder-chart": {
-      const cid = t.dataset.chartId;
-      const delta = Number(t.dataset.direction);
-      if (cid && delta) {
-        flipCommitRail(reorderChart(state, cid, delta));
       }
       break;
     }

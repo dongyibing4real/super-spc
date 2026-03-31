@@ -1203,17 +1203,6 @@ export function addChart(state, { chartType = "imr" } = {}) {
   };
 }
 
-/** Move a chart up (delta=-1) or down (delta=+1) in chartOrder */
-export function reorderChart(state, chartId, delta) {
-  const order = [...state.chartOrder];
-  const idx = order.indexOf(chartId);
-  if (idx === -1) return state;
-  const newIdx = idx + delta;
-  if (newIdx < 0 || newIdx >= order.length) return state;
-  [order[idx], order[newIdx]] = [order[newIdx], order[idx]];
-  return { ...state, chartOrder: order };
-}
-
 /** Remove a chart from the row-grid layout */
 export function removeChart(state, chartId) {
   if (collectChartIds(state.chartLayout).length <= 1) return state;
