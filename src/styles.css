@@ -2105,7 +2105,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Stats line */
 .th-mini-stats {
-  font-family: "IBM Plex Mono", monospace; font-size: 8px; color: var(--t-4);
+  font-family: "IBM Plex Mono", monospace; font-size: 8px; color: var(--t-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
 }
 
