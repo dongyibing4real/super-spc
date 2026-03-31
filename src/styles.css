@@ -2173,19 +2173,19 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Signal row — skewness label, outlier badge, balance flag */
 .col-profile-signals {
-  display: flex; align-items: center; gap: 4px; margin-top: 3px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 4px; margin-top: 4px; flex-wrap: wrap;
 }
 .col-skew-signal {
   font-size: 8px; font-weight: 500; color: var(--t-3);
   font-style: italic; white-space: nowrap;
 }
 .col-outlier-badge {
-  font-size: 7px; font-weight: 700; color: var(--amber);
+  font-size: 8px; font-weight: 700; color: var(--amber);
   background: rgba(200,118,25,0.15); border-radius: 2px;
-  padding: 1px 4px; white-space: nowrap;
+  padding: 2px 4px; white-space: nowrap;
 }
 .col-balance-flag {
-  font-size: 7px; font-weight: 600; border-radius: 2px; padding: 1px 4px; white-space: nowrap;
+  font-size: 8px; font-weight: 600; border-radius: 2px; padding: 2px 4px; white-space: nowrap;
 }
 .col-balance-even { color: var(--green); background: var(--green-dim); }
 .col-balance-warn { color: var(--amber); background: rgba(200,118,25,0.12); }
