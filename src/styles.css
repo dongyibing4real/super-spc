@@ -1744,7 +1744,8 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--bg-4); font-size: 10px; font-weight: 600; color: var(--t-3);
 }
 .ds-card-actions button:hover { border-color: var(--border-3); color: var(--t-1); }
-.ds-card-actions button.danger:hover { border-color: var(--red); color: var(--red); }
+.ds-card-actions button.danger { border-color: rgba(205,66,70,0.3); color: var(--red); background: var(--red-dim); }
+.ds-card-actions button.danger:hover { border-color: var(--red); color: var(--red); background: rgba(205,66,70,0.2); }
 
 .ds-upload-btn {
   margin-top: 4px; padding: 8px; text-align: center;
