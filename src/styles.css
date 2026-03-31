@@ -466,6 +466,43 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: 0.04em;
 }
 
+/* Move up/down buttons in card headers */
+.rail-card-movers {
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity var(--dur-short) var(--ease);
+}
+.rail-card:hover .rail-card-movers,
+.rail-card-movers:focus-within {
+  opacity: 1;
+}
+.rail-card-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border-2);
+  border-radius: 3px;
+  color: var(--t-3);
+  font-size: 7px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--dur-short) var(--ease), color var(--dur-short) var(--ease), border-color var(--dur-short) var(--ease);
+}
+.rail-card-move:hover:not(:disabled) {
+  background: var(--bg-4);
+  color: var(--t-1);
+  border-color: var(--border-3);
+}
+.rail-card-move:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
 .rail-card-header--dataset {
   background: var(--gold-dim);
   border-bottom: 1px solid rgba(209,152,11,0.2);

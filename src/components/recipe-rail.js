@@ -122,6 +122,18 @@ function collapsedSummary(slot) {
   return parts.join(" \u00b7 ") || "\u2014";
 }
 
+function renderMoveButtons(chartId, chartOrder) {
+  const idx = chartOrder.indexOf(chartId);
+  const isFirst = idx <= 0;
+  const isLast = idx >= chartOrder.length - 1;
+  return `<span class="rail-card-movers">
+    <button class="rail-card-move" data-action="reorder-chart" data-chart-id="${chartId}" data-direction="-1"
+      type="button" aria-label="Move up" ${isFirst ? "disabled" : ""}>▲</button>
+    <button class="rail-card-move" data-action="reorder-chart" data-chart-id="${chartId}" data-direction="1"
+      type="button" aria-label="Move down" ${isLast ? "disabled" : ""}>▼</button>
+  </span>`;
+}
+
 function renderCollapsedChartCard(state, chartId) {
   const slot = state.charts[chartId];
   if (!slot) return "";
@@ -135,6 +147,7 @@ function renderCollapsedChartCard(state, chartId) {
       <div class="rail-card-header rail-card-header--collapsed">
         <span class="rail-card-dot"></span>
         <span class="rail-card-label">${chartLabel}</span>
+        ${state.chartOrder.length > 1 ? renderMoveButtons(chartId, state.chartOrder) : ""}
         <span class="rail-card-id">Chart ${idx}</span>
       </div>
       <div class="rail-card-summary">${summary}</div>
@@ -152,6 +165,7 @@ function renderExpandedChartCard(state, chartId, slot, ae, cols) {
       <div class="rail-card-header rail-card-header--focused">
         <span class="rail-card-dot"></span>
         <span class="rail-card-label">${chartLabel}</span>
+        ${state.chartOrder.length > 1 ? renderMoveButtons(chartId, state.chartOrder) : ""}
         <span class="rail-card-id">Chart ${idx}</span>
       </div>
       ${renderChartChips(state, chartId, slot.params, slot.context, ae, cols)}
