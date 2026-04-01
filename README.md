@@ -2,9 +2,9 @@
 
 # Super SPC
 
-### The SPC Platform That Respects Your Intelligence
+### Open-source SPC platform for process engineers, reliability engineer or anyone who is interested in process control and tired of paying tools like JMP/Minitab in full price for a single spc platform
 
-**24 chart types. 8 Nelson rules. Zero dashboard fluff.**
+**24 chart types. 8 Nelson rules. Zero dashboard fluff. more functionalities keep coming**
 
 Built for process engineers who are tired of clicking through wizards.
 
@@ -18,13 +18,13 @@ Built for process engineers who are tired of clicking through wizards.
 
 ## What is Super SPC?
 
-Super SPC is an open-source statistical process control platform purpose-built for semiconductor manufacturing, advanced process control, and high-stakes quality engineering.
+Super SPC is an totally open-source statistical process control platform purpose-built for process control and quality engineering, anyone interested in developing this app is welcomed
 
-It's what you'd get if **JMP's control chart builder** and **Palantir's interface density** had a baby — then raised it on Nelson rules and zone shading instead of marketing dashboards.
+It's what you'd get if **JMP's control chart builder** is too old for you, or some other tools are more like toys and underdeveloped
 
 ```
 No wizards. No "AI insights." No 47-click workflows.
-Just your data, your limits, your rules, your judgment.
+Better UI, More Functionalities and open to co-develop
 ```
 
 ## Getting Started
@@ -52,10 +52,10 @@ cd api && pip install -r requirements.txt && cd ..
 cd api && uvicorn main:app --reload --port 8000 &
 
 # Start the frontend
-npm run dev
+npm run dev --port 4173
 ```
 
-Open **http://localhost:5173** and drop a CSV.
+Open **http://localhost:4173** and drop a CSV.
 
 That's it. No account creation. No cloud sync. No telemetry.
 
@@ -104,10 +104,10 @@ Every chart parameter is a **clickable chip** in the left rail. Metric, subgroup
 │ Recipe   │                    │ Evidence  │
 │ Rail     │   Chart Arena      │ Rail      │
 │          │                    │           │
-│ [Metric] │   ┌────┬────┐     │ Signal    │
-│ [Subgrp] │   │ IMR│XBar│     │ Violations│
-│ [Phase ] │   │    │  R │     │ Evidence  │
-│ [Chart ] │   └────┴────┘     │           │
+│ [Metric] │   ┌────┬────┐      │ Signal    │
+│ [Subgrp] │   │ IMR│XBar│      │ Violations│
+│ [Phase ] │   │    │  R │      │ Evidence  │
+│ [Chart ] │   └────┴────┘      │           │
 │ [Sigma ] │                    │           │
 │ [Tests ] │                    │           │
 │ [Specs ] │                    │           │
@@ -199,13 +199,13 @@ After every analysis, the findings engine scans for **stability**, **capability*
 
 ### vs. Minitab
 
-| | Minitab | Super SPC |
+| | Minitab/JMP | Super SPC |
 |---|---|---|
-| Price | ~$2,000/year per seat | Free |
+| Price | $$$$ | Free |
 | Multi-chart workspace | Separate windows | Drag-to-arrange grid |
 | Rule violation markers | Text output | Colored rings on points |
 | Column profiling | Separate analysis | Inline in table headers |
-| Open source | No | Yes |
+| Open source/co-develop | No | Yes |
 | Self-hostable | No | Yes |
 
 ### vs. InfinityQS / NWA
@@ -222,14 +222,14 @@ After every analysis, the findings engine scans for **stability**, **capability*
 
 ```
 ┌─────────────────────────────────────────┐
-│              Frontend (Vite)             │
+│              Frontend (Vite)            │
 │  Vanilla JS + D3.js + morphdom          │
 │  Arquero (client-side data transforms)  │
 │  PapaParse (CSV parsing)                │
 └──────────────────┬──────────────────────┘
                    │ REST API
 ┌──────────────────▼──────────────────────┐
-│            Backend (FastAPI)             │
+│            Backend (FastAPI)            │
 │  SQLite (WAL mode)                      │
 │  async SQLAlchemy                       │
 └──────────────────┬──────────────────────┘
@@ -244,11 +244,6 @@ After every analysis, the findings engine scans for **stability**, **capability*
 └─────────────────────────────────────────┘
 ```
 
-**No frameworks.** No React, no Vue, no Angular. The frontend is ~8,000 lines of vanilla JS with D3 for charting and morphdom for efficient DOM diffing. State is a plain object. Rendering is a function.
-
-**No ORMs for queries.** SQLAlchemy models with raw async sessions. SQLite in WAL mode for concurrent reads.
-
-**No cloud dependencies.** Runs entirely on your machine. Your data never leaves localhost.
 
 ## Design System
 
