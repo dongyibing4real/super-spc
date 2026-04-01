@@ -43,10 +43,6 @@ function renderChartPane(state, chartId) {
     xDefaultDomain,
     chartTypeId: slot.context.chartType?.id,
   });
-  const driftChip = forecastView.driftSummary
-    ? `<span class="drift-chip status-chip ${forecastView.driftSummary.intent}">${forecastView.driftSummary.label}</span>`
-    : "";
-
   const titlebar = isOnly ? "" : `
     <div class="chart-pane-titlebar" data-drag-handle="${chartId}">
       <span class="grip-icon">⠗</span>
@@ -57,9 +53,8 @@ function renderChartPane(state, chartId) {
         <div class="pane-caps">
           <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(caps.cpk)}">${caps.cpk}</span></span>
           <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(caps.ppk)}">${caps.ppk}</span></span>
-          ${driftChip}
         </div>
-      ` : driftChip ? `<div class="pane-caps">${driftChip}</div>` : ""}
+      ` : ""}
       <div class="pane-actions">
         <button class="pane-table-btn ${slot.showDataTable ? "active" : ""}" data-action="toggle-pane-table" data-chart-id="${chartId}" title="Data table">☰</button>
         <button class="pane-close" data-action="remove-chart" data-chart-id="${chartId}" title="Close chart">×</button>
@@ -67,7 +62,7 @@ function renderChartPane(state, chartId) {
     </div>`;
 
   const showTable = slot.showDataTable;
-  const accentIdx = state.chartOrder.indexOf(chartId) % 8;
+  const accentIdx = slot.accentIdx ?? 0;
   return `
     <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}" data-accent="${accentIdx}">
       ${titlebar}

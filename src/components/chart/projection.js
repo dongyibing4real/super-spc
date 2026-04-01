@@ -42,70 +42,63 @@ function forecastBounds(scales, data, config) {
 
 export function renderProjectionPrompt(layer, scales, data, config) {
   layer.selectAll('*').remove();
+  if (!data.points?.length) return null;
 
-  const bounds = forecastBounds(scales, data, config);
-  if (!bounds || bounds.width < 12) return null;
-  const labelLines = ['Click To Open', 'Forecast'];
-  const calloutWidth = 118;
-  const halfW = calloutWidth / 2;
-  const plotLeft = config.padding.left + 8;
-  const plotRight = config.width - config.padding.right - 8;
-  const desiredX = bounds.x0 + bounds.width / 2;
-  const labelX = Math.max(plotLeft + halfW, Math.min(plotRight - halfW, desiredX));
-  const labelY = Math.max(18, bounds.top - 10);
+  // Fill exactly the available gap: from last data point to right edge of x-scale range
+  const p = config.padding;
+  const lastIdx = data.points.length - 1;
+  const plotRight = scales.x(scales.xMax);  // use actual x-scale endpoint, not padding edge
+  const plotTop = p.top;
+  const plotHeight = config.height - p.top - p.bottom;
+  const x0 = clamp(scales.x(lastIdx), p.left, plotRight);
+  const width = Math.max(0, plotRight - x0);
 
+  if (width < 8 || plotHeight < 16) return null;
+
+  // Ghost area — fills the actual gap, click target with subtle glow
   layer.append('rect')
     .attr('class', 'ghost-hint-area forecast-prompt-hit')
-    .attr('x', bounds.x0)
-    .attr('y', bounds.top)
-    .attr('width', bounds.width)
-    .attr('height', bounds.height)
+    .attr('x', x0)
+    .attr('y', plotTop)
+    .attr('width', width)
+    .attr('height', plotHeight)
     .attr('rx', 3)
     .attr('fill', BLUE)
-    .attr('fill-opacity', 0.06)
+    .attr('fill-opacity', 0.04)
     .attr('stroke', BLUE)
-    .attr('stroke-opacity', 0.28)
+    .attr('stroke-opacity', 0.14)
     .attr('stroke-dasharray', '4 4');
 
+  // Left boundary dashed line
   layer.append('line')
     .attr('class', 'ghost-hint-boundary')
-    .attr('x1', bounds.x0)
-    .attr('x2', bounds.x0)
-    .attr('y1', bounds.top)
-    .attr('y2', bounds.top + bounds.height)
+    .attr('x1', x0)
+    .attr('x2', x0)
+    .attr('y1', plotTop)
+    .attr('y2', plotTop + plotHeight)
     .attr('stroke', BLUE)
-    .attr('stroke-opacity', 0.22)
+    .attr('stroke-opacity', 0.14)
     .attr('stroke-dasharray', '3 5');
 
-  const callout = layer.append('g')
-    .attr('class', 'forecast-prompt-callout')
-    .attr('transform', `translate(${labelX},${labelY})`);
+  // Inline label — centered inside the ghost area, glows with it
+  if (width >= 40 && plotHeight >= 28) {
+    const label = width >= 80 ? 'Forecast' : 'F';
+    layer.append('text')
+      .attr('class', 'ghost-hint-label')
+      .attr('x', x0 + width / 2)
+      .attr('y', plotTop + plotHeight / 2)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('fill', BLUE)
+      .attr('fill-opacity', 0.28)
+      .style('font-size', `${clamp(Math.min(width * 0.16, plotHeight * 0.1), 9, 13)}px`)
+      .style('font-weight', '500')
+      .style('letter-spacing', '0.06em')
+      .style('pointer-events', 'none')
+      .text(label);
+  }
 
-  callout.append('rect')
-    .attr('x', -halfW)
-    .attr('y', -18)
-    .attr('width', calloutWidth)
-    .attr('height', 32)
-    .attr('rx', 10);
-
-  const text = callout.append('text')
-    .attr('class', 'ghost-hint-label')
-    .attr('text-anchor', 'middle');
-
-  labelLines.forEach((line, i) => {
-    text.append('tspan')
-      .attr('x', 0)
-      .attr('y', i === 0 ? -3 : 7)
-      .text(line);
-  });
-
-  callout.append('line')
-    .attr('x1', 0)
-    .attr('x2', 0)
-    .attr('y1', 15)
-    .attr('y2', Math.min(bounds.height * 0.35, 28));
-
-  return bounds;
+  return { lastIdx, x0, x1: plotRight, width, top: plotTop, height: plotHeight };
 }
 
 export function renderProjectionShell(layer, scales, data, config) {
@@ -125,15 +118,6 @@ export function renderProjectionShell(layer, scales, data, config) {
     .attr('width', bounds.width)
     .attr('height', bounds.height)
     .attr('rx', 3);
-
-  if (bounds.width >= 96) {
-    shell.append('text')
-      .attr('class', 'forecast-shell-label')
-      .attr('x', bounds.x0 + bounds.width / 2)
-      .attr('y', bounds.top + Math.min(28, bounds.height * 0.22))
-      .attr('text-anchor', 'middle')
-      .text('Forecast view');
-  }
 
   if (selected) {
     const btnX = bounds.x1 - 14;

@@ -122,6 +122,9 @@ export function createChart(container, options = {}) {
   let currentScales = null;
   let currentSizedConfig = null;
 
+  // Track active drag session for cleanup on destroy/remount
+  let activeDragCleanup = null;
+
   const svg = select(container)
     .append('svg')
     .attr('role', 'img')
@@ -296,9 +299,15 @@ export function createChart(container, options = {}) {
         hitElement.style('cursor', 'grab');
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
+        activeDragCleanup = null;
       };
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
+      activeDragCleanup = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        document.body.style.cursor = '';
+      };
     });
   }
 
@@ -308,73 +317,7 @@ export function createChart(container, options = {}) {
   function renderForecastHandle(data, scales, sizedConfig) {
     const layer = layers.forecastHandle;
     layer.selectAll('*').remove();
-
-    if (data.forecast?.mode !== 'active') return;
-    const shownHorizon = Math.max(0, data.forecast?.visibleHorizon || 0);
-    if (!data.points?.length || shownHorizon <= 0) return;
-
-    const p = sizedConfig.padding;
-    const lastIdx = data.points.length - 1;
-    const handleX = clamp(
-      scales.x(lastIdx + shownHorizon),
-      p.left,
-      currentWidth - p.right,
-    );
-    const handleY = currentHeight - p.bottom + 14;
-    const label = 'Forecasting';
-    const width = 84;
-
-    const handle = layer.append('g')
-      .attr('class', 'forecast-handle is-active')
-      .attr('transform', `translate(${handleX},${handleY})`)
-      .style('cursor', 'ew-resize');
-
-    handle.append('rect')
-      .attr('x', -width / 2)
-      .attr('y', -11)
-      .attr('width', width)
-      .attr('height', 22)
-      .attr('rx', 11);
-
-    handle.append('text')
-      .attr('class', 'forecast-handle-label')
-      .attr('text-anchor', 'middle')
-      .attr('dominant-baseline', 'central')
-      .text(label);
-
-    handle.append('path')
-      .attr('class', 'forecast-handle-icon')
-      .attr('d', `M ${width / 2 - 18} 0 L ${width / 2 - 10} 0 M ${width / 2 - 14} -4 L ${width / 2 - 10} 0 L ${width / 2 - 14} 4`);
-
-    handle.on('pointerdown', (event) => {
-      if (event.button !== 0 || !currentScales) return;
-      event.preventDefault();
-      event.stopPropagation();
-
-      const startClientX = event.clientX;
-      const startMin = currentScales.xMin;
-      const startMax = currentScales.xMax;
-      const range = startMax - startMin;
-      const pixelRange = currentWidth - sizedConfig.padding.left - sizedConfig.padding.right;
-      const minHorizon = Math.max(1, data.forecast?.horizon || 1);
-
-      document.body.style.cursor = 'ew-resize';
-
-      const onMove = (e) => {
-        const dx = e.clientX - startClientX;
-        const nextHorizon = Math.max(minHorizon, Math.ceil(shownHorizon + dx * (range / pixelRange)));
-        config.onForecastDrag?.({ min: startMin, max: lastIdx + nextHorizon, horizon: nextHorizon });
-      };
-
-      const onUp = () => {
-        document.body.style.cursor = '';
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-      };
-
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-    });
+    // Forecast handle chrome removed — prediction renders without visible drag handle
   }
 
   // ── Double-click to reset ──────────────────────────────────────────
@@ -603,6 +546,7 @@ export function createChart(container, options = {}) {
 
   /** Update container reference after SVG is reattached to a new DOM element */
   function remount(newContainer) {
+    if (activeDragCleanup) { activeDragCleanup(); activeDragCleanup = null; }
     detachActivityListeners(container);
     container = newContainer;
     resizeObserver.disconnect();
@@ -612,6 +556,7 @@ export function createChart(container, options = {}) {
 
   /** Remove the chart SVG from the DOM and disconnect observer */
   function destroy() {
+    if (activeDragCleanup) { activeDragCleanup(); activeDragCleanup = null; }
     detachActivityListeners(container);
     resizeObserver.disconnect();
     svg.remove();
