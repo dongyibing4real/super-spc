@@ -83,8 +83,8 @@ export function createScales(data, config, seriesKey = 'primaryValue') {
   const { width, height, padding } = config;
   const n = data.points.length;
 
-  // X domain: default is [0, n-1], overridable by axis drag
-  const xDefault = { min: 0, max: n - 1 };
+  // X domain: default is [0, n-1], overridable by the app-provided viewport.
+  const xDefault = config.xDefaultDomain ?? { min: 0, max: n - 1 };
   const { min: xMin, max: xMax } = config.xDomainOverride ?? xDefault;
 
   // Y domain: default is auto-computed from data, overridable by axis drag

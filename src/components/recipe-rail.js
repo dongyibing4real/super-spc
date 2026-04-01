@@ -94,14 +94,23 @@ function renderChartChips(state, prefix, params, context, ae, cols) {
       : specSummary(params), ""],
   ];
 
-  return chips.map(([id, label, value, detail]) => `
-    <button class="recipe-chip ${ae === id ? "chip-editing" : ""}"
-      data-action="toggle-chip-editor" data-chip="${id}" type="button">
+  return chips.map(([id, label, value, detail]) => {
+    const isEditing = ae === id;
+    const isSpecsUnset = id.endsWith("-specs") && value === "Not set";
+    const warnClass = isSpecsUnset ? "chip--warn" : "";
+    const titleAttr = isSpecsUnset
+      ? 'title="Set LSL / USL to enable Cpk, Ppk capability analysis"'
+      : "";
+    const valueStr = typeof value === "string" ? value : "";
+    return `
+    <button class="recipe-chip ${isEditing ? "chip-editing" : ""} ${warnClass}"
+      data-action="toggle-chip-editor" data-chip="${id}" type="button" ${titleAttr}>
       <span class="chip-label">${label}</span>
-      <strong>${typeof value === "string" && !value.startsWith("<") ? value : ""}${typeof value === "string" && value.startsWith("<") ? value : ""}</strong>
+      <strong>${valueStr}</strong>
       ${detail ? `<span class="chip-detail">${detail}</span>` : ""}
     </button>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function collapsedSummary(slot) {
@@ -126,6 +135,7 @@ function renderCollapsedChartCard(state, chartId) {
       <div class="rail-card-header rail-card-header--collapsed">
         <span class="rail-card-dot"></span>
         <span class="rail-card-label">${chartLabel}</span>
+
         <span class="rail-card-id">Chart ${idx}</span>
       </div>
       <div class="rail-card-summary">${summary}</div>
@@ -143,6 +153,7 @@ function renderExpandedChartCard(state, chartId, slot, ae, cols) {
       <div class="rail-card-header rail-card-header--focused">
         <span class="rail-card-dot"></span>
         <span class="rail-card-label">${chartLabel}</span>
+
         <span class="rail-card-id">Chart ${idx}</span>
       </div>
       ${renderChartChips(state, chartId, slot.params, slot.context, ae, cols)}
@@ -172,11 +183,12 @@ function renderPendingChartCard(state) {
       <div class="rail-card-header rail-card-header--pending">
         <span class="rail-card-dot"></span>
         <span class="rail-card-label">New Chart</span>
+        <button class="rail-card-close" data-action="cancel-add-chart" type="button" aria-label="Cancel new chart" title="Cancel">✕</button>
       </div>
       ${renderChartChips(state, "_pending", pending, context, ae, cols)}
       <div class="rail-card-actions">
         <button class="rail-card-btn rail-card-btn--cancel" data-action="cancel-add-chart" type="button">Cancel</button>
-        <button class="rail-card-btn rail-card-btn--confirm" data-action="confirm-add-chart" type="button">Add Chart</button>
+        <button class="rail-card-btn rail-card-btn--confirm" data-action="confirm-add-chart" type="button">Add</button>
       </div>
     </div>
   `;
@@ -187,9 +199,12 @@ function renderAddChartSection(state) {
     return renderPendingChartCard(state);
   }
   return `
-    <button class="rail-add-chart" data-action="open-add-chart" type="button">
-      <span class="rail-add-icon">+</span>
-      <span class="rail-add-label">Add Chart</span>
+    <button class="rail-card rail-card--add" data-action="open-add-chart" type="button">
+      <div class="rail-card-header rail-card-header--add">
+        <span class="rail-card-dot"></span>
+        <span class="rail-card-label">New Chart</span>
+        <span class="rail-card-id">+</span>
+      </div>
     </button>
   `;
 }
@@ -235,11 +250,10 @@ export function renderRecipeRail(state) {
     <div class="recipe-rail">
       ${datasetCard}
       <div class="recipe-divider"></div>
+      ${renderAddChartSection(state)}
       ${focusedCard}
       ${countBadge}
       ${collapsedCards}
-      <div class="recipe-divider"></div>
-      ${renderAddChartSection(state)}
     </div>
   `;
 }

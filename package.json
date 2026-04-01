@@ -8,9 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js",
-    "test": "node tests/state.test.js"
+    "test": "node tests/state.test.js && node tests/forecast-view.test.js && node tests/forecast-prediction.test.js"
   },
   "devDependencies": {
+    "playwright": "^1.58.2",
     "vite": "^8.0.3"
   },
   "dependencies": {

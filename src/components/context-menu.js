@@ -14,7 +14,6 @@ export function renderPointContextMenu(state) {
     <div class="context-menu" style="left:${x}px;top:${y}px;" role="menu">
       <div class="context-menu-header">Point</div>
       <button data-action="exclude-point" data-index="${state.selectedPointIndex}" role="menuitem" type="button">${sp?.excluded ? "Restore point" : "Exclude point"}</button>
-      <button data-action="create-finding" role="menuitem" type="button">Create finding from selection</button>
       <button data-action="navigate" data-route="methodlab" role="menuitem" type="button">Open in Method Lab</button>
     </div>
   `;
@@ -66,3 +65,4 @@ export function renderContextMenu(state) {
     default: return renderCanvasContextMenu(state);
   }
 }
+

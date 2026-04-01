@@ -9,6 +9,7 @@ import { renderPoints } from './points.js';
 import { renderSelection } from './selection.js';
 import { renderAxes } from './axes.js';
 import { renderEvents } from './events.js';
+import { renderProjection, renderProjectionPrompt, renderProjectionShell } from './projection.js';
 import { DEFAULT_CONFIG, computeLayout } from './config.js';
 
 /**
@@ -47,6 +48,10 @@ function getYAxisLabel(chartTypeId, metricLabel) {
   return fn ? fn(metricLabel) : metricLabel;
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 /**
  * Render axis title labels.
  *   X-axis: subgroup variable name (JMP convention)
@@ -59,14 +64,19 @@ function renderAxisTitles(xTitleLayer, yTitleLayer, data, config) {
   const plotCenterX = p.left + (W - p.left - p.right) / 2;
   const plotCenterY = p.top + (H - p.top - p.bottom) / 2;
 
-  // X-axis title — subgroup variable name (JMP: shows the grouping column)
   xTitleLayer.selectAll('*').remove();
+  yTitleLayer.selectAll('*').remove();
+
+  // Hide axis titles when pane is too small — space is better used for data
+  if (!config.showAxisTitles) return;
+
+  // X-axis title — subgroup variable name (JMP: shows the grouping column)
   const xLabel = data.subgroup?.id === 'individual'
     ? 'Observation'
     : (data.subgroup?.label || 'Observation');
   xTitleLayer.append('text')
     .attr('x', plotCenterX)
-    .attr('y', H - 4)
+    .attr('y', H - 12)
     .attr('text-anchor', 'middle')
     .style('font-size', '10px')
     .style('font-family', 'Inter, system-ui, sans-serif')
@@ -75,7 +85,6 @@ function renderAxisTitles(xTitleLayer, yTitleLayer, data, config) {
     .text(xLabel);
 
   // Y-axis title — function(measurement) (JMP convention)
-  yTitleLayer.selectAll('*').remove();
   const metricName = data.metric?.label || 'Value';
   const chartId = data.chartType?.id || 'imr';
   const yLabel = getYAxisLabel(chartId, metricName);
@@ -95,7 +104,7 @@ function renderAxisTitles(xTitleLayer, yTitleLayer, data, config) {
  * Create a D3-powered SPC control chart that auto-sizes to its container.
  *
  * @param {HTMLElement} container - DOM element to mount the SVG into
- * @param {object} options - Config overrides + callbacks (onSelectPoint, onContextMenu, onAxisDrag, onAxisReset)
+ * @param {object} options - Config overrides + callbacks (onSelectPoint, onContextMenu, onAxisDrag, onAxisReset, onForecastDrag, onForecastActivity, onForecastPromptEligibilityChange, onActivateForecast, onSelectForecast, onCancelForecast)
  * @returns {{ update: Function, destroy: Function, svg: Selection }}
  */
 export function createChart(container, options = {}) {
@@ -118,7 +127,7 @@ export function createChart(container, options = {}) {
     .attr('role', 'img')
     .attr('aria-label', 'Control chart')
     .style('display', 'block')
-    .style('overflow', 'hidden');
+    .style('overflow', 'visible');
 
   // ── Clip path: constrains all plot content to the inner plot area ──
   const clipId = `plot-clip-${Math.random().toString(36).slice(2, 8)}`;
@@ -142,13 +151,38 @@ export function createChart(container, options = {}) {
     limitLabels: svg.append('g').attr('class', 'layer-limit-labels'), // outside clip — edge labels visible
     challenger: plotClip.append('g').attr('class', 'layer-challenger'),
     primary: plotClip.append('g').attr('class', 'layer-primary'),
+    projection: plotClip.append('g').attr('class', 'layer-projection'),
     events: plotClip.append('g').attr('class', 'layer-events'),
     points: plotClip.append('g').attr('class', 'layer-points'),
+    projectionUi: svg.append('g').attr('class', 'layer-projection-ui'),
     xAxis: svg.append('g').attr('class', 'layer-x-axis'),       // outside clip — labels visible
     xTitle: svg.append('g').attr('class', 'layer-x-title'),     // x-axis title
     yTitle: svg.append('g').attr('class', 'layer-y-title'),     // y-axis title
+    forecastHandle: svg.append('g').attr('class', 'layer-forecast-handle'),
     selection: plotClip.append('g').attr('class', 'layer-selection'),
   };
+
+  function handleForecastActivity(event) {
+    const target = event?.target;
+    if (target?.closest?.('.forecast-prompt-hit, .forecast-prompt-callout, .forecast-shell-hit, .forecast-cancel, .forecast-handle')) {
+      return;
+    }
+    config.onForecastActivity?.();
+  }
+
+  function attachActivityListeners(target) {
+    target.addEventListener('pointerdown', handleForecastActivity, true);
+    target.addEventListener('wheel', handleForecastActivity, { passive: true, capture: true });
+    target.addEventListener('keydown', handleForecastActivity, true);
+  }
+
+  function detachActivityListeners(target) {
+    target.removeEventListener('pointerdown', handleForecastActivity, true);
+    target.removeEventListener('wheel', handleForecastActivity, true);
+    target.removeEventListener('keydown', handleForecastActivity, true);
+  }
+
+  attachActivityListeners(container);
 
   // ── Axis hit regions (invisible rects for drag + right-click) ──────
   const xAxisHit = svg.append('rect')
@@ -203,6 +237,7 @@ export function createChart(container, options = {}) {
       event.preventDefault();
       event.stopPropagation();
       if (!currentScales) return;
+      config.onForecastActivity?.();
 
       const startClientX = event.clientX;
       const startClientY = event.clientY;
@@ -213,9 +248,10 @@ export function createChart(container, options = {}) {
       const range = startMax - startMin;
 
       // Pixel range for this axis direction
+      const activePadding = currentSizedConfig?.padding || config.padding;
       const pixelRange = axisType === 'x'
-        ? currentWidth - config.padding.left - config.padding.right
-        : currentHeight - config.padding.top - config.padding.bottom;
+        ? currentWidth - activePadding.left - activePadding.right
+        : currentHeight - activePadding.top - activePadding.bottom;
 
       // Clamping — identical for both axes: generous range, no position walls
       const minRange = range * 0.05;   // can zoom to 5% of original range
@@ -225,6 +261,7 @@ export function createChart(container, options = {}) {
       hitElement.style('cursor', 'grabbing');
 
       const onMove = (e) => {
+        config.onForecastActivity?.();
         const dx = e.clientX - startClientX;
         const dy = e.clientY - startClientY;
 
@@ -268,9 +305,88 @@ export function createChart(container, options = {}) {
   setupAxisDrag(xAxisHit, 'x');
   setupAxisDrag(yAxisHit, 'y');
 
+  function renderForecastHandle(data, scales, sizedConfig) {
+    const layer = layers.forecastHandle;
+    layer.selectAll('*').remove();
+
+    if (data.forecast?.mode !== 'active') return;
+    const shownHorizon = Math.max(0, data.forecast?.visibleHorizon || 0);
+    if (!data.points?.length || shownHorizon <= 0) return;
+
+    const p = sizedConfig.padding;
+    const lastIdx = data.points.length - 1;
+    const handleX = clamp(
+      scales.x(lastIdx + shownHorizon),
+      p.left,
+      currentWidth - p.right,
+    );
+    const handleY = currentHeight - p.bottom + 14;
+    const label = 'Forecasting';
+    const width = 84;
+
+    const handle = layer.append('g')
+      .attr('class', 'forecast-handle is-active')
+      .attr('transform', `translate(${handleX},${handleY})`)
+      .style('cursor', 'ew-resize');
+
+    handle.append('rect')
+      .attr('x', -width / 2)
+      .attr('y', -11)
+      .attr('width', width)
+      .attr('height', 22)
+      .attr('rx', 11);
+
+    handle.append('text')
+      .attr('class', 'forecast-handle-label')
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .text(label);
+
+    handle.append('path')
+      .attr('class', 'forecast-handle-icon')
+      .attr('d', `M ${width / 2 - 18} 0 L ${width / 2 - 10} 0 M ${width / 2 - 14} -4 L ${width / 2 - 10} 0 L ${width / 2 - 14} 4`);
+
+    handle.on('pointerdown', (event) => {
+      if (event.button !== 0 || !currentScales) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const startClientX = event.clientX;
+      const startMin = currentScales.xMin;
+      const startMax = currentScales.xMax;
+      const range = startMax - startMin;
+      const pixelRange = currentWidth - sizedConfig.padding.left - sizedConfig.padding.right;
+      const minHorizon = Math.max(1, data.forecast?.horizon || 1);
+
+      document.body.style.cursor = 'ew-resize';
+
+      const onMove = (e) => {
+        const dx = e.clientX - startClientX;
+        const nextHorizon = Math.max(minHorizon, Math.ceil(shownHorizon + dx * (range / pixelRange)));
+        config.onForecastDrag?.({ min: startMin, max: lastIdx + nextHorizon, horizon: nextHorizon });
+      };
+
+      const onUp = () => {
+        document.body.style.cursor = '';
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+  }
+
   // ── Double-click to reset ──────────────────────────────────────────
   xAxisHit.on('dblclick', () => config.onAxisReset?.('x'));
   yAxisHit.on('dblclick', () => config.onAxisReset?.('y'));
+
+  svg.on('click', (event) => {
+    if (lastData?.forecast?.mode !== 'active') return;
+    const target = event.target;
+    if (target?.closest?.('.forecast-shell-hit') || target?.closest?.('.forecast-cancel')) return;
+    config.onSelectForecast?.(false);
+  });
 
   // Track last data for re-rendering on resize and axis drag clamping
   let lastData = null;
@@ -309,10 +425,14 @@ export function createChart(container, options = {}) {
       padding: layout.padding,
       yLabelFontSize: layout.yLabelFontSize,
       edgeLabelFontSize: layout.edgeLabelFontSize,
+      showAxisTitles: layout.showAxisTitles,
       width: currentWidth,
       height: currentHeight,
       xDomainOverride: data.toggles.xDomainOverride ?? null,
+      xDefaultDomain: data.toggles.xDefaultDomain ?? null,
       yDomainOverride: data.toggles.yDomainOverride ?? null,
+      visibleForecastHorizon: data.forecast?.visibleHorizon ?? 0,
+      forecastSelected: !!data.forecast?.selected,
     };
     currentSizedConfig = sizedConfig;
     const scales = createScales(data, sizedConfig, seriesKey);
@@ -346,6 +466,53 @@ export function createChart(container, options = {}) {
 
     // Main series line (uses configurable seriesKey)
     renderSeries(layers.primary, scales, data.points, seriesKey, seriesType);
+
+    // Forecast prompt / shell
+    if (data.forecast?.mode === 'prompt') {
+      renderProjectionPrompt(layers.projectionUi, scales, data, sizedConfig);
+      layers.projectionUi.selectAll('.forecast-prompt-hit, .forecast-prompt-callout')
+        .style('cursor', 'pointer')
+        .on('pointerdown', (event) => {
+          event.stopPropagation();
+        })
+        .on('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          config.onActivateForecast?.();
+        });
+    } else if (data.forecast?.mode === 'active') {
+      renderProjectionShell(layers.projectionUi, scales, data, sizedConfig);
+      layers.projectionUi.select('.forecast-shell-hit')
+        .style('cursor', 'pointer')
+        .on('pointerdown', (event) => {
+          event.stopPropagation();
+        })
+        .on('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          config.onSelectForecast?.(true);
+        });
+      layers.projectionUi.select('.forecast-cancel')
+        .style('cursor', 'pointer')
+        .on('pointerdown', (event) => {
+          event.stopPropagation();
+        })
+        .on('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          config.onCancelForecast?.();
+        });
+    } else {
+      layers.projectionUi.selectAll('*').remove();
+    }
+
+    // Ghost zone projection (between series and points in z-order)
+    if (data.forecast?.result) {
+      renderProjection(layers.projection, defs, scales, data, sizedConfig);
+    } else {
+      layers.projection.selectAll('*').remove();
+      defs.selectAll('.ghost-clip').remove();
+    }
 
     // Event annotations
     if (data.toggles.events) renderEvents(layers.events, scales, data, sizedConfig);
@@ -383,12 +550,24 @@ export function createChart(container, options = {}) {
       .attr('y', p.top)
       .attr('width', p.left)
       .attr('height', currentHeight - p.top - p.bottom);
+
+    renderForecastHandle(data, scales, sizedConfig);
+    const lastIdx = data.points.length - 1;
+    const gapPx = data.points?.length
+      ? scales.x(lastIdx + (data.forecast?.horizon || 0)) - scales.x(lastIdx)
+      : 0;
+    const plotWidth = Math.max(0, sizedConfig.width - sizedConfig.padding.left - sizedConfig.padding.right);
+    const minPromptGap = Math.max(20, Math.min(56, plotWidth * 0.08));
+    config.onForecastPromptEligibilityChange?.({
+      eligible: gapPx >= minPromptGap,
+    });
   }
 
-  /** Sync SVG dimensions to current container size */
+  /** Sync SVG dimensions to container's content box (excludes padding) */
   function syncSize() {
-    const w = container.clientWidth;
-    const h = container.clientHeight;
+    const cs = getComputedStyle(container);
+    const w = container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
     if (w > 0 && h > 0) {
       currentWidth = w;
       currentHeight = h;
@@ -410,8 +589,9 @@ export function createChart(container, options = {}) {
     // Deferred re-render: CSS Grid may not have settled yet after layout changes.
     // requestAnimationFrame runs after the browser paints the new layout.
     requestAnimationFrame(() => {
-      const w = container.clientWidth || 400;
-      const h = container.clientHeight || 300;
+      const cs = getComputedStyle(container);
+      const w = (container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) || 400;
+      const h = (container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) || 300;
       if (w !== currentWidth || h !== currentHeight) {
         currentWidth = w;
         currentHeight = h;
@@ -423,13 +603,16 @@ export function createChart(container, options = {}) {
 
   /** Update container reference after SVG is reattached to a new DOM element */
   function remount(newContainer) {
+    detachActivityListeners(container);
     container = newContainer;
     resizeObserver.disconnect();
     resizeObserver.observe(newContainer);
+    attachActivityListeners(newContainer);
   }
 
   /** Remove the chart SVG from the DOM and disconnect observer */
   function destroy() {
+    detachActivityListeners(container);
     resizeObserver.disconnect();
     svg.remove();
   }

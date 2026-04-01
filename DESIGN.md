@@ -297,6 +297,40 @@ The Data Prep layer uses a client-first architecture. CSV is parsed client-side 
 - Every chart is independent — no linked axes, no shared interaction
 - Min pane: 250×180px; max per row/column computed from viewport
 
+### Chart Pane Focus
+- **Unfocused:** 2px left accent stripe in chart's own accent color (`--pane-accent`), titlebar at 0.7 opacity
+- **Focused:** L-shaped accent — 2px top + left border in chart's own accent color. Titlebar at full opacity with `--chart-surface` background
+- **No background tint on focus** — chart canvas stays `--chart-bg` always. Color-shifting the data visualization surface is not acceptable for a precision instrument.
+- **Identity preserved:** focused pane keeps its per-chart accent color, never overrides to blue. If chart 3 is teal, it stays teal when focused.
+- **No layout shift:** border widths stay at 2px in both states; only color changes. Transition: `border-color 150ms ease`.
+
+### Adaptive Chart Layout (Height-Aware Padding)
+
+Chart padding, font sizes, and axis titles scale automatically based on available pane height. The system ensures the plot area always gets at least 60% of vertical space.
+
+**Scaling factors:**
+- `vScale = clamp(0.4, height / 300, 1.0)` — vertical padding compression
+- `hScale = clamp(0.5, width / 400, 1.0)` — horizontal padding compression
+- Total vertical padding capped at 40% of height
+
+**Adaptive behaviors by pane size:**
+
+| SVG Height | Plot Area | Axis Titles | Top Pad | Bottom Pad |
+|------------|-----------|-------------|---------|------------|
+| 120px | ~82% | hidden | 6px | 16px |
+| 150px | ~81% | hidden | 8px | 20px |
+| 180px | ~74% | shown | 10px | 36px |
+| 250px+ | ~75% | shown | 13px | 50px |
+| 350px+ | ~78-85% | shown | 16px | 60px |
+
+**Overflow model (single containment boundary):**
+- SVG clip path → constrains data series to plot area
+- SVG `overflow: visible` → axis labels/titles can extend beyond clip path
+- `.chart-stage overflow: visible` → passes through to pane
+- `.chart-pane overflow: hidden` → single final containment boundary
+
+**SVG coordinate accuracy:** `syncSize()` measures the container's content box (excluding CSS padding) so SVG attribute dimensions match rendered pixel dimensions 1:1. No scaling mismatch.
+
 ### Navigation Sidebar
 - **140px text sidebar** with full labels, dark background (`--bg-0`)
 - **Brand block** at top: product name "Super SPC" + version number
@@ -566,3 +600,5 @@ Detailed feature specs have been extracted from this file into individual docume
 | 2026-03-28 | **DESIGN.md alignment with product** | Recipe rail restructured from Variables/Config/Layers to Dataset + Primary + Challenger sections — dual-config approach enables side-by-side method comparison directly in the rail. Method Comparison Bar replaced with Compare Strip (horizontal stat cards) + Lineage Strip. Layer toggles removed from recipe rail. Capability indices live in chart pane titlebar. Data Readout Bar deferred (selected-point info in Evidence Rail for now). |
 | 2026-03-29 | **DataRow model: client-first CSV architecture** | Replaced Measurement model (stored value+subgroup as mapped columns) with DataRow (stores raw_json only). CSV parsed client-side via PapaParse — no server-side CSV parsing. Value and subgroup derived at analysis time from column roles. POST /datasets accepts JSON rows rather than file upload. Rationale: full round-trip fidelity, no dtype coercion surprises, client-side Arquero transforms without round-tripping data to server. |
 | 2026-03-29 | **Data Prep Phase 1 — 7 transforms, inline panel pattern** | Implemented: row filtering, sort, find-replace, dedup, missing value handling, trim/clean text, column reorder/hide. All transforms are immutable Arquero operations stacked and replayed on undo. UI: toolbar with active-state tool buttons, inline collapsible panels (no modals). Layout: 3-column grid (240px dataset list \| 1fr prep-center \| 260px column info). Critical bug found and fixed: renderPrepTable() must return a single .prep-center wrapper — emitting 3 sibling elements breaks grid placement, squashing table to 260px. |
+| 2026-03-31 | **Chart pane focus: identity-preserving L-accent** | Replaced full blue border box on focused pane with L-shaped accent (top + left) in chart's own accent color. Removed blue background tint — chart canvas must stay `--chart-bg` always for data-viz neutrality. Focus is now distinguished by accent shape + titlebar opacity, not surface color shift. |
+| 2026-03-31 | **Adaptive chart layout: height-aware padding** | Chart padding, font sizes, and axis titles now scale with available pane height via `vScale`/`hScale` factors. Axis titles hide below 180px SVG height. Total vertical padding capped at 40% of height — plot area always ≥60%. Fixed SVG coordinate mismatch (`syncSize()` now measures content box, not client box). Single overflow containment: `.chart-pane overflow: hidden` is the only clip boundary; SVG and stage use `overflow: visible`. |

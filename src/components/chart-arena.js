@@ -1,5 +1,22 @@
 import { getCapability, capClass, CHART_TYPE_LABELS } from "../helpers.js";
 import { renderContextMenu } from "./context-menu.js";
+import { buildForecastView } from "../prediction/build-forecast-view.js";
+
+const FOCUSED_TAIL_WINDOW = 60;
+
+function getChartPoints(state, slot) {
+  const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
+  return hasChartValues
+    ? slot.chartValues.map((v, i) => ({
+        primaryValue: v,
+        label: slot.chartLabels[i] || `pt-${i}`,
+        subgroupLabel: slot.chartLabels[i] || `pt-${i}`,
+        excluded: false,
+        annotation: null,
+        raw: {},
+      }))
+    : state.points;
+}
 
 /* ═══ Chart pane renderer ═══ */
 
@@ -12,6 +29,23 @@ function renderChartPane(state, chartId) {
   const caps = getCapability(state, chartId);
   const method = slot.context.chartType?.label || "";
   const metric = slot.context.metric?.label || "";
+  const points = getChartPoints(state, slot);
+  const lastIdx = Math.max(0, points.length - 1);
+  const xDefaultDomain = {
+    min: Math.max(0, lastIdx - (FOCUSED_TAIL_WINDOW - 1)),
+    max: lastIdx + (slot.forecast?.horizon || 6),
+  };
+  const forecastView = buildForecastView({
+    points,
+    limits: slot.limits,
+    forecast: slot.forecast,
+    xDomainOverride: slot.overrides.x,
+    xDefaultDomain,
+    chartTypeId: slot.context.chartType?.id,
+  });
+  const driftChip = forecastView.driftSummary
+    ? `<span class="drift-chip status-chip ${forecastView.driftSummary.intent}">${forecastView.driftSummary.label}</span>`
+    : "";
 
   const titlebar = isOnly ? "" : `
     <div class="chart-pane-titlebar" data-drag-handle="${chartId}">
@@ -23,8 +57,9 @@ function renderChartPane(state, chartId) {
         <div class="pane-caps">
           <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(caps.cpk)}">${caps.cpk}</span></span>
           <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(caps.ppk)}">${caps.ppk}</span></span>
+          ${driftChip}
         </div>
-      ` : ""}
+      ` : driftChip ? `<div class="pane-caps">${driftChip}</div>` : ""}
       <div class="pane-actions">
         <button class="pane-table-btn ${slot.showDataTable ? "active" : ""}" data-action="toggle-pane-table" data-chart-id="${chartId}" title="Data table">☰</button>
         <button class="pane-close" data-action="remove-chart" data-chart-id="${chartId}" title="Close chart">×</button>
