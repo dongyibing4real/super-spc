@@ -4,9 +4,9 @@
 
 ### The SPC Platform That Respects Your Intelligence
 
-**24 chart types. 8 Nelson rules. Zero dashboard fluff.**
+**24 control charts. 8 Nelson tests. Open source and free.**
 
-Built for process engineers who are tired of clicking through wizards.
+Built for engineers who are done paying JMP and Minitab prices for heavy workflows and opaque calculation logic.
 
 [Getting Started](#getting-started) &bull; [Features](#features) &bull; [Chart Types](#chart-types) &bull; [Why Super SPC](#why-super-spc) &bull; [Architecture](#architecture)
 
@@ -18,9 +18,11 @@ Built for process engineers who are tired of clicking through wizards.
 
 ## What is Super SPC?
 
-Super SPC is an open-source statistical process control platform purpose-built for semiconductor manufacturing, advanced process control, and high-stakes quality engineering.
+Super SPC is a free and open-source statistical process control platform built for semiconductor manufacturing, advanced process control, and high-stakes quality engineering.
 
-It's what you'd get if **JMP's control chart builder** and **Palantir's interface density** had a baby — then raised it on Nelson rules and zone shading instead of marketing dashboards.
+If you are tired of JMP and Minitab pricing, modal-heavy interaction patterns, and closed-source calculation logic you cannot inspect, Super SPC is the alternative: a lightweight modern frontend app with 24 control chart types, 8 Nelson tests, and transparent implementation end to end.
+
+It combines dense operational UI, direct chart interaction, and auditable SPC logic without turning routine analysis into a wizard-driven workflow.
 
 ```
 No wizards. No "AI insights." No 47-click workflows.
