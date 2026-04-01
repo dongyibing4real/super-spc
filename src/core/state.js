@@ -1,3 +1,5 @@
+import { DEFAULT_FORECAST_HORIZON } from "../prediction/constants.js";
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -101,14 +103,14 @@ function buildEvidence(state, point) {
   const violationCount = (primary.violations || []).reduce((sum, v) => sum + v.indices.length, 0);
 
   return [
-    // ── Point-level items (change with the selected point) ──
+    // 閳光偓閳光偓 Point-level items (change with the selected point) 閳光偓閳光偓
     {
       label: "Value",
-      value: point ? point.primaryValue.toFixed(4) : "—",
+      value: point ? point.primaryValue.toFixed(4) : "-",
       resolved: Boolean(point),
       category: "point",
     },
-    // ── Chart-level items (stable, describe the analysis) ──
+    // 閳光偓閳光偓 Chart-level items (stable, describe the analysis) 閳光偓閳光偓
     {
       label: "UCL / CL / LCL",
       value: `${primary.limits.ucl.toFixed(4)} / ${primary.limits.center.toFixed(4)} / ${primary.limits.lcl.toFixed(4)}`,
@@ -123,13 +125,13 @@ function buildEvidence(state, point) {
     },
     {
       label: "Violations",
-      value: uniqueRules.size > 0 ? `${uniqueRules.size} rule${uniqueRules.size !== 1 ? "s" : ""} · ${violationCount} pts` : "None",
+      value: uniqueRules.size > 0 ? `${uniqueRules.size} rule${uniqueRules.size !== 1 ? "s" : ""} 璺?${violationCount} pts` : "None",
       resolved: uniqueRules.size === 0,
       category: "chart",
     },
     {
       label: "Points",
-      value: `${state.points.length} · ${state.points.filter(p => p.excluded).length} excl`,
+      value: `${state.points.length} 璺?${state.points.filter(p => p.excluded).length} excl`,
       resolved: true,
       category: "chart",
     },
@@ -147,19 +149,19 @@ function buildRecommendations(state, point) {
   const violations = getFocused(state).violations || [];
 
   if (violations.some(v => v.testId === "1")) {
-    checks.push("Investigate points beyond control limits — check for assignable causes.");
+    checks.push("Investigate points beyond control limits - check for assignable causes.");
   }
   if (violations.some(v => v.testId === "2")) {
-    checks.push("9+ consecutive points on same side of CL — possible process shift.");
+    checks.push("9+ consecutive points on same side of CL - possible process shift.");
   }
   if (violations.some(v => ["3", "5"].includes(v.testId))) {
-    checks.push("Trending pattern detected — check for gradual process drift.");
+    checks.push("Trending pattern detected - check for gradual process drift.");
   }
   if (violations.length === 0) {
     checks.push("Process appears in statistical control. Continue monitoring.");
   }
   if (point?.excluded) {
-    checks.push(`Review exclusion of point ${point.label} — verify the reason is still valid.`);
+    checks.push(`Review exclusion of point ${point.label} - verify the reason is still valid.`);
   }
 
   return checks;
@@ -174,21 +176,13 @@ function buildComparisonStrip(state) {
   return [
     { label: "OOC points", value: String(violationCount), tone: violationCount > 0 ? "critical" : "positive" },
     { label: "Rules triggered", value: String(ruleCount), tone: ruleCount > 0 ? "warning" : "positive" },
-    { label: "Method", value: focused.context.chartType?.label || "—", tone: "neutral" },
+    { label: "Method", value: focused.context.chartType?.label || "-", tone: "neutral" },
     { label: "Limits scope", value: focused.limits.scope, tone: "neutral" },
     { label: "Charts", value: String(state.chartOrder.length), tone: "neutral" },
   ];
 }
 
-function buildReportEligibility(finding) {
-  const unresolved = finding.citations.filter((citation) => !citation.resolved);
-  return {
-    canExport: unresolved.length === 0,
-    unresolved
-  };
-}
-
-/* ═══ Default empty state for initial load ═══ */
+/* 閳烘劏鏅查埡?Default empty state for initial load 閳烘劏鏅查埡?*/
 const DEFAULT_CONTEXT = {
   title: "",
   metric: { id: "value", label: "Value", unit: "" },
@@ -237,6 +231,11 @@ export function createSlot(overrides = {}) {
     phases: [],
     selectedPointIndex: null,
     showDataTable: false,
+    forecast: {
+      mode: "hidden",   // hidden | prompt | active
+      selected: false,
+      horizon: DEFAULT_FORECAST_HORIZON,
+    },
     ...overrides,
   };
 }
@@ -261,10 +260,10 @@ export function getFocused(state) {
   return state.charts[state.focusedChartId] || getPrimary(state);
 }
 
-/* ═══ Freeform Split Layout (binary split tree) ═══ */
+/* 閳烘劏鏅查埡?Freeform Split Layout (binary split tree) 閳烘劏鏅查埡?*/
 
 
-/* ── Tree helpers (kept temporarily for migration only) ─────── */
+/* 閳光偓閳光偓 Tree helpers (kept temporarily for migration only) 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓 */
 
 function _collect(node) {
   if (!node) return [];
@@ -276,7 +275,7 @@ function _collect(node) {
 export function migrateTreeToRows(layout) {
   if (layout.rows && layout.colWeights) return layout;
   if (layout.rows) {
-    // Has rows but no weights — add default weights
+    // Has rows but no weights 閳?add default weights
     return { rows: layout.rows, colWeights: layout.rows.map(r => r.map(() => 1)), rowWeights: layout.rows.map(() => 1) };
   }
   if (layout.tree) {
@@ -293,7 +292,7 @@ export function migrateTreeToRows(layout) {
 /** Get all chart IDs visible in the current layout */
 export function collectChartIds(layout) {
   if (!layout?.rows) {
-    // Legacy fallback — auto-migrate
+    // Legacy fallback 閳?auto-migrate
     if (layout?.tree) return _collect(layout.tree);
     if (layout?.slots) return [...layout.slots];
     return [];
@@ -364,7 +363,7 @@ export function insertChart(state, chartId, targetId, zone) {
   return { ...state, chartLayout: { rows, colWeights, rowWeights } };
 }
 
-/** Compute a preview of the grid after a drag-drop — does NOT modify state */
+/** Compute a preview of the grid after a drag-drop 閳?does NOT modify state */
 export function computeGridPreview(layout, draggingId, targetId, zone) {
   const { rows, colWeights, rowWeights } = layout;
   if (!draggingId || !targetId || draggingId === targetId) return layout;
@@ -419,7 +418,6 @@ export function createInitialState() {
     showDataTable: false,
     points: [],
     transforms: [],
-    findings: [],
     structuralFindings: [],
     selectedFindingId: null,
     findingsChartId: null,
@@ -433,13 +431,6 @@ export function createInitialState() {
       lastSuccessfulAt: null
     },
     selectedPointIndex: 0,
-    activeFindingId: null,
-    reportDraft: null,
-    reportExport: {
-      status: "idle",
-      failNext: false,
-      lastArtifactId: null
-    },
     chartToggles: {
       overlay: true,
       specLimits: true,
@@ -493,7 +484,7 @@ export function createInitialState() {
   };
 }
 
-/* ═══ New actions for API integration ═══ */
+/* 閳烘劏鏅查埡?New actions for API integration 閳烘劏鏅查埡?*/
 
 export function setDatasets(state, datasets) {
   return { ...state, datasets };
@@ -513,8 +504,6 @@ export function loadDataset(state, { points, slots, datasetId }) {
     activeDatasetId: datasetId,
     points,
     selectedPointIndex: points.length > 0 ? points.length - 1 : 0,
-    findings: [],
-    activeFindingId: null,
     structuralFindings: [],
     selectedFindingId: null,
     findingsChartId: null,
@@ -541,14 +530,12 @@ export function setError(state, message) {
   return { ...state, loading: false, error: message };
 }
 
-/* ═══ Existing actions — refactored to selective cloning ═══ */
+/* 閳烘劏鏅查埡?Existing actions 閳?refactored to selective cloning 閳烘劏鏅查埡?*/
 
 export function deriveWorkspace(state) {
   const point = getSelectedPoint(state);
   const signal = buildSignalNarrative(state, point);
   const evidence = buildEvidence(state, point);
-  const activeFinding = state.findings.find((finding) => finding.id === state.activeFindingId) || null;
-  const findingEligibility = activeFinding ? buildReportEligibility(activeFinding) : null;
 
   return {
     selectedPoint: point,
@@ -558,8 +545,6 @@ export function deriveWorkspace(state) {
     evidence,
     recommendations: buildRecommendations(state, point),
     compareCards: buildComparisonStrip(state),
-    activeFinding,
-    findingEligibility,
     excludedCount: state.points.filter((candidate) => candidate.excluded).length,
     lineageCount: state.transforms.filter((step) => step.active || step.status === "failed").length,
     failedTransformCount: getFailedTransformCount(state),
@@ -580,7 +565,7 @@ export function navigate(state, route) {
   return next;
 }
 
-/* ═══ Data Prep actions ═══ */
+/* 閳烘劏鏅查埡?Data Prep actions 閳烘劏鏅查埡?*/
 
 export function selectPrepDataset(state, datasetId) {
   return {
@@ -612,7 +597,7 @@ export function deletePrepDataset(state, datasetId) {
   return { ...state, datasets, dataPrep: dp, activeDatasetId };
 }
 
-/* ═══ Client-side data prep actions ═══ */
+/* 閳烘劏鏅查埡?Client-side data prep actions 閳烘劏鏅查埡?*/
 
 export function setPrepParsedData(state, { rawRows, arqueroTable, columns }) {
   return {
@@ -744,7 +729,7 @@ export function addColumnMeta(state, newColumns) {
   };
 }
 
-// ═══ Phase 3 — Row Exclusion ═══
+// 閳烘劏鏅查埡?Phase 3 閳?Row Exclusion 閳烘劏鏅查埡?
 
 export function toggleRowExclusion(state, rowIdx) {
   const excluded = [...state.dataPrep.excludedRows];
@@ -763,7 +748,7 @@ export function clearAllExclusions(state) {
   return { ...state, dataPrep: { ...state.dataPrep, excludedRows: [] } };
 }
 
-// ═══ Phase 3 — Data Profiling ═══
+// 閳烘劏鏅查埡?Phase 3 閳?Data Profiling 閳烘劏鏅查埡?
 
 export function setExpandedProfileColumn(state, colName) {
   const current = state.dataPrep.expandedProfileColumn;
@@ -780,7 +765,7 @@ export function setProfileCache(state, cache) {
   return { ...state, dataPrep: { ...state.dataPrep, profileCache: cache } };
 }
 
-/* ═══ Column Config + Analysis Params actions ��══ */
+/* 閳烘劏鏅查埡?Column Config + Analysis Params actions 閿熸枻鎷烽埡鎰ㄦ櫜 */
 
 export function setColumns(state, columns) {
   return {
@@ -808,7 +793,7 @@ export function setActiveChipEditor(state, chipId) {
 }
 
 export function selectPoint(state, index, id = null) {
-  // Subgroup-based charts (X-Bar R, CUSUM, etc.) have their own point space —
+  // Subgroup-based charts (X-Bar R, CUSUM, etc.) have their own point space 閳?
   // chartValues indices don't map to raw state.points indices.  Store selection
   // per-slot so clicks in one chart don't highlight semantically-unrelated
   // points in a chart that uses a different granularity.
@@ -962,7 +947,7 @@ export function recoverTransformStep(state, stepId) {
 }
 
 export function setChallengerStatus(state, status) {
-  // Legacy method-lab integration — kept for backwards compatibility
+  // Legacy method-lab integration 閳?kept for backwards compatibility
   return {
     ...state,
     auditLog: [`Method status changed to ${status}.`, ...state.auditLog],
@@ -982,145 +967,10 @@ export function setChallengerStatus(state, status) {
   };
 }
 
-export function selectFinding(state, findingId) {
-  return { ...state, activeFindingId: findingId };
-}
 
-export function createFindingFromSelection(state) {
-  const workspace = deriveWorkspace(state);
-  const point = workspace.selectedPoint;
 
-  if (!point) return state;
 
-  const newFinding = {
-    id: `finding-generated-${state.findings.length + 1}`,
-    title: `Workspace finding from ${point.label}`,
-    severity: point.primaryValue >= getPrimary(state).limits.ucl ? "High" : "Medium",
-    summary: workspace.signal.title,
-    confidence: workspace.signal.confidence === "High" ? 0.84 : 0.66,
-    status: "Draft",
-    owner: "Unassigned",
-    citations: workspace.evidence.map((item) => ({
-      label: item.label,
-      value: item.value,
-      resolved: item.resolved
-    }))
-  };
 
-  return {
-    ...state,
-    findings: [newFinding, ...state.findings],
-    activeFindingId: newFinding.id,
-    auditLog: [`Finding draft created from workspace selection ${point.label}.`, ...state.auditLog],
-    ui: {
-      ...state.ui,
-      notice: {
-        tone: "positive",
-        title: "Finding draft created",
-        body: `${newFinding.title} is linked to the current workspace evidence.`
-      }
-    }
-  };
-}
-
-export function generateReportDraft(state) {
-  const finding = state.findings.find((item) => item.id === state.activeFindingId);
-  if (!finding) return state;
-
-  const eligibility = buildReportEligibility(finding);
-
-  return {
-    ...state,
-    reportDraft: {
-      id: `report-${finding.id}`,
-      title: state.reportTemplate.title,
-      findingTitle: finding.title,
-      generatedAt: new Date().toISOString(),
-      partial: !eligibility.canExport,
-      unresolved: eligibility.unresolved
-    },
-    reportExport: { ...state.reportExport, status: "drafted" },
-    ui: {
-      ...state.ui,
-      notice: {
-        tone: eligibility.canExport ? "positive" : "warning",
-        title: "Report draft generated",
-        body: eligibility.canExport
-          ? "All citations are resolved. The report is ready for export."
-          : "The draft exists, but export is blocked until every citation resolves."
-      }
-    }
-  };
-}
-
-export function toggleReportFailureMode(state) {
-  const newFailNext = !state.reportExport.failNext;
-  return {
-    ...state,
-    reportExport: { ...state.reportExport, failNext: newFailNext },
-    ui: {
-      ...state.ui,
-      notice: {
-        tone: newFailNext ? "warning" : "info",
-        title: newFailNext ? "Next export will fail" : "Export failure cleared",
-        body: newFailNext
-          ? "Use this to verify the retry path without losing the draft."
-          : "The next export attempt will use the normal success path."
-      }
-    }
-  };
-}
-
-export function exportReport(state) {
-  const finding = state.findings.find((item) => item.id === state.activeFindingId);
-  if (!finding) return state;
-
-  const eligibility = buildReportEligibility(finding);
-
-  if (!eligibility.canExport) {
-    return {
-      ...state,
-      reportExport: { ...state.reportExport, status: "blocked" },
-      ui: {
-        ...state.ui,
-        notice: {
-          tone: "critical",
-          title: "Export blocked",
-          body: `Resolve ${eligibility.unresolved.length} citation gap${eligibility.unresolved.length === 1 ? "" : "s"} before export.`
-        }
-      }
-    };
-  }
-
-  if (state.reportExport.failNext) {
-    return {
-      ...state,
-      reportExport: { ...state.reportExport, status: "failed", failNext: false },
-      ui: {
-        ...state.ui,
-        notice: {
-          tone: "critical",
-          title: "Renderer failed",
-          body: "The draft is preserved and can be retried without data loss."
-        }
-      }
-    };
-  }
-
-  return {
-    ...state,
-    reportExport: { ...state.reportExport, status: "exported", lastArtifactId: `artifact-${finding.id}` },
-    auditLog: [`Report exported for ${finding.id}.`, ...state.auditLog],
-    ui: {
-      ...state.ui,
-      notice: {
-        tone: "positive",
-        title: "Report exported",
-        body: `${state.reportTemplate.title} is ready for handoff.`
-      }
-    }
-  };
-}
 
 export function clearNotice(state) {
   return { ...state, ui: { ...state.ui, notice: null } };
@@ -1141,7 +991,7 @@ export function closeContextMenu(state) {
   return { ...state, ui: { ...state.ui, contextMenu: null } };
 }
 
-/* ═══ Split Layout actions ═══ */
+/* 閳烘劏鏅查埡?Split Layout actions 閳烘劏鏅查埡?*/
 
 export function focusChart(state, chartId) {
   if (!state.charts[chartId] || state.focusedChartId === chartId) return state;
@@ -1275,7 +1125,75 @@ export function resetAxis(state, axis, id) {
   return state;
 }
 
-/* ═══ Structural Findings actions ═══ */
+export function setForecastPrompt(state, visible, id) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[id];
+  if (!slot || slot.forecast?.mode === "active") return state;
+  const nextMode = visible ? "prompt" : "hidden";
+  if ((slot.forecast?.mode || "hidden") === nextMode) return state;
+  return updateSlot(state, id, {
+    forecast: {
+      ...slot.forecast,
+      mode: nextMode,
+      selected: false,
+    },
+  });
+}
+
+export function activateForecast(state, id) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[id];
+  if (!slot) return state;
+  return updateSlot(state, id, {
+    forecast: {
+      ...slot.forecast,
+      mode: "active",
+      selected: true,
+    },
+  });
+}
+
+export function selectForecast(state, selected, id) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[id];
+  if (!slot || slot.forecast?.mode !== "active") return state;
+  if (slot.forecast.selected === selected) return state;
+  return updateSlot(state, id, {
+    forecast: {
+      ...slot.forecast,
+      selected,
+    },
+  });
+}
+
+export function setForecastHorizon(state, horizon, id) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[id];
+  if (!slot) return state;
+  const nextHorizon = Math.max(1, Math.ceil(horizon));
+  if (slot.forecast?.horizon === nextHorizon) return state;
+  return updateSlot(state, id, {
+    forecast: {
+      ...slot.forecast,
+      horizon: nextHorizon,
+    },
+  });
+}
+
+export function cancelForecast(state, id) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[id];
+  if (!slot) return state;
+  return updateSlot(state, id, {
+    forecast: {
+      ...slot.forecast,
+      mode: "hidden",
+      selected: false,
+    },
+  });
+}
+
+/* 閳烘劏鏅查埡?Structural Findings actions 閳烘劏鏅查埡?*/
 
 export function setStructuralFindings(state, findings, chartId) {
   return {
@@ -1293,3 +1211,4 @@ export function selectStructuralFinding(state, findingId) {
 export function setFindingsChart(state, chartId) {
   return { ...state, findingsChartId: chartId };
 }
+

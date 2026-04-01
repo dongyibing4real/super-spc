@@ -1,5 +1,5 @@
 /**
- * helpers.js — Shared utility functions and constants.
+ * helpers.js 鈥?Shared utility functions and constants.
  * Pure functions, no side effects, no mutable state.
  */
 
@@ -36,8 +36,7 @@ export const NAV = [
   ["workspace", "WK", "Workspace"],
   ["dataprep", "DP", "Data Prep"],
   ["methodlab", "ML", "Method Lab"],
-  ["findings", "FD", "Findings"],
-  ["reports", "RP", "Reports"]
+  ["findings", "FD", "Findings"]
 ];
 
 export const CHART_TYPE_LABELS = {
@@ -107,3 +106,4 @@ export function formatDate(isoStr) {
   const d = new Date(isoStr);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
+

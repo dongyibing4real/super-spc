@@ -1,0 +1,1 @@
+export const DEFAULT_FORECAST_HORIZON = 6;

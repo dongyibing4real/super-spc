@@ -42,17 +42,17 @@ function renderDatasetList(state) {
 }
 
 const ROW_OPS = [
-  { action: 'prep-filter',       label: 'Filter',  short: 'Flt', panel: 'filter' },
-  { action: 'prep-find-replace', label: 'Find',    short: 'Fnd', panel: 'find' },
+  { action: 'prep-filter',       label: 'Filter',  short: 'Flt', panel: 'filter', key: 'F' },
+  { action: 'prep-find-replace', label: 'Find',    short: 'Fnd', panel: 'find', key: 'D' },
   { action: 'prep-dedup',        label: 'Dedup',   short: 'Dup', panel: 'dedup' },
   { action: 'prep-missing',      label: 'Missing', short: 'Miss', panel: 'missing' },
   { action: 'prep-trim',         label: 'Trim',    short: 'Trm', panel: null },
 ];
 
 const COL_OPS = [
-  { action: 'prep-rename',      label: 'Rename',  panel: 'rename' },
-  { action: 'prep-change-type', label: 'Type',    panel: 'change_type' },
-  { action: 'prep-calc',        label: 'Calc',    panel: 'calculated' },
+  { action: 'prep-rename',      label: 'Rename',  panel: 'rename', key: 'R' },
+  { action: 'prep-change-type', label: 'Type',    panel: 'change_type', key: 'T' },
+  { action: 'prep-calc',        label: 'Calc',    panel: 'calculated', key: 'C' },
   { action: 'prep-recode',      label: 'Recode',  panel: 'recode' },
   { action: 'prep-bin',         label: 'Bin',     panel: 'bin' },
   { action: 'prep-split',       label: 'Split',   panel: 'split' },
@@ -68,63 +68,67 @@ function renderUtilityBar(state) {
   const totalRows = table ? table.numRows() : dataPrep.datasetPoints.length;
   const cols = (state.columnConfig.columns || []).length;
   const excl = dataPrep.excludedRows.length;
+  const resetting = dataPrep.confirmingReset;
 
   return `
     <div class="prep-menubar">
       <div class="prep-menubar-left">
-        <span class="prep-ds-nameplate">
-          ${ds
-            ? `<span class="prep-ds-nameplate-name">${ds.name}</span>${unsaved ? '<span class="prep-unsaved-dot" title="Unsaved changes"></span>' : ''}`
-            : `<span class="prep-ds-nameplate-empty">No dataset selected</span>`}
-        </span>
-        <div class="prep-menubar-divider"></div>
-        <div class="prep-menu-group">
-          <button data-action="prep-save" type="button"
-            class="prep-mbtn${unsaved ? ' prep-mbtn-save-active' : ''}"
-            title="Save cleaned dataset">Save</button>
-          <button data-action="prep-export-csv" type="button"
-            class="prep-mbtn" title="Download current data as CSV"
-            ${!ds ? 'disabled' : ''}>Export CSV</button>
+        <div class="prep-ds-block">
+          <span class="prep-ds-nameplate">
+            ${ds
+              ? `<span class="prep-ds-nameplate-name">${ds.name}</span>`
+              : `<span class="prep-ds-nameplate-empty">No dataset selected</span>`}
+          </span>
+          <div class="prep-meta-strip">
+            ${unsaved ? `<span class="prep-meta-chip prep-meta-chip--warn">Unsaved</span>` : ''}
+            ${ds && totalRows > 0 ? `<span class="prep-meta-chip">${totalRows.toLocaleString()} rows</span>` : ''}
+            ${ds && totalRows > 0 ? `<span class="prep-meta-chip">${cols} cols</span>` : ''}
+            ${count > 0 ? `<span class="prep-meta-chip">${count} transforms</span>` : ''}
+            ${excl > 0 ? `<span class="prep-meta-chip prep-meta-chip--warn">${excl} excluded</span>` : ''}
+          </div>
         </div>
-        <div class="prep-menubar-divider"></div>
-        <div class="prep-menu-group">
-          <button data-action="prep-undo" type="button"
-            class="prep-mbtn" title="Undo last transform"
-            ${count === 0 ? 'disabled' : ''}>Undo${count > 0 ? `<span class="prep-undo-badge">${count}</span>` : ''}</button>
-          <button data-action="prep-reset" type="button"
-            class="prep-mbtn prep-mbtn-danger" title="Discard all transforms and restore original data"
-            ${count === 0 ? 'disabled' : ''}>Reset</button>
-        </div>
-        <div class="prep-menubar-divider"></div>
-        <button data-action="prep-validate" type="button"
-          class="prep-mbtn" title="Validate data quality rules">Validate</button>
-        ${excl > 0 ? `
-          <div class="prep-menubar-divider"></div>
-          <span class="prep-excl-chip">${excl} excluded</span>
-          <button data-action="prep-restore-all" type="button" class="prep-mbtn" title="Restore all excluded rows">Restore</button>
-        ` : ''}
       </div>
       <div class="prep-menubar-right">
-        ${ds && totalRows > 0 ? `<span class="prep-status-chip">${totalRows.toLocaleString()} rows · ${cols} cols${count > 0 ? ` · ${count} step${count !== 1 ? 's' : ''}` : ''}</span>` : ''}
+        <div class="prep-menubar-actions">
+          <button data-action="prep-save" type="button"
+            class="prep-mbtn prep-mbtn-primary${unsaved ? ' prep-mbtn-primary-active' : ''}"
+            title="Save cleaned dataset">Save</button>
+          <button data-action="prep-undo" type="button"
+            class="prep-mbtn" title="Undo last transform (Z)"
+            ${count === 0 ? 'disabled' : ''}>Undo${count > 0 ? `<span class="prep-undo-badge">${count}</span>` : ''}</button>
+          <button data-action="prep-export-csv" type="button"
+            class="prep-mbtn prep-mbtn-quiet" title="Download current data as CSV"
+            ${!ds ? 'disabled' : ''}>Export</button>
+          <button data-action="prep-validate" type="button"
+            class="prep-mbtn prep-mbtn-quiet" title="Validate data quality rules">Validate</button>
+        </div>
+        <div class="prep-menubar-dangerzone">
+          <button data-action="prep-reset" type="button"
+            class="prep-mbtn prep-mbtn-danger${resetting ? ' prep-mbtn-danger-confirm' : ''}" title="Discard all transforms and restore original data"
+            ${count === 0 ? 'disabled' : ''}>${resetting ? 'Confirm?' : 'Reset'}</button>
+        </div>
       </div>
     </div>`;
 }
 
 function renderTransformToolbar(state) {
   const ap = state.dataPrep.activePanel;
+  const renderGroup = (label, groupClass, ops) => `
+      <div class="prep-op-group prep-op-group--${groupClass}">
+        <span class="prep-op-group-label">${label}</span>
+        <div class="prep-op-group-actions" aria-label="${label} operations">
+          ${ops.map(op => `
+            <button data-action="${op.action}" type="button"
+              class="prep-op-tab${op.panel && ap === op.panel ? ' active' : ''}"
+              ${op.key ? `title="${op.label} (${op.key})"` : ''}>${op.label}</button>
+          `).join('')}
+        </div>
+      </div>`;
+
   return `
     <div class="prep-transform-toolbar">
-      <span class="prep-toolbar-group-label">Col</span>
-      ${COL_OPS.map(op => `
-        <button data-action="${op.action}" type="button"
-          class="prep-col-btn${op.panel && ap === op.panel ? ' active' : ''}">${op.label}</button>
-      `).join('')}
-      <div class="prep-toolbar-divider"></div>
-      <span class="prep-toolbar-group-label">Row</span>
-      ${ROW_OPS.map(op => `
-        <button data-action="${op.action}" type="button"
-          class="prep-col-btn${op.panel && ap === op.panel ? ' active' : ''}">${op.label}</button>
-      `).join('')}
+      ${renderGroup('Column', 'column', COL_OPS)}
+      ${renderGroup('Row', 'row', ROW_OPS)}
     </div>`;
 }
 
@@ -454,8 +458,13 @@ function renderPrepTable(state) {
 
   const validationMap = table ? validateAllColumns(table, allCols) : new Map();
   const excludedSet = new Set(state.dataPrep.excludedRows || []);
+  const visibleRows = displayRows.slice(0, 500);
+  const visibleIndices = visibleRows.map((_, idx) => idx);
+  const selectedVisibleCount = visibleIndices.reduce((sum, idx) => sum + (excludedSet.has(idx) ? 0 : 1), 0);
+  const allVisibleSelected = visibleRows.length > 0 && selectedVisibleCount === visibleRows.length;
+  const partiallySelected = selectedVisibleCount > 0 && selectedVisibleCount < visibleRows.length;
 
-  const rows = displayRows.slice(0, 500).map((raw, idx) => {
+  const rows = visibleRows.map((raw, idx) => {
     const isExcluded = excludedSet.has(idx);
     const cells = cols.map(c => {
       const v = raw[c.name];
@@ -463,7 +472,15 @@ function renderPrepTable(state) {
       const isColSel = c.name === selectedCol;
       return `<td class="mono${invalid ? ' cell-invalid' : ''}${isColSel ? ' col-selected' : ''}">${v != null ? v : "\u2014"}</td>`;
     }).join("");
-    return `<tr class="${isExcluded ? 'row-excluded' : ''}" data-row-idx="${idx}"><td><input type="checkbox" data-action="toggle-row-exclude" data-row="${idx}" ${!isExcluded ? 'checked' : ''} />${idx + 1}</td>${cells}</tr>`;
+    return `<tr class="${isExcluded ? 'row-excluded' : ''}" data-row-idx="${idx}">
+      <td class="prep-row-select-cell">
+        <span class="prep-row-index mono" aria-hidden="true">${idx + 1}</span>
+        <button class="prep-row-toggle${!isExcluded ? ' is-selected' : ''}" data-action="toggle-row-exclude" data-row="${idx}" type="button" aria-pressed="${!isExcluded ? 'true' : 'false'}" aria-label="${!isExcluded ? `Keep row ${idx + 1}` : `Exclude row ${idx + 1}`}" title="${!isExcluded ? 'Keep row' : 'Exclude row'}">
+          <span class="prep-row-checkbox" aria-hidden="true"></span>
+        </button>
+      </td>
+      ${cells}
+    </tr>`;
   }).join("");
 
   return `
@@ -476,7 +493,12 @@ function renderPrepTable(state) {
       <div class="prep-table-wrap" data-action="prep-table-scroll">
         <table class="prep-table">
           <thead><tr>
-            <th data-action="select-column" data-column="sequence_index">#</th>
+            <th class="prep-row-select-head">
+              <button class="prep-master-checkbox${allVisibleSelected ? ' is-selected' : ''}${partiallySelected ? ' is-mixed' : ''}" data-action="prep-toggle-all-visible-rows" type="button" aria-pressed="${allVisibleSelected ? 'true' : 'false'}" title="${allVisibleSelected ? 'Exclude visible rows' : 'Keep visible rows'}">
+                <span class="prep-row-checkbox" aria-hidden="true"></span>
+                <span class="prep-row-select-meta">${selectedVisibleCount}/${visibleRows.length}</span>
+              </button>
+            </th>
             ${headers}
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -492,6 +514,15 @@ function renderPrepTable(state) {
 function renderThProfile(profile, dtype) {
   if (!profile) return '';
 
+  const fmtMini = v => {
+    if (v == null) return '\u2014';
+    const abs = Math.abs(v);
+    if (abs >= 1000 || (abs > 0 && abs < 0.01)) return v.toExponential(1);
+    if (abs >= 100) return v.toFixed(0);
+    if (abs >= 10) return v.toFixed(1);
+    return v.toFixed(2);
+  };
+
   let distribution = '';
   let statsLine = '';
 
@@ -499,19 +530,24 @@ function renderThProfile(profile, dtype) {
     const bars = profile.histogram.map(h =>
       `<span class="th-hist-bar" style="height:${Math.max(h * 100, 4)}%"></span>`
     ).join('');
-    distribution = `<div class="th-mini-hist">${bars}</div>`;
-    const fmt = v => v != null ? (Math.abs(v) >= 10000 ? v.toExponential(1) : parseFloat(v.toFixed(2))) : '\u2014';
-    statsLine = `<div class="th-mini-stats">${fmt(profile.min)} \u00b7 ${fmt(profile.mean)} \u00b7 ${fmt(profile.max)}</div>`;
+    distribution = `
+      <div class="th-mini-hist-wrap">
+        <div class="th-mini-hist">${bars}</div>
+        <div class="th-mini-axis">
+          <span>${fmtMini(profile.min)}</span>
+          <span>${fmtMini(profile.max)}</span>
+        </div>
+      </div>`;
+    statsLine = `<div class="th-mini-stats">med ${fmtMini(profile.median)} \u00b7 \u03c3 ${fmtMini(profile.std)}</div>`;
   } else if (dtype !== 'numeric' && profile.topValues?.length > 0) {
-    const maxCount = profile.topValues[0].count;
-    const bars = profile.topValues.slice(0, 3).map(t => {
-      const relPct = maxCount > 0 ? (t.count / maxCount * 100).toFixed(0) : 0;
-      const label = String(t.value).length > 8 ? String(t.value).slice(0, 8) + '\u2026' : t.value;
-      return `<div class="th-top-row"><span class="th-top-label">${label}</span><div class="th-top-track"><div class="th-top-bar" style="width:${relPct}%"></div></div></div>`;
+    const maxCount = profile.topValues[0]?.count || 0;
+    const cells = Array.from({ length: 10 }, (_, i) => {
+      const count = profile.topValues[i]?.count || 0;
+      const intensity = maxCount > 0 ? count / maxCount : 0;
+      return `<span class="th-heat-cell${count === 0 ? ' is-empty' : ''}" style="--heat-alpha:${(0.16 + intensity * 0.72).toFixed(3)}"></span>`;
     }).join('');
-    distribution = `<div class="th-mini-top">${bars}</div>`;
-    const topAbsPct = profile.count > 0 ? (maxCount / profile.count * 100).toFixed(0) : 0;
-    statsLine = `<div class="th-mini-stats">${profile.distinct} distinct \u00b7 top ${topAbsPct}%</div>`;
+    distribution = `<div class="th-mini-heatmap">${cells}</div>`;
+    statsLine = `<div class="th-mini-stats">${profile.distinct} distinct${profile.minLength != null ? ` \u00b7 len ${profile.minLength}\u2013${profile.maxLength}` : ''}</div>`;
   }
 
   if (!distribution) return '';
@@ -522,117 +558,6 @@ function renderThProfile(profile, dtype) {
     : '';
 
   return `<div class="th-profile">${completeness}${distribution}${statsLine}</div>`;
-}
-
-function renderColumnCard(c, profile, isHidden, roleLabels, isSelected) {
-  const roleLabel = c.role ? roleLabels[c.role] || c.role : null;
-  const validBadge = c.validation
-    ? `<span class="col-profile-valid-badge" title="${c.validation.type} rule">\u2713</span>` : '';
-
-  const header = `
-    <div class="col-profile-header">
-      <span class="col-profile-name mono">${c.name}</span>
-      <div class="col-profile-badges">
-        ${roleLabel ? `<span class="role-badge">${roleLabel}</span>` : ''}
-        <span class="col-dtype-pill">${c.dtype}</span>
-        ${validBadge}
-        <button class="column-toggle" data-action="toggle-column-visibility" data-column="${c.name}"
-          title="${isHidden ? 'Show column' : 'Hide column'}" type="button">
-          ${isHidden ? '\u25cb' : '\u25cf'}
-        </button>
-      </div>
-    </div>`;
-
-  const cardClasses = `col-profile-card${isHidden ? ' col-profile-hidden' : ''}${isSelected ? ' col-profile-selected' : ''}`;
-
-  if (!profile) {
-    return `<div class="${cardClasses}" data-action="select-profile-column" data-column="${c.name}">${header}<div class="col-profile-empty">\u2014</div></div>`;
-  }
-
-  const completePct = profile.count > 0 ? ((profile.count - profile.missing) / profile.count * 100) : 0;
-  const completeness = `
-    <div class="col-completeness">
-      <div class="col-completeness-track">
-        <div class="col-completeness-fill" style="width:${completePct.toFixed(1)}%"></div>
-      </div>
-      <span class="col-completeness-label">${completePct.toFixed(1)}% complete${profile.missing > 0 ? ` \u00b7 ${profile.missing} missing` : ''}</span>
-    </div>`;
-
-  let distribution = '';
-  let statsRow = '';
-
-  if (c.dtype === 'numeric' && profile.histogram && profile.histogram.length > 0) {
-    const bars = profile.histogram.map(h =>
-      `<span class="col-hist-bar" style="height:${Math.max(h * 100, 4)}%"></span>`
-    ).join('');
-    distribution = `<div class="col-hist">${bars}</div>`;
-
-    const fmt = v => v != null ? (Math.abs(v) >= 1000 || (Math.abs(v) < 0.01 && v !== 0) ? v.toExponential(2) : v.toFixed(3)) : '\u2014';
-
-    const skew = profile.skewness;
-    let skewLabel = '';
-    if (skew != null) {
-      if (Math.abs(skew) < 0.5) skewLabel = 'symmetric';
-      else if (skew >= 0.5 && skew < 1) skewLabel = 'right-skewed';
-      else if (skew >= 1) skewLabel = 'right-heavy';
-      else if (skew <= -0.5 && skew > -1) skewLabel = 'left-skewed';
-      else skewLabel = 'left-heavy';
-    }
-    const outlierBadge = profile.outlierCount > 0
-      ? `<span class="col-outlier-badge">${profile.outlierCount} outlier${profile.outlierCount !== 1 ? 's' : ''}</span>`
-      : '';
-
-    statsRow = `
-      <div class="col-profile-stats">
-        <span class="col-stat"><span class="col-stat-label">med</span>${fmt(profile.median)}</span>
-        <span class="col-stat"><span class="col-stat-label">mean</span>${fmt(profile.mean)}</span>
-        <span class="col-stat"><span class="col-stat-label">std</span>${fmt(profile.std)}</span>
-        ${profile.cv != null ? `<span class="col-stat"><span class="col-stat-label">cv</span>${profile.cv.toFixed(1)}%</span>` : ''}
-      </div>
-      <div class="col-profile-signals">
-        ${skewLabel ? `<span class="col-skew-signal">${skewLabel}</span>` : ''}
-        ${outlierBadge}
-      </div>`;
-  } else if (c.dtype !== 'numeric' && profile.topValues && profile.topValues.length > 0) {
-    const maxCount = profile.topValues[0].count;
-    const bars = profile.topValues.slice(0, 5).map(t => {
-      const pct = maxCount > 0 ? (t.count / maxCount * 100).toFixed(0) : 0;
-      const countPct = profile.count > 0 ? (t.count / profile.count * 100).toFixed(1) : 0;
-      return `
-        <div class="col-top-row">
-          <span class="col-top-label mono">${String(t.value).length > 12 ? String(t.value).slice(0, 12) + '\u2026' : t.value}</span>
-          <div class="col-top-track"><div class="col-top-bar" style="width:${pct}%"></div></div>
-          <span class="col-top-pct">${countPct}%</span>
-        </div>`;
-    }).join('');
-    distribution = `<div class="col-top-values">${bars}</div>`;
-
-    const br = profile.balanceRatio;
-    let balanceLabel = '', balanceClass = '';
-    if (br != null) {
-      if (br <= 1.5) { balanceLabel = 'balanced'; balanceClass = 'col-balance-even'; }
-      else if (br <= 3) { balanceLabel = 'slightly uneven'; balanceClass = 'col-balance-warn'; }
-      else { balanceLabel = 'uneven'; balanceClass = 'col-balance-skewed'; }
-    }
-
-    statsRow = `
-      <div class="col-profile-stats">
-        <span class="col-stat"><span class="col-stat-label">distinct</span>${profile.distinct}</span>
-        ${profile.minLength != null ? `<span class="col-stat"><span class="col-stat-label">len</span>${profile.minLength}\u2013${profile.maxLength}</span>` : ''}
-        ${profile.emptyStrings > 0 ? `<span class="col-stat col-stat-warn"><span class="col-stat-label">empty</span>${profile.emptyStrings}</span>` : ''}
-      </div>
-      <div class="col-profile-signals">
-        ${balanceLabel ? `<span class="col-balance-flag ${balanceClass}">${balanceLabel}</span>` : ''}
-      </div>`;
-  }
-
-  return `
-    <div class="${cardClasses}" data-action="select-profile-column" data-column="${c.name}">
-      ${header}
-      ${completeness}
-      ${distribution}
-      ${statsRow}
-    </div>`;
 }
 
 function renderDetailedProfile(c, profile, roleLabels) {
@@ -788,11 +713,11 @@ function renderDetailedProfile(c, profile, roleLabels) {
     </div>`;
 }
 
-function renderColumnInfo(state) {
+function renderPrepSidePanel(state) {
   const { dataPrep, datasets, columnConfig } = state;
   const ds = datasets.find(d => d.id === dataPrep.selectedDatasetId);
   if (!ds) {
-    return '<div class="column-info"><div class="panel-card"><p class="muted" style="font-size:11px;">Select a dataset to see details.</p></div></div>';
+    return '<div class="prep-sidepanel"><div class="panel-card"><p class="muted" style="font-size:11px;">Select a dataset to see details.</p></div></div>';
   }
 
   const cols = columnConfig.columns || [];
@@ -809,46 +734,55 @@ function renderColumnInfo(state) {
     }
   }
 
-  // Column selected → show detailed profile
+  let panel = '';
   if (selectedCol) {
     const c = cols.find(col => col.name === selectedCol);
     if (c && cache[c.name]) {
-      return `<div class="column-info">${renderDetailedProfile(c, cache[c.name], roleLabels)}</div>`;
+      panel = renderDetailedProfile(c, cache[c.name], roleLabels);
     }
   }
 
-  // No column selected → show summary
   const totalRows = table ? table.numRows() : dataPrep.datasetPoints.length;
   const numCols = cols.filter(c => c.dtype === 'numeric');
   const textCols = cols.filter(c => c.dtype !== 'numeric');
   const totalMissing = Object.values(cache).reduce((sum, p) => sum + (p.missing || 0), 0);
 
-  const statRow = (label, value) => `
-    <div class="stat-row"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
-
-  const hidden = new Set(dataPrep.hiddenColumns || []);
-  const columnCards = cols.map(c => {
-    const isHidden = hidden.has(c.name);
-    return renderColumnCard(c, cache[c.name], isHidden, roleLabels, false);
-  }).join('');
+  if (!panel) {
+    panel = `
+      <div class="panel-card prep-summary-panel">
+        <h4>Summary</h4>
+        <div class="prep-summary-grid">
+          <div class="prep-summary-stat">
+            <span class="prep-summary-label">Rows</span>
+            <strong class="prep-summary-value">${totalRows.toLocaleString()}</strong>
+          </div>
+          <div class="prep-summary-stat">
+            <span class="prep-summary-label">Columns</span>
+            <strong class="prep-summary-value">${cols.length}</strong>
+          </div>
+          <div class="prep-summary-stat">
+            <span class="prep-summary-label">Numeric</span>
+            <strong class="prep-summary-value">${numCols.length}</strong>
+          </div>
+          <div class="prep-summary-stat">
+            <span class="prep-summary-label">Text</span>
+            <strong class="prep-summary-value">${textCols.length}</strong>
+          </div>
+          <div class="prep-summary-stat">
+            <span class="prep-summary-label">Missing</span>
+            <strong class="prep-summary-value">${totalMissing.toLocaleString()}</strong>
+          </div>
+          <div class="prep-summary-stat">
+            <span class="prep-summary-label">Transforms</span>
+            <strong class="prep-summary-value">${dataPrep.transforms.length}</strong>
+          </div>
+        </div>
+      </div>`;
+  }
 
   return `
-    <div class="column-info">
-      <div class="panel-card">
-        <h4>Summary</h4>
-        ${totalRows > 0 ? `
-          ${statRow("Rows", totalRows.toLocaleString())}
-          ${statRow("Columns", cols.length)}
-          ${statRow("Numeric", numCols.length)}
-          ${statRow("Text", textCols.length)}
-          ${totalMissing > 0 ? statRow("Missing cells", totalMissing.toLocaleString()) : ''}
-          ${dataPrep.transforms.length > 0 ? statRow("Transforms", dataPrep.transforms.length) : ''}
-        ` : ''}
-      </div>
-      <div class="panel-card">
-        <h4>Columns (${cols.length})</h4>
-        <div class="col-profile-list">${columnCards}</div>
-      </div>
+    <div class="prep-sidepanel">
+      ${panel}
     </div>`;
 }
 
@@ -864,7 +798,7 @@ export function renderDataPrep(state) {
       <div class="dataprep-grid">
         ${renderDatasetList(state)}
         ${renderPrepTable(state)}
-        ${renderColumnInfo(state)}
+        ${renderPrepSidePanel(state)}
       </div>
     </section>
   `;

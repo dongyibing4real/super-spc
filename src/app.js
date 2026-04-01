@@ -1,5 +1,5 @@
 /**
- * app.js — Application orchestrator.
+ * app.js 闂?Application orchestrator.
  *
  * Owns: global state, render cycle, D3 chart lifecycle, event delegation, data loading.
  * Delegates rendering to views/ and components/ modules.
@@ -7,19 +7,30 @@
 import {
   clearNotice,
   closeContextMenu,
-  createFindingFromSelection,
   createInitialState,
+  createSlot,
+  cancelForecast,
   deletePrepDataset,
-  exportReport,
   failTransformStep,
-  generateReportDraft,
   loadDataset,
   loadPrepPoints,
   moveSelection,
   navigate,
   openContextMenu,
   recoverTransformStep,
-  selectFinding,
+  setColumns,
+  setPrepParsedData,
+  setPrepTable,
+  addPrepTransform,
+  undoPrepTransform,
+  undoPrepTransformTo,
+  clearPrepTransforms,
+  markPrepSaved,
+  updateColumnMeta,
+  addColumnMeta,
+  toggleRowExclusion,
+  setExpandedProfileColumn,
+  setProfileCache,
   selectPoint,
   selectPrepDataset,
   selectStructuralFinding,
@@ -27,62 +38,41 @@ import {
   setStructuralFindings,
   setPrepError,
   resetAxis,
+  selectForecast,
   setChallengerStatus,
+  setChartParams,
   setDatasets,
   setError,
+  setForecastPrompt,
+  setForecastHorizon,
   setLoadingState,
+  setActiveChipEditor,
   setXDomainOverride,
   setYDomainOverride,
   toggleChartOption,
   togglePointExclusion,
-  toggleReportFailureMode,
   toggleTransform,
-  setColumns,
-  setChartParams,
-  setActiveChipEditor,
-  getPrimary,
-  getFocused,
-  setPrepParsedData,
-  setPrepTable,
-  addPrepTransform,
-  markPrepSaved,
-  setPrepHiddenColumns,
-  undoPrepTransform,
-  undoPrepTransformTo,
   setActivePanel,
   closeActivePanel,
-  updateColumnMeta,
-  addColumnMeta,
-  toggleRowExclusion,
-  clearAllExclusions,
-  setProfileCache,
-  setExpandedProfileColumn,
-  clearPrepTransforms,
-  focusChart,
-  addChart,
-  removeChart,
   collectChartIds,
-  createSlot,
-  insertChart,
-  computeGridPreview,
+  focusChart,
+  getPrimary,
   migrateTreeToRows,
   togglePaneDataTable,
-  setColWeight,
-  setRowWeight,
-  DEFAULT_PARAMS,
+  activateForecast,
+  deriveWorkspace,
 } from "./core/state.js";
-import { createChart } from "./components/chart/index.js";
-import {
-  createDataset, deleteDataset, fetchColumns, fetchDatasets, fetchPoints,
-  runAnalysis, updateColumnRoles
-} from "./data/api.js";
-import { transformPoints, transformAnalysis, buildDefaultContext } from "./data/transforms.js";
-import { parseCSV } from "./data/csv-engine.js";
-import { createTable, filterRows, sortTable, findReplace, removeDuplicates, handleMissing, cleanText, renameColumn, changeColumnType, previewTypeConversion, addCalculatedColumn, recodeValues, binColumn, splitColumn, concatColumns } from "./data/data-prep-engine.js";
-
-import { getCapability, capClass, detectRuleViolations, applyParamsToContext, CHART_TYPE_LABELS } from "./helpers.js";
-import { deriveWorkspace } from "./core/state.js";
 import { renderSidebar } from "./components/sidebar.js";
+import { applyParamsToContext, capClass, detectRuleViolations, getCapability } from "./helpers.js";
+import {
+  createDataset,
+  fetchColumns,
+  fetchDatasets,
+  fetchPoints,
+  runAnalysis,
+} from "./data/api.js";
+import { buildDefaultContext, transformAnalysis, transformPoints } from "./data/transforms.js";
+import { createChart } from "./components/chart/index.js";
 
 import { renderNotice, renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
 import { renderRecipeRail } from "./components/recipe-rail.js";
@@ -92,23 +82,27 @@ import { renderWorkspace, renderEvidenceRail } from "./views/workspace.js";
 import { renderDataPrep } from "./views/dataprep.js";
 import { renderMethodLab } from "./views/methodlab.js";
 import { renderFindings } from "./views/findings.js";
-import { renderReports } from "./views/reports.js";
 import { morphInner, morphEl } from "./core/morph.js";
 import { generateFindings } from "./core/findings-engine.js";
+import { buildForecastView } from "./prediction/build-forecast-view.js";
+import { DEFAULT_FORECAST_HORIZON } from "./prediction/constants.js";
 
-/* ═══ Global state ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Global state 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 const root = document.getElementById("app");
 let state = createInitialState();
 let charts = { primary: null, challenger: null };
+const FOCUSED_TAIL_WINDOW = 60;
+const forecastPromptTimers = new Map();
+const forecastPromptEligibility = new Map();
 
-/* ═══ Unsaved changes guard ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Unsaved changes guard 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 window.addEventListener("beforeunload", (e) => {
   if (state.dataPrep.unsavedChanges) {
     e.preventDefault();
   }
 });
 
-/* ═══ Router ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Router 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 function renderRoute() {
   if (state.loading) return renderLoadingState();
   if (state.error) return renderErrorState(state);
@@ -118,19 +112,13 @@ function renderRoute() {
     case "dataprep": return renderDataPrep(state);
     case "methodlab": return renderMethodLab(state);
     case "findings": return renderFindings(state);
-    case "reports": return renderReports(state);
     default: return renderWorkspace(state);
   }
 }
 
-/* ═══ Chart data builder ═══ */
-function buildChartData(id) {
-  const slot = state.charts[id];
+function getChartPoints(slot) {
   const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
-
-  // When the API returns chart values (subgroup stats, CUSUM sums, etc.),
-  // use those as the plotted points instead of raw measurements.
-  const points = hasChartValues
+  return hasChartValues
     ? slot.chartValues.map((v, i) => ({
         primaryValue: v,
         label: slot.chartLabels[i] || `pt-${i}`,
@@ -140,15 +128,115 @@ function buildChartData(id) {
         raw: {},
       }))
     : state.points;
+}
+
+function clearForecastPromptTimer(id) {
+  const timer = forecastPromptTimers.get(id);
+  if (timer) {
+    clearTimeout(timer);
+    forecastPromptTimers.delete(id);
+  }
+}
+
+function scheduleForecastPrompt(id, { force = false } = {}) {
+  const slot = state.charts[id];
+  if (!slot || slot.forecast?.mode !== "hidden" || !forecastPromptEligibility.get(id)) {
+    clearForecastPromptTimer(id);
+    return;
+  }
+  if (forecastPromptTimers.has(id) && !force) return;
+  clearForecastPromptTimer(id);
+  forecastPromptTimers.set(id, window.setTimeout(() => {
+    forecastPromptTimers.delete(id);
+    const current = state.charts[id];
+    if (!current || current.forecast?.mode !== "hidden" || !forecastPromptEligibility.get(id)) return;
+    commitChart(setForecastPrompt(state, true, id));
+  }, 900));
+}
+
+function handleForecastPromptEligibility(id, eligible) {
+  forecastPromptEligibility.set(id, eligible);
+  const slot = state.charts[id];
+  if (!slot) return;
+  if (!eligible) {
+    clearForecastPromptTimer(id);
+    if (slot.forecast?.mode === "prompt") {
+      commitChart(setForecastPrompt(state, false, id));
+    }
+    return;
+  }
+  if (slot.forecast?.mode === "hidden") {
+    scheduleForecastPrompt(id);
+  }
+}
+
+function handleForecastActivity(id) {
+  const slot = state.charts[id];
+  if (!slot || slot.forecast?.mode === "active") return;
+  clearForecastPromptTimer(id);
+  let next = state;
+  if (slot.forecast?.mode === "prompt") {
+    next = setForecastPrompt(next, false, id);
+    commitChart(next);
+  }
+  if (forecastPromptEligibility.get(id)) {
+    scheduleForecastPrompt(id, { force: true });
+  }
+}
+
+function ensureForecastVisible(nextState, id) {
+  const slot = nextState.charts[id];
+  if (!slot) return nextState;
+  const points = getChartPoints(slot);
+  const lastIdx = Math.max(0, points.length - 1);
+  const horizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
+  const requiredMax = lastIdx + horizon;
+  const currentOverride = slot.overrides?.x;
+  if (!currentOverride || currentOverride.max >= requiredMax) {
+    return nextState;
+  }
+  return setXDomainOverride(nextState, currentOverride.min, requiredMax, id);
+}
+
+function extendForecastToViewport(nextState, id, nextXMax) {
+  const slot = nextState.charts[id];
+  if (!slot || slot.forecast?.mode !== "active") return nextState;
+  const points = getChartPoints(slot);
+  const lastIdx = Math.max(0, points.length - 1);
+  const requiredHorizon = Math.max(1, Math.ceil(Math.max(0, nextXMax - lastIdx)));
+  const currentHorizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
+  if (requiredHorizon <= currentHorizon) return nextState;
+  return setForecastHorizon(nextState, requiredHorizon, id);
+}
+
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Chart data builder 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+function buildChartData(id) {
+  const slot = state.charts[id];
+  const points = getChartPoints(slot);
+  const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
+  const lastIdx = Math.max(0, points.length - 1);
+  const baseHorizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
+  const autoMin = Math.max(0, lastIdx - (FOCUSED_TAIL_WINDOW - 1));
+  const xDefaultDomain = { min: autoMin, max: lastIdx + baseHorizon };
+  const forecast = buildForecastView({
+    points,
+    limits: slot.limits,
+    forecast: slot.forecast,
+    xDomainOverride: slot.overrides.x,
+    xDefaultDomain,
+    chartTypeId: slot.context.chartType?.id,
+  });
 
   return {
     points,
     limits: slot.limits,
     phases: slot.phases || [],
+    forecast,
     toggles: {
       ...state.chartToggles,
       overlay: false,
       xDomainOverride: slot.overrides.x,
+      xDefaultDomain,
       yDomainOverride: slot.overrides.y,
     },
     selectedIndex: hasChartValues ? (slot.selectedPointIndex ?? -1) : state.selectedPointIndex,
@@ -162,7 +250,7 @@ function buildChartData(id) {
   };
 }
 
-/* ═══ Main render ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Main render 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 function renderShortcutOverlay() {
   return `
     <div class="shortcut-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
@@ -170,16 +258,21 @@ function renderShortcutOverlay() {
       <div class="shortcut-overlay-panel">
         <div class="shortcut-overlay-header">
           <h2 class="shortcut-overlay-title">Keyboard Shortcuts</h2>
-          <button class="shortcut-overlay-close" data-action="close-shortcut-overlay" type="button" aria-label="Close">✕</button>
+          <button class="shortcut-overlay-close" data-action="close-shortcut-overlay" type="button" aria-label="Close">&times;</button>
         </div>
         <dl class="shortcut-list">
           <div class="shortcut-group-label">Violations</div>
           <div class="shortcut-row"><dt><kbd>n</kbd></dt><dd>Next violation point</dd></div>
           <div class="shortcut-row"><dt><kbd>p</kbd></dt><dd>Previous violation point</dd></div>
-          <div class="shortcut-group-label">Analysis</div>
-          <div class="shortcut-row"><dt><kbd>f</kbd></dt><dd>Create finding from selection</dd></div>
+          <div class="shortcut-group-label">Data Prep</div>
+          <div class="shortcut-row"><dt><kbd>r</kbd></dt><dd>Rename column</dd></div>
+          <div class="shortcut-row"><dt><kbd>t</kbd></dt><dd>Change column type</dd></div>
+          <div class="shortcut-row"><dt><kbd>c</kbd></dt><dd>Calculated column</dd></div>
+          <div class="shortcut-row"><dt><kbd>f</kbd></dt><dd>Filter rows</dd></div>
+          <div class="shortcut-row"><dt><kbd>d</kbd></dt><dd>Find &amp; replace</dd></div>
+          <div class="shortcut-row"><dt><kbd>z</kbd></dt><dd>Undo last transform</dd></div>
           <div class="shortcut-group-label">Navigation</div>
-          <div class="shortcut-row"><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Move selected point</dd></div>
+          <div class="shortcut-row"><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Move selected point</dd></div>
           <div class="shortcut-row"><dt><kbd>?</kbd></dt><dd>Toggle this help overlay</dd></div>
           <div class="shortcut-row"><dt><kbd>Esc</kbd></dt><dd>Close overlays / cancel</dd></div>
         </dl>
@@ -223,10 +316,50 @@ function render() {
           },
           onAxisDrag: (info) => {
             state = focusChart(state, id);
-            if (info.axis === 'x') commitChart(setXDomainOverride(state, info.min, info.max, id));
+            if (info.axis === 'x') {
+              let next = setXDomainOverride(state, info.min, info.max, id);
+              next = extendForecastToViewport(next, id, info.max);
+              commitChart(next);
+            }
             if (info.axis === 'y') commitChart(setYDomainOverride(state, info.yMin, info.yMax, id));
           },
+          onForecastDrag: (info) => {
+            state = focusChart(state, id);
+            let next = setForecastHorizon(state, info.horizon, id);
+            next = setXDomainOverride(next, info.min, info.max, id);
+            commitChart(next);
+          },
+          onForecastActivity: () => handleForecastActivity(id),
+          onForecastPromptEligibilityChange: ({ eligible }) => handleForecastPromptEligibility(id, eligible),
+          onActivateForecast: () => {
+            state = focusChart(state, id);
+            let next = activateForecast(state, id);
+            next = ensureForecastVisible(next, id);
+            commitChart(next);
+          },
+          onSelectForecast: (selected) => {
+            state = focusChart(state, id);
+            commitChart(selectForecast(state, selected, id));
+          },
+          onCancelForecast: () => {
+            state = focusChart(state, id);
+            commitChart(cancelForecast(state, id));
+          },
           onAxisReset: (axis) => commitChart(resetAxis(state, axis, id)),
+          onProjectionResult: (result) => {
+            const chip = mount.closest('.chart-pane')?.querySelector('.drift-chip');
+            if (!chip) return;
+            if (!result || result.driftScore === 0) {
+              chip.style.display = 'none';
+              return;
+            }
+            chip.style.display = '';
+            const score = result.driftScore.toFixed(2);
+            const ooc = result.oocEstimate;
+            const intent = result.driftScore > 0.7 ? 'danger' : result.driftScore >= 0.3 ? 'warning' : 'success';
+            chip.className = `drift-chip status-chip ${intent}`;
+            chip.textContent = ooc ? `drift ${score} 閻?~${ooc} to OOC` : `drift ${score}`;
+          },
         });
       }
       charts[id].update(buildChartData(id));
@@ -241,18 +374,22 @@ function render() {
     // Destroy charts not visible in the tree
     for (const id of Object.keys(charts)) {
       if (!visibleIds.includes(id) && charts[id]) {
+        clearForecastPromptTimer(id);
+        forecastPromptEligibility.delete(id);
         charts[id].destroy();
         charts[id] = null;
       }
     }
   } else {
     for (const role of state.chartOrder) {
+      clearForecastPromptTimer(role);
+      forecastPromptEligibility.delete(role);
       if (charts[role]) { charts[role].destroy(); charts[role] = null; }
     }
   }
 }
 
-/* ═══ Commit functions ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Commit functions 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 function commit(next) { state = next; render(); }
 
 function commitChart(next) {
@@ -264,12 +401,12 @@ function commitChart(next) {
     const paneCaps = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-caps`);
     if (!paneCaps) continue;
     const cap = getCapability(state, id);
-    if (cap.cpk) {
-      paneCaps.innerHTML = `
-        <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
-        <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>
-      `;
-    }
+    const summary = buildChartData(id).forecast?.driftSummary;
+    paneCaps.innerHTML = `
+      ${cap.cpk ? `<span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
+      <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>` : ""}
+      ${summary ? `<span class="drift-chip status-chip ${summary.intent}">${summary.label}</span>` : ""}
+    `;
   }
   // Update focus visual
   root.querySelectorAll('.chart-pane').forEach(p => {
@@ -300,7 +437,7 @@ function commitContextMenu(next) {
   }
 }
 
-/* ═══ Targeted commit — recipe rail (chip editors, layer toggles) ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Targeted commit 闂?recipe rail (chip editors, layer toggles) 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 function commitRecipeRail(next) {
   state = next;
   const rail = root.querySelector(".recipe-rail");
@@ -308,7 +445,7 @@ function commitRecipeRail(next) {
   morphEl(rail, renderRecipeRail(state));
 }
 
-/* ═══ FLIP animation helpers — smooth card float transitions ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?FLIP animation helpers 闂?smooth card float transitions 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 function snapshotRailPositions() {
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return null;
   const rail = root.querySelector(".recipe-rail");
@@ -322,7 +459,7 @@ function snapshotRailPositions() {
 
 function playRailFlip(firstMap, duration = 250) {
   if (!firstMap) return;
-  // Run synchronously — before the browser paints the un-inverted state.
+  // Run synchronously 闂?before the browser paints the un-inverted state.
   // Reading getBoundingClientRect forces layout, then animate() starts
   // from the INVERT position on the very first painted frame.
   const rail = root.querySelector(".recipe-rail");
@@ -340,7 +477,7 @@ function playRailFlip(firstMap, duration = 250) {
   });
 }
 
-/* ═══ Targeted commit — notice bar ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Targeted commit 闂?notice bar 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 function commitNotice(next) {
   state = next;
   const existing = root.querySelector(".notice");
@@ -351,7 +488,7 @@ function commitNotice(next) {
   }
 }
 
-/* ═══ Targeted commit — full workspace (recipe rail + chart arena + chart data) ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Targeted commit 闂?full workspace (recipe rail + chart arena + chart data) 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 function commitWorkspace(next) {
   state = next;
 
@@ -386,7 +523,7 @@ function commitWorkspace(next) {
   }
 }
 
-/* ═══ Targeted commit — evidence rail ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Targeted commit 闂?evidence rail 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 function commitEvidenceRail(next) {
   state = next;
   const rail = root.querySelector(".evidence-rail");
@@ -395,7 +532,7 @@ function commitEvidenceRail(next) {
   morphEl(rail, renderEvidenceRail(state, workspace));
 }
 
-/* ═══ Slot builder — shared by loadDatasetById and reanalyze ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Slot builder 闂?shared by loadDatasetById and reanalyze 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 function buildSlots(analyses, baseContext) {
   const slots = {};
   state.chartOrder.forEach((id, i) => {
@@ -411,7 +548,7 @@ function buildSlots(analyses, baseContext) {
   return slots;
 }
 
-/* ═══ Data loading ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Data loading 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 async function loadDatasetById(datasetId) {
   state = setLoadingState(state, true);
   render();
@@ -487,7 +624,7 @@ async function reanalyze() {
           chartLabels: t.chartLabels, phases: t.phases,
         };
       }
-      // If rejected, slot is omitted — loadDataset will keep existing chart data
+      // If rejected, slot is omitted 闂?loadDataset will keep existing chart data
     });
 
     state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId: dsId });
@@ -499,7 +636,7 @@ async function reanalyze() {
   }
 }
 
-/* ═══ Event handlers ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Event handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 root.addEventListener("click", async (e) => {
   // Focus-on-click: clicking anywhere inside a chart pane focuses that chart
   const clickedPane = e.target.closest('.chart-pane[data-chart-id]');
@@ -524,7 +661,7 @@ root.addEventListener("click", async (e) => {
       state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
       commitRecipeRail(state);
     }
-    if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-col-toolbar') && !e.target.closest('.prep-row-sidebar')) {
+    if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-transform-toolbar')) {
       commit(closeActivePanel(state));
     }
     return;
@@ -565,7 +702,6 @@ root.addEventListener("click", async (e) => {
     case "fail-transform":     commitEvidenceRail(failTransformStep(state, t.dataset.stepId)); break;
     case "recover-transform":  commitEvidenceRail(recoverTransformStep(state, t.dataset.stepId)); break;
     case "set-challenger-status": commit(setChallengerStatus(state, t.dataset.status)); break;
-    case "select-finding":     commit(selectFinding(state, t.dataset.findingId)); break;
     case "select-structural-finding": commit(selectStructuralFinding(state, t.dataset.findingId)); break;
     case "switch-findings-chart": {
       const cid = t.dataset.chartId;
@@ -574,10 +710,6 @@ root.addEventListener("click", async (e) => {
       render();
       break;
     }
-    case "create-finding":     commitEvidenceRail(createFindingFromSelection(state)); commitContextMenu(closeContextMenu(state)); break;
-    case "generate-report":    commit(generateReportDraft(state)); break;
-    case "export-report":      commit(exportReport(state)); break;
-    case "toggle-export-failure": commit(toggleReportFailureMode(state)); break;
     case "clear-notice":       commitNotice(clearNotice(state)); break;
     case "toggle-pane-table": {
       const cid = t.dataset.chartId;
@@ -589,7 +721,7 @@ root.addEventListener("click", async (e) => {
       if (cid && cid !== state.focusedChartId && state.charts[cid]) {
         const snap = snapshotRailPositions();
         state = focusChart(state, cid);
-        // Targeted updates instead of full render — avoids D3 chart rebuild
+        // Targeted updates instead of full render 闂?avoids D3 chart rebuild
         root.querySelectorAll(".chart-pane").forEach(p => {
           p.classList.toggle("pane-focused", p.dataset.chartId === state.focusedChartId);
         });
@@ -686,7 +818,7 @@ root.addEventListener("click", async (e) => {
     case "delete-dataset": {
       const dsId = t.dataset.datasetId;
       if (state.dataPrep.confirmingDeleteId === dsId) {
-        // Second click — confirmed
+        // Second click 闂?confirmed
         state = { ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: null } };
         try {
           await deleteDataset(dsId);
@@ -694,7 +826,7 @@ root.addEventListener("click", async (e) => {
           commit(deletePrepDataset(setDatasets(state, datasets), dsId));
         } catch (err) { commit(setPrepError(state, err.message)); }
       } else {
-        // First click — enter confirmation state
+        // First click 闂?enter confirmation state
         commit({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: dsId } });
       }
       break;
@@ -720,13 +852,6 @@ root.addEventListener("click", async (e) => {
     }
     case "select-column": {
       commit(setExpandedProfileColumn(state, t.dataset.column));
-      break;
-    }
-    case "toggle-column-visibility": {
-      const col = t.dataset.column;
-      const hidden = state.dataPrep.hiddenColumns || [];
-      const next = hidden.includes(col) ? hidden.filter(c => c !== col) : [...hidden, col];
-      commit(setPrepHiddenColumns(state, next));
       break;
     }
     case "prep-undo-to":
@@ -830,13 +955,24 @@ root.addEventListener("click", async (e) => {
       break;
     }
     case "prep-reset": {
-      if (state.dataPrep.transforms.length > 0) {
+      if (state.dataPrep.transforms.length === 0) break;
+      if (state.dataPrep.confirmingReset) {
+        clearTimeout(window._resetConfirmTimer);
         state = clearPrepTransforms(state);
+        state = { ...state, dataPrep: { ...state.dataPrep, confirmingReset: false } };
         commit(state);
+      } else {
+        state = { ...state, dataPrep: { ...state.dataPrep, confirmingReset: true } };
+        commit(state);
+        window._resetConfirmTimer = setTimeout(() => {
+          if (state.dataPrep.confirmingReset) {
+            commit({ ...state, dataPrep: { ...state.dataPrep, confirmingReset: false } });
+          }
+        }, 3000);
       }
       break;
     }
-    /* ═══ Panel toggle handlers ═══ */
+    /* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Panel toggle handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
     case "prep-filter": { commit(setActivePanel(state, 'filter')); break; }
     case "prep-find-replace": { commit(setActivePanel(state, 'find')); break; }
     case "prep-dedup": { commit(setActivePanel(state, 'dedup')); break; }
@@ -848,7 +984,7 @@ root.addEventListener("click", async (e) => {
     case "prep-bin": { commit(setActivePanel(state, 'bin')); break; }
     case "prep-split": { commit(setActivePanel(state, 'split')); break; }
     case "prep-concat": { commit(setActivePanel(state, 'concat')); break; }
-    /* ═══ Panel apply handlers ═══ */
+    /* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Panel apply handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
     case "prep-apply-filter": {
       if (!state.dataPrep.arqueroTable) break;
       const col = root.querySelector('[data-field="filter-col"]')?.value;
@@ -917,7 +1053,7 @@ root.addEventListener("click", async (e) => {
       } catch (err) { commit(setPrepError(state, err.message)); }
       break;
     }
-    /* ═══ Phase 2 apply handlers ═══ */
+    /* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Phase 2 apply handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
     case "prep-apply-rename": {
       if (!state.dataPrep.arqueroTable) break;
       const oldName = root.querySelector('[data-field="rename-col"]')?.value;
@@ -1059,7 +1195,7 @@ root.addEventListener("click", async (e) => {
       }
       break;
     }
-    /* ═══ Phase 3 handlers ═══ */
+    /* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Phase 3 handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
     case "prep-validate": { commit(setActivePanel(state, 'validate')); break; }
     case "toggle-row-exclude": {
       const rowIdx = Number(t.dataset.row);
@@ -1068,8 +1204,20 @@ root.addEventListener("click", async (e) => {
       }
       break;
     }
-    case "prep-restore-all": {
-      commit(clearAllExclusions(state));
+    case "prep-toggle-all-visible-rows": {
+      const totalRows = state.dataPrep.arqueroTable
+        ? state.dataPrep.arqueroTable.numRows()
+        : state.dataPrep.datasetPoints.length;
+      const visibleCount = Math.min(totalRows, 500);
+      const current = new Set(state.dataPrep.excludedRows || []);
+      const selectedVisibleCount = Array.from({ length: visibleCount }, (_, i) => i)
+        .reduce((sum, i) => sum + (current.has(i) ? 0 : 1), 0);
+      const shouldSelectAll = selectedVisibleCount !== visibleCount;
+      for (let i = 0; i < visibleCount; i++) {
+        if (shouldSelectAll) current.delete(i);
+        else current.add(i);
+      }
+      commit({ ...state, dataPrep: { ...state.dataPrep, excludedRows: [...current].sort((a, b) => a - b) } });
       break;
     }
     case "prep-apply-validate": {
@@ -1165,7 +1313,7 @@ root.addEventListener("keydown", (e) => {
     }
   }
 
-  // Global shortcuts — skip when typing in an input/textarea/select
+  // Global shortcuts 闂?skip when typing in an input/textarea/select
   const tag = document.activeElement?.tagName;
   const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
   if (!inInput && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -1176,10 +1324,21 @@ root.addEventListener("keydown", (e) => {
       return;
     }
 
-    if (e.key === "f" && state.route === "workspace") {
-      e.preventDefault();
-      commitEvidenceRail(createFindingFromSelection(state));
-      return;
+    // Data Prep shortcuts
+    if (state.route === "dataprep" && state.dataPrep.selectedDatasetId) {
+      const dpKey = e.key.toLowerCase();
+      const panel = { f: 'filter', d: 'find', r: 'rename', t: 'change_type', c: 'calculated' }[dpKey];
+      if (panel) {
+        e.preventDefault();
+        commit(setActivePanel(state, panel));
+        return;
+      }
+      if (dpKey === 'z' && state.dataPrep.transforms.length > 0) {
+        e.preventDefault();
+        // Simulate click on the undo button
+        root.querySelector('[data-action="prep-undo"]')?.click();
+        return;
+      }
     }
 
     if ((e.key === "n" || e.key === "p") && state.route === "workspace") {
@@ -1218,7 +1377,7 @@ root.addEventListener("keydown", (e) => {
   }
 });
 
-/* ═══ Header drag — zone-inference + ghost preview ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Header drag 闂?zone-inference + ghost preview 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 let pendingDrag = null;  // recorded on pointerdown, promoted to dragState after threshold
 let dragState = null;
 let ghostOverlay = null;
@@ -1237,7 +1396,7 @@ function getDropZone(paneEl, clientX, clientY, prevZone) {
   else if (relX > 0.75) zone = "right";
   else zone = "center";
 
-  // DRAG-006: hysteresis — stay on previous zone if cursor is within 15px of a boundary
+  // DRAG-006: hysteresis 闂?stay on previous zone if cursor is within 15px of a boundary
   if (prevZone && prevZone !== zone) {
     const HYSTERESIS = 15;
     const topB = r.top + r.height * 0.25;
@@ -1278,9 +1437,9 @@ function removeGhostOverlay() {
 let dividerDrag = null; // { type: "col"|"row", row: number, col?: number, arenaRect }
 
 root.addEventListener("pointerdown", (e) => {
-  // (sidebar resize removed — row ops moved to horizontal toolbar)
+  // (sidebar resize removed 闂?row ops moved to horizontal toolbar)
 
-  // ── Grid divider drag ──
+  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Grid divider drag 闂佸啿鍘滈崑鎾绘煃閸忓浜?
   const div = e.target.closest(".grid-divider");
   if (div) {
     e.preventDefault();
@@ -1297,7 +1456,7 @@ root.addEventListener("pointerdown", (e) => {
     return;
   }
 
-  // ── Header drag — record pending, promote after 4px threshold (DRAG-003) ──
+  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Header drag 闂?record pending, promote after 4px threshold (DRAG-003) 闂佸啿鍘滈崑鎾绘煃閸忓浜?
   const handle = e.target.closest("[data-drag-handle]");
   if (!handle) return;
   if (state.chartOrder.length < 2) return;
@@ -1310,7 +1469,7 @@ root.addEventListener("pointerdown", (e) => {
 });
 
 root.addEventListener("pointermove", (e) => {
-  // ── Grid divider live resize ──
+  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Grid divider live resize 闂佸啿鍘滈崑鎾绘煃閸忓浜?
   if (dividerDrag) {
     if (dividerDrag.type === "col") {
       const rowEl = root.querySelectorAll(".chart-row")[dividerDrag.row];
@@ -1344,7 +1503,7 @@ root.addEventListener("pointermove", (e) => {
     return;
   }
 
-  // ── Promote pending drag once 4px threshold is crossed (DRAG-003) ──
+  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Promote pending drag once 4px threshold is crossed (DRAG-003) 闂佸啿鍘滈崑鎾绘煃閸忓浜?
   if (pendingDrag && !dragState) {
     const dx = e.clientX - pendingDrag.startX;
     const dy = e.clientY - pendingDrag.startY;
@@ -1358,7 +1517,7 @@ root.addEventListener("pointermove", (e) => {
     // DRAG-007: suppress text selection during drag
     document.body.style.userSelect = "none";
 
-    // Ghost cursor follower — DRAG-008: use params.chart_type not context
+    // Ghost cursor follower 闂?DRAG-008: use params.chart_type not context
     const ghost = document.createElement("div");
     ghost.className = "drag-ghost";
     ghost.textContent = CHART_TYPE_LABELS[state.charts[chartId]?.params?.chart_type] || "Chart";
@@ -1380,7 +1539,7 @@ root.addEventListener("pointermove", (e) => {
     updateGhostOverlay(state.chartLayout, chartId);
   }
 
-  // ── Header drag: zone inference + ghost preview ──
+  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Header drag: zone inference + ghost preview 闂佸啿鍘滈崑鎾绘煃閸忓浜?
   if (!dragState) return;
   const { ghost, chartId } = dragState;
 
@@ -1403,7 +1562,7 @@ root.addEventListener("pointermove", (e) => {
     const previewLayout = computeGridPreview(state.chartLayout, chartId, foundTarget, foundZone);
     updateGhostOverlay(previewLayout, chartId);
   } else {
-    // Back over source pane — show current layout with source highlighted
+    // Back over source pane 闂?show current layout with source highlighted
     updateGhostOverlay(state.chartLayout, chartId);
   }
 });
@@ -1461,7 +1620,7 @@ root.addEventListener("dblclick", (e) => {
   saveLayout();
 });
 
-/* ═══ Pane titlebar right-click — split/close context menu ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Pane titlebar right-click 闂?split/close context menu 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 let paneMenu = null;
 
 function closePaneMenu() {
@@ -1486,7 +1645,7 @@ document.addEventListener("pointerdown", (e) => {
 }, true);
 
 root.addEventListener("contextmenu", (e) => {
-  // ── Pane titlebar right-click ──
+  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Pane titlebar right-click 闂佸啿鍘滈崑鎾绘煃閸忓浜?
   const titlebar = e.target.closest(".chart-pane-titlebar");
   if (titlebar) {
     e.preventDefault();
@@ -1495,7 +1654,7 @@ root.addEventListener("contextmenu", (e) => {
     return;
   }
 
-  // ── Chart canvas right-click (existing behavior) ──
+  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Chart canvas right-click (existing behavior) 闂佸啿鍘滈崑鎾绘煃閸忓浜?
   if (e.defaultPrevented) return;
   const ch = e.target.closest(".chart-stage");
   if (!ch) return;
@@ -1508,7 +1667,7 @@ root.addEventListener("contextmenu", (e) => {
   commitContextMenu(openContextMenu(state, e.clientX - r.left, e.clientY - r.top, { target: 'canvas', role: state.focusedChartId }));
 });
 
-/* ═══ Change handlers ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Change handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 root.addEventListener("change", async (e) => {
   // Prep panel conditional visibility
   if (e.target.matches('[data-field="filter-op"]')) {
@@ -1721,14 +1880,14 @@ root.addEventListener("change", async (e) => {
   }
 });
 
-/* ═══ Retry handler ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Retry handler 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 root.addEventListener("click", (e) => {
   const t = e.target.closest('[data-action="retry-load"]');
   if (!t) return;
   main();
 });
 
-/* ═══ Layout capacity ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Layout capacity 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 function isWorkspaceFull() {
   const arenaEl = root.querySelector(".chart-arena");
   if (!arenaEl) return false;
@@ -1738,7 +1897,7 @@ function isWorkspaceFull() {
   return collectChartIds(state.chartLayout).length >= maxCharts;
 }
 
-/* ═══ Layout persistence ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Layout persistence 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
 
 function saveLayout() {
@@ -1756,7 +1915,7 @@ function saveLayout() {
       data.chartParams[id] = state.charts[id]?.params || null;
     }
     localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(data));
-  } catch { /* localStorage unavailable or full — silently ignore */ }
+  } catch { /* localStorage unavailable or full 闂?silently ignore */ }
 }
 
 function restoreLayout() {
@@ -1788,7 +1947,7 @@ function restoreLayout() {
   } catch { return null; }
 }
 
-/* ═══ Boot ═══ */
+/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Boot 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
 render();
 
 async function main() {
@@ -1824,3 +1983,6 @@ async function main() {
 }
 
 main();
+
+
+

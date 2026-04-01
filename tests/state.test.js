@@ -2,22 +2,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  activateForecast,
+  cancelForecast,
   clearNotice,
-  createFindingFromSelection,
   createInitialState,
   createSlot,
   deriveWorkspace,
-  exportReport,
   failTransformStep,
-  generateReportDraft,
   getPrimary,
   loadDataset,
   navigate,
   recoverTransformStep,
   resetAxis,
-  selectFinding,
+  selectForecast,
   selectPoint,
-  setChartLayout,
+  setForecastHorizon,
+  setForecastPrompt,
   setChallengerStatus,
   setDatasets,
   setError,
@@ -29,7 +29,7 @@ import {
   toggleTransform,
 } from "../src/core/state.js";
 
-/* ═══ Test fixture — builds a populated state like the old mock ═══ */
+/* 鈺愨晲鈺?Test fixture 鈥?builds a populated state like the old mock 鈺愨晲鈺?*/
 
 function createPopulatedState() {
   const base = createInitialState();
@@ -58,10 +58,10 @@ function createPopulatedState() {
     ...base,
     loading: false,
     charts: {
-      primary: {
-        ...base.charts.primary,
+      "chart-1": {
+        ...base.charts["chart-1"],
         context: {
-          ...base.charts.primary.context,
+          ...base.charts["chart-1"].context,
           title: "Etch Rate Stability",
           metric: { id: "thickness", label: "Thickness", unit: "nm" },
           subgroup: { id: "hour", label: "Hour / n=5", detail: "5 wafers per lot" },
@@ -76,15 +76,16 @@ function createPopulatedState() {
           { id: "P3", label: "Post-maintenance shift", start: 18, end: 27 },
         ],
       },
-      challenger: {
-        ...base.charts.challenger,
+      "chart-2": {
+        ...createSlot(),
         limits: challengerLimits,
         violations: [],
         sigma: null,
         phases: [],
       },
     },
-    chartOrder: ["primary", "challenger"],
+    chartOrder: ["chart-1", "chart-2"],
+    focusedChartId: "chart-1",
     points,
     transforms: [
       { id: "ingest", title: "CSV ingest", status: "complete", active: true, detail: "Validated.", rescue: "" },
@@ -92,27 +93,11 @@ function createPopulatedState() {
       { id: "normalize", title: "Normalize", status: "active", active: true, detail: "Target norm.", rescue: "" },
       { id: "phase-tag", title: "Phase tag", status: "active", active: true, detail: "Boundaries.", rescue: "" },
     ],
-    findings: [
-      {
-        id: "finding-thickness-drift",
-        title: "Thickness drift",
-        severity: "High",
-        summary: "Sustained upward drift.",
-        confidence: 0.84,
-        status: "Draft ready",
-        owner: "Etch Process Eng.",
-        citations: [
-          { label: "Lots", value: "L-2861 to L-2867", resolved: true },
-          { label: "Limits set", value: "limits-v12.4", resolved: true },
-        ],
-      },
-    ],
     selectedPointIndex: 24,
-    activeFindingId: "finding-thickness-drift",
   };
 }
 
-// ── New API integration actions ─────────────────────────────
+// 鈹€鈹€ New API integration actions 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 test("createInitialState returns loading empty state", () => {
   const s = createInitialState();
@@ -138,15 +123,15 @@ test("loadDataset populates state and clears loading", () => {
     { id: "pt-1", lot: "pt-1", primaryValue: 12, excluded: false, phaseId: "P1" },
   ];
   const limits = { center: 11, ucl: 15, lcl: 7, usl: null, lsl: null, version: "v1", scope: "Dataset" };
-  const next = loadDataset(s, { points, slots: { primary: { limits } }, datasetId: "d1" });
+  const next = loadDataset(s, { points, slots: { "chart-1": { limits } }, datasetId: "d1" });
 
   assert.equal(next.loading, false);
   assert.equal(next.error, null);
   assert.equal(next.activeDatasetId, "d1");
   assert.equal(next.points.length, 2);
-  assert.equal(next.charts.primary.limits.center, 11);
+  assert.equal(next.charts["chart-1"].limits.center, 11);
   assert.equal(next.selectedPointIndex, 1); // last point
-  assert.equal(next.charts.primary.overrides.x, null); // reset
+  assert.equal(next.charts["chart-1"].overrides.x, null); // reset
 });
 
 test("loadDataset preserves chartToggles and resets overrides", () => {
@@ -156,7 +141,7 @@ test("loadDataset preserves chartToggles and resets overrides", () => {
   const next = loadDataset(s, { points, slots: {}, datasetId: "d1" });
 
   assert.equal(next.chartToggles.grid, false); // preserved
-  assert.equal(next.charts.primary.overrides.x, null); // reset
+  assert.equal(next.charts["chart-1"].overrides.x, null); // reset
 });
 
 test("setLoadingState toggles loading flag", () => {
@@ -175,7 +160,7 @@ test("setError sets error and clears loading", () => {
   assert.equal(errored.error, "Backend unavailable");
 });
 
-// ── Existing actions with populated state ───────────────────
+// 鈹€鈹€ Existing actions with populated state 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 test("selecting a point updates the evidence ledger to the selected lot", () => {
   const initial = createPopulatedState();
@@ -184,7 +169,7 @@ test("selecting a point updates the evidence ledger to the selected lot", () => 
 
   // selectedPoint carries the label
   assert.equal(workspace.selectedPoint.label, "L-2866");
-  // evidence[0] is the point-category "Value" item — numeric value of the selected point
+  // evidence[0] is the point-category "Value" item 鈥?numeric value of the selected point
   assert.equal(workspace.evidence[0].category, "point");
   assert.match(workspace.evidence[0].value, /\d+\.\d+/);
 });
@@ -210,67 +195,42 @@ test("failed transform keeps the prior chart result while marking pipeline parti
   assert.equal(before, after);
 });
 
-test("finding created from partial workspace carries unresolved citations and blocks export", () => {
-  const initial = createPopulatedState();
-  const failed = failTransformStep(initial, "phase-tag");
-  const findingState = createFindingFromSelection(failed);
-  const draftState = generateReportDraft(findingState);
-  const exported = exportReport(draftState);
-
-  assert.equal(draftState.reportDraft.partial, true);
-  assert.equal(exported.reportExport.status, "blocked");
-});
-
-test("report export succeeds after recovery and challenger completion", () => {
-  const initial = createPopulatedState();
-  const failed = failTransformStep(initial, "phase-tag");
-  const recovered = recoverTransformStep(failed, "phase-tag");
-  const ready = setChallengerStatus(recovered, "ready");
-  const findingState = createFindingFromSelection(ready);
-  const draftState = generateReportDraft(findingState);
-  const exported = exportReport(draftState);
-
-  assert.equal(draftState.reportDraft.partial, false);
-  assert.equal(exported.reportExport.status, "exported");
-  assert.match(exported.reportExport.lastArtifactId, /artifact-/);
-});
-
-// ── Axis interaction state tests ────────────────────────────
+// 鈹€鈹€ Axis interaction state tests 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 test("setXDomainOverride stores custom x-axis range", () => {
   const initial = createInitialState();
   const next = setXDomainOverride(initial, 5, 20);
-  assert.deepEqual(next.charts.primary.overrides.x, { min: 5, max: 20 });
+  assert.deepEqual(next.charts["chart-1"].overrides.x, { min: 5, max: 20 });
 });
 
 test("setYDomainOverride stores custom y-axis range", () => {
   const initial = createInitialState();
   const next = setYDomainOverride(initial, 10, 50);
-  assert.deepEqual(next.charts.primary.overrides.y, { yMin: 10, yMax: 50 });
+  assert.deepEqual(next.charts["chart-1"].overrides.y, { yMin: 10, yMax: 50 });
 });
 
 test("resetAxis('x') clears xDomainOverride", () => {
   const initial = createInitialState();
   const panned = setXDomainOverride(initial, 3, 15);
   const reset = resetAxis(panned, "x");
-  assert.equal(reset.charts.primary.overrides.x, null);
+  assert.equal(reset.charts["chart-1"].overrides.x, null);
 });
 
 test("resetAxis('y') clears yDomainOverride", () => {
   const initial = createInitialState();
   const scaled = setYDomainOverride(initial, 5, 100);
   const reset = resetAxis(scaled, "y");
-  assert.equal(reset.charts.primary.overrides.y, null);
+  assert.equal(reset.charts["chart-1"].overrides.y, null);
 });
 
 test("setXDomainOverride does not mutate original state", () => {
   const initial = createInitialState();
   const next = setXDomainOverride(initial, 2, 18);
-  assert.equal(initial.charts.primary.overrides.x, null);
+  assert.equal(initial.charts["chart-1"].overrides.x, null);
   assert.notEqual(initial, next);
 });
 
-// ── Immutability tests (selective cloning) ──────────────────
+// 鈹€鈹€ Immutability tests (selective cloning) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 test("selectPoint does not mutate original state", () => {
   const initial = createPopulatedState();
@@ -318,29 +278,77 @@ test("clearNotice clears the notice", () => {
   assert.equal(cleared.ui.notice, null);
 });
 
-test("selectFinding updates activeFindingId", () => {
-  const s = createPopulatedState();
-  const next = selectFinding(s, "some-other-id");
-  assert.equal(next.activeFindingId, "some-other-id");
-});
-
-test("setChartLayout sets arrangement and ratio", () => {
+test("createInitialState uses row-grid chart layout", () => {
   const s = createInitialState();
-  const next = setChartLayout(s, "vertical", "top", 0.6);
-  assert.equal(next.chartLayout.arrangement, "vertical");
-  assert.equal(next.chartLayout.primaryPosition, "top");
-  assert.equal(next.chartLayout.splitRatio, 0.6);
+  assert.deepEqual(s.chartLayout.rows, [["chart-1"]]);
+  assert.deepEqual(s.chartLayout.colWeights, [[1]]);
+  assert.deepEqual(s.chartLayout.rowWeights, [1]);
 });
 
-// ── Per-slot phases tests ─────────────────────────────────
+// 鈹€鈹€ Per-slot phases tests 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 test("createSlot includes empty phases array", () => {
   const slot = createSlot();
   assert.deepEqual(slot.phases, []);
 });
 
-test("loadDataset stores phases per chart slot", () => {
+test("createSlot initializes forecast state", () => {
+  const slot = createSlot();
+  assert.deepEqual(slot.forecast, {
+    mode: "hidden",
+    selected: false,
+    horizon: 6,
+  });
+});
+
+test("activateForecast preserves x override and selects the forecast", () => {
+  let s = createInitialState();
+  s = setXDomainOverride(s, 3, 19);
+  const next = activateForecast(s);
+
+  assert.equal(next.charts["chart-1"].forecast.mode, "active");
+  assert.equal(next.charts["chart-1"].forecast.selected, true);
+  assert.deepEqual(next.charts["chart-1"].overrides.x, { min: 3, max: 19 });
+});
+
+test("cancelForecast hides the forecast without clearing x override", () => {
+  let s = createInitialState();
+  s = setXDomainOverride(s, 4, 22);
+  s = activateForecast(s);
+  const next = cancelForecast(s);
+
+  assert.equal(next.charts["chart-1"].forecast.mode, "hidden");
+  assert.equal(next.charts["chart-1"].forecast.selected, false);
+  assert.deepEqual(next.charts["chart-1"].overrides.x, { min: 4, max: 22 });
+});
+
+test("setForecastPrompt ignores active forecasts", () => {
+  const s = activateForecast(createInitialState());
+  const next = setForecastPrompt(s, true);
+  assert.equal(next.charts["chart-1"].forecast.mode, "active");
+});
+
+test("selectForecast only affects active forecasts", () => {
+  const hidden = selectForecast(createInitialState(), true);
+  assert.equal(hidden.charts["chart-1"].forecast.selected, false);
+
+  const active = activateForecast(createInitialState());
+  const deselected = selectForecast(active, false);
+  assert.equal(deselected.charts["chart-1"].forecast.selected, false);
+});
+
+test("setForecastHorizon stores a positive integer horizon", () => {
   const s = createInitialState();
+  const next = setForecastHorizon(s, 9.2);
+  assert.equal(next.charts["chart-1"].forecast.horizon, 10);
+});
+
+test("loadDataset stores phases per chart slot", () => {
+  const s = {
+    ...createInitialState(),
+    charts: { "chart-1": createSlot(), "chart-2": createSlot() },
+    chartOrder: ["chart-1", "chart-2"],
+  };
   const points = [{ id: "pt-0", label: "pt-0", primaryValue: 10, excluded: false }];
   const primaryPhases = [{ id: "A", start: 0, end: 0, limits: { center: 10, ucl: 12, lcl: 8 } }];
   const challengerPhases = [{ id: "X", start: 0, end: 0, limits: { center: 11, ucl: 13, lcl: 9 } }];
@@ -349,18 +357,22 @@ test("loadDataset stores phases per chart slot", () => {
   const next = loadDataset(s, {
     points,
     slots: {
-      primary: { limits, phases: primaryPhases },
-      challenger: { limits, phases: challengerPhases },
+      "chart-1": { limits, phases: primaryPhases },
+      "chart-2": { limits, phases: challengerPhases },
     },
     datasetId: "d1",
   });
 
-  assert.deepEqual(next.charts.primary.phases, primaryPhases);
-  assert.deepEqual(next.charts.challenger.phases, challengerPhases);
+  assert.deepEqual(next.charts["chart-1"].phases, primaryPhases);
+  assert.deepEqual(next.charts["chart-2"].phases, challengerPhases);
 });
 
 test("challenger phases are independent from primary phases", () => {
-  const s = createInitialState();
+  const s = {
+    ...createInitialState(),
+    charts: { "chart-1": createSlot(), "chart-2": createSlot() },
+    chartOrder: ["chart-1", "chart-2"],
+  };
   const points = [{ id: "pt-0", label: "pt-0", primaryValue: 10, excluded: false }];
   const primaryPhases = [
     { id: "P1", start: 0, end: 0, limits: { center: 10, ucl: 12, lcl: 8 } },
@@ -370,16 +382,16 @@ test("challenger phases are independent from primary phases", () => {
   const next = loadDataset(s, {
     points,
     slots: {
-      primary: { limits, phases: primaryPhases },
-      challenger: { limits }, // no phases provided
+      "chart-1": { limits, phases: primaryPhases },
+      "chart-2": { limits }, // no phases provided
     },
     datasetId: "d1",
   });
 
-  assert.equal(next.charts.primary.phases.length, 1);
-  assert.equal(next.charts.primary.phases[0].id, "P1");
+  assert.equal(next.charts["chart-1"].phases.length, 1);
+  assert.equal(next.charts["chart-1"].phases[0].id, "P1");
   // Challenger keeps its default empty phases (from createSlot)
-  assert.deepEqual(next.charts.challenger.phases, []);
+  assert.deepEqual(next.charts["chart-2"].phases, []);
 });
 
 test("getPhaseLabel reads from primary slot phases", () => {

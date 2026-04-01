@@ -4,16 +4,16 @@ import { renderRecipeRail } from "../components/recipe-rail.js";
 import { renderChartArena } from "../components/chart-arena.js";
 
 export function renderEvidenceRail(state, workspace) {
-  const { signal, selectedPoint, rulesAtPoint, whyTriggered, evidence, activeFinding } = workspace;
+  const { signal, selectedPoint, rulesAtPoint, whyTriggered, evidence } = workspace;
   const tone = toneClass(signal.statusTone);
   const chartEvidence = evidence.filter(e => e.category === "chart");
   const focusedSlot = getFocused(state);
-  const chartLabel = focusedSlot?.context?.chartType?.label || "—";
+  const chartLabel = focusedSlot?.context?.chartType?.label || "-";
 
   return `
     <aside class="evidence-rail">
 
-      <!-- ── POINT TIER ───────────────────────────── -->
+      <!-- 閳光偓閳光偓 POINT TIER 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓 -->
       <div class="rail-tier-label">
         <span class="eyebrow">Point</span>
         ${selectedPoint ? `<span class="rail-tier-badge">${selectedPoint.label}</span>` : ""}
@@ -32,7 +32,7 @@ export function renderEvidenceRail(state, workspace) {
         </div>
       </div>
 
-      <!-- ── CHART TIER ────────────────────────────── -->
+      <!-- 閳光偓閳光偓 CHART TIER 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓 -->
       <div class="rail-tier-label">
         <span class="eyebrow">Chart</span>
         <span class="rail-tier-badge">${chartLabel}</span>
@@ -44,7 +44,7 @@ export function renderEvidenceRail(state, workspace) {
           ${whyTriggered.map(item =>
             typeof item === "string"
               ? `<li>${item}</li>`
-              : `<li>${item.description} — <strong class="violation-count">${item.count} point${item.count !== 1 ? "s" : ""}</strong> flagged.</li>`
+              : `<li>${item.description} - <strong class="violation-count">${item.count} point${item.count !== 1 ? "s" : ""}</strong> flagged.</li>`
           ).join("")}
         </ul>
       </div>
@@ -59,17 +59,6 @@ export function renderEvidenceRail(state, workspace) {
             </li>
           `).join("")}
         </ul>
-      </div>
-
-      <!-- ── FINDING ───────────────────────────────── -->
-      <div class="rail-section finding-section">
-        <p class="eyebrow">Finding</p>
-        <h3>${activeFinding?.title || "No draft"}</h3>
-        <p>${activeFinding?.summary || "Create from signal."}</p>
-        <div class="rail-actions">
-          <button class="btn btn-primary rail-cta" data-action="create-finding" type="button">Create</button>
-          <button class="btn rail-secondary" data-action="navigate" data-route="findings" type="button">View all</button>
-        </div>
       </div>
 
     </aside>
@@ -89,3 +78,5 @@ export function renderWorkspace(state) {
     </div>
   `;
 }
+
+
