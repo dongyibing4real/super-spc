@@ -9,6 +9,20 @@ function getFailedTransformCount(state) {
 }
 
 function getSelectedPoint(state) {
+  const focused = getFocused(state);
+  const hasChartValues = focused.chartValues && focused.chartValues.length > 0;
+  if (hasChartValues) {
+    const idx = focused.selectedPointIndex ?? 0;
+    const v = focused.chartValues[idx];
+    return v != null ? {
+      primaryValue: v,
+      label: focused.chartLabels?.[idx] || `pt-${idx}`,
+      subgroupLabel: focused.chartLabels?.[idx] || `pt-${idx}`,
+      excluded: false,
+      annotation: null,
+      raw: {},
+    } : undefined;
+  }
   return state.points[state.selectedPointIndex];
 }
 
@@ -24,7 +38,8 @@ function buildSignalNarrative(state, point) {
 
   const primary = getFocused(state);
   const violations = primary.violations || [];
-  const idx = state.selectedPointIndex;
+  const hasChartValues = primary.chartValues && primary.chartValues.length > 0;
+  const idx = hasChartValues ? (primary.selectedPointIndex ?? 0) : state.selectedPointIndex;
   const pointViolations = violations.filter(v => v.indices.includes(idx));
 
   if (pointViolations.length > 0) {
@@ -103,14 +118,14 @@ function buildEvidence(state, point) {
   const violationCount = (primary.violations || []).reduce((sum, v) => sum + v.indices.length, 0);
 
   return [
-    // 閳光偓閳光偓 Point-level items (change with the selected point) 閳光偓閳光偓
+    // --- Point-level items (change with the selected point) ---
     {
       label: "Value",
       value: point ? point.primaryValue.toFixed(4) : "-",
       resolved: Boolean(point),
       category: "point",
     },
-    // 閳光偓閳光偓 Chart-level items (stable, describe the analysis) 閳光偓閳光偓
+    // --- Chart-level items (stable, describe the analysis) ---
     {
       label: "UCL / CL / LCL",
       value: `${primary.limits.ucl.toFixed(4)} / ${primary.limits.center.toFixed(4)} / ${primary.limits.lcl.toFixed(4)}`,
@@ -125,13 +140,13 @@ function buildEvidence(state, point) {
     },
     {
       label: "Violations",
-      value: uniqueRules.size > 0 ? `${uniqueRules.size} rule${uniqueRules.size !== 1 ? "s" : ""} 璺?${violationCount} pts` : "None",
+      value: uniqueRules.size > 0 ? `${uniqueRules.size} rule${uniqueRules.size !== 1 ? "s" : ""} ${violationCount} pts` : "None",
       resolved: uniqueRules.size === 0,
       category: "chart",
     },
     {
       label: "Points",
-      value: `${state.points.length} 璺?${state.points.filter(p => p.excluded).length} excl`,
+      value: `${state.points.length} ${state.points.filter(p => p.excluded).length} excl`,
       resolved: true,
       category: "chart",
     },
@@ -182,7 +197,7 @@ function buildComparisonStrip(state) {
   ];
 }
 
-/* 閳烘劏鏅查埡?Default empty state for initial load 閳烘劏鏅查埡?*/
+/* ---Default empty state for initial load ---*/
 const DEFAULT_CONTEXT = {
   title: "",
   metric: { id: "value", label: "Value", unit: "" },
@@ -231,6 +246,7 @@ export function createSlot(overrides = {}) {
     phases: [],
     selectedPointIndex: null,
     showDataTable: false,
+    accentIdx: 0,
     forecast: {
       mode: "hidden",   // hidden | prompt | active
       selected: false,
@@ -260,10 +276,10 @@ export function getFocused(state) {
   return state.charts[state.focusedChartId] || getPrimary(state);
 }
 
-/* 閳烘劏鏅查埡?Freeform Split Layout (binary split tree) 閳烘劏鏅查埡?*/
+/* ---Freeform Split Layout (binary split tree) ---*/
 
 
-/* 閳光偓閳光偓 Tree helpers (kept temporarily for migration only) 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓 */
+/* --- Tree helpers (kept temporarily for migration only) --- */
 
 function _collect(node) {
   if (!node) return [];
@@ -275,7 +291,7 @@ function _collect(node) {
 export function migrateTreeToRows(layout) {
   if (layout.rows && layout.colWeights) return layout;
   if (layout.rows) {
-    // Has rows but no weights 閳?add default weights
+    // Has rows but no weights ---add default weights
     return { rows: layout.rows, colWeights: layout.rows.map(r => r.map(() => 1)), rowWeights: layout.rows.map(() => 1) };
   }
   if (layout.tree) {
@@ -292,7 +308,7 @@ export function migrateTreeToRows(layout) {
 /** Get all chart IDs visible in the current layout */
 export function collectChartIds(layout) {
   if (!layout?.rows) {
-    // Legacy fallback 閳?auto-migrate
+    // Legacy fallback ---auto-migrate
     if (layout?.tree) return _collect(layout.tree);
     if (layout?.slots) return [...layout.slots];
     return [];
@@ -363,7 +379,7 @@ export function insertChart(state, chartId, targetId, zone) {
   return { ...state, chartLayout: { rows, colWeights, rowWeights } };
 }
 
-/** Compute a preview of the grid after a drag-drop 閳?does NOT modify state */
+/** Compute a preview of the grid after a drag-drop ---does NOT modify state */
 export function computeGridPreview(layout, draggingId, targetId, zone) {
   const { rows, colWeights, rowWeights } = layout;
   if (!draggingId || !targetId || draggingId === targetId) return layout;
@@ -441,7 +457,7 @@ export function createInitialState() {
       confidenceBand: true,
     },
     charts: {
-      "chart-1": createSlot(),
+      "chart-1": createSlot({ accentIdx: 0 }),
     },
     chartOrder: ["chart-1"],
     nextChartId: 2,
@@ -475,6 +491,7 @@ export function createInitialState() {
       expandedProfileColumn: null,
       profileCache: {},
       confirmingDeleteId: null,
+      confirmingReset: false,
     },
     columnConfig: {
       columns: [],
@@ -484,7 +501,7 @@ export function createInitialState() {
   };
 }
 
-/* 閳烘劏鏅查埡?New actions for API integration 閳烘劏鏅查埡?*/
+/* ---New actions for API integration ---*/
 
 export function setDatasets(state, datasets) {
   return { ...state, datasets };
@@ -530,18 +547,21 @@ export function setError(state, message) {
   return { ...state, loading: false, error: message };
 }
 
-/* 閳烘劏鏅查埡?Existing actions 閳?refactored to selective cloning 閳烘劏鏅查埡?*/
+/* ---Existing actions ---refactored to selective cloning ---*/
 
 export function deriveWorkspace(state) {
   const point = getSelectedPoint(state);
   const signal = buildSignalNarrative(state, point);
   const evidence = buildEvidence(state, point);
+  const focused = getFocused(state);
+  const hasChartValues = focused.chartValues && focused.chartValues.length > 0;
+  const activeIdx = hasChartValues ? (focused.selectedPointIndex ?? 0) : state.selectedPointIndex;
 
   return {
     selectedPoint: point,
     signal,
     whyTriggered: buildWhyTriggered(state, point),
-    rulesAtPoint: buildRulesAtPoint(state, state.selectedPointIndex),
+    rulesAtPoint: buildRulesAtPoint(state, activeIdx),
     evidence,
     recommendations: buildRecommendations(state, point),
     compareCards: buildComparisonStrip(state),
@@ -553,10 +573,13 @@ export function deriveWorkspace(state) {
 }
 
 export function navigate(state, route) {
+  // Clear any pending reset confirmation timer when leaving a route
+  if (typeof window !== "undefined") clearTimeout(window._resetConfirmTimer);
   const next = {
     ...state,
     route,
-    ui: { ...state.ui, contextMenu: null }
+    ui: { ...state.ui, contextMenu: null },
+    dataPrep: { ...state.dataPrep, confirmingReset: false },
   };
   // Auto-select active dataset when entering Data Prep
   if (route === 'dataprep' && !next.dataPrep.selectedDatasetId && next.activeDatasetId) {
@@ -565,7 +588,7 @@ export function navigate(state, route) {
   return next;
 }
 
-/* 閳烘劏鏅查埡?Data Prep actions 閳烘劏鏅查埡?*/
+/* ---Data Prep actions ---*/
 
 export function selectPrepDataset(state, datasetId) {
   return {
@@ -597,7 +620,7 @@ export function deletePrepDataset(state, datasetId) {
   return { ...state, datasets, dataPrep: dp, activeDatasetId };
 }
 
-/* 閳烘劏鏅查埡?Client-side data prep actions 閳烘劏鏅查埡?*/
+/* ---Client-side data prep actions ---*/
 
 export function setPrepParsedData(state, { rawRows, arqueroTable, columns }) {
   return {
@@ -729,7 +752,7 @@ export function addColumnMeta(state, newColumns) {
   };
 }
 
-// 閳烘劏鏅查埡?Phase 3 閳?Row Exclusion 閳烘劏鏅查埡?
+// ---Phase 3 ---Row Exclusion ---
 
 export function toggleRowExclusion(state, rowIdx) {
   const excluded = [...state.dataPrep.excludedRows];
@@ -748,7 +771,7 @@ export function clearAllExclusions(state) {
   return { ...state, dataPrep: { ...state.dataPrep, excludedRows: [] } };
 }
 
-// 閳烘劏鏅查埡?Phase 3 閳?Data Profiling 閳烘劏鏅查埡?
+// ---Phase 3 ---Data Profiling ---
 
 export function setExpandedProfileColumn(state, colName) {
   const current = state.dataPrep.expandedProfileColumn;
@@ -765,7 +788,7 @@ export function setProfileCache(state, cache) {
   return { ...state, dataPrep: { ...state.dataPrep, profileCache: cache } };
 }
 
-/* 閳烘劏鏅查埡?Column Config + Analysis Params actions 閿熸枻鎷烽埡鎰ㄦ櫜 */
+/* === Column Config + Analysis Params actions === */
 
 export function setColumns(state, columns) {
   return {
@@ -793,7 +816,7 @@ export function setActiveChipEditor(state, chipId) {
 }
 
 export function selectPoint(state, index, id = null) {
-  // Subgroup-based charts (X-Bar R, CUSUM, etc.) have their own point space 閳?
+  // Subgroup-based charts (X-Bar R, CUSUM, etc.) have their own point space ---
   // chartValues indices don't map to raw state.points indices.  Store selection
   // per-slot so clicks in one chart don't highlight semantically-unrelated
   // points in a chart that uses a different granularity.
@@ -947,7 +970,7 @@ export function recoverTransformStep(state, stepId) {
 }
 
 export function setChallengerStatus(state, status) {
-  // Legacy method-lab integration 閳?kept for backwards compatibility
+  // Legacy method-lab integration ---kept for backwards compatibility
   return {
     ...state,
     auditLog: [`Method status changed to ${status}.`, ...state.auditLog],
@@ -991,7 +1014,7 @@ export function closeContextMenu(state) {
   return { ...state, ui: { ...state.ui, contextMenu: null } };
 }
 
-/* 閳烘劏鏅查埡?Split Layout actions 閳烘劏鏅查埡?*/
+/* ---Split Layout actions ---*/
 
 export function focusChart(state, chartId) {
   if (!state.charts[chartId] || state.focusedChartId === chartId) return state;
@@ -1021,6 +1044,7 @@ export function addChart(state, { chartType = "imr" } = {}) {
   const label = chartLabels[chartType] || chartType;
   const newSlot = createSlot({
     params: newParams,
+    accentIdx: state.nextChartId % 8,
     context: { ...focusedSlot.context, chartType: { id: chartType, label, detail: "" }, methodBadge: label },
   });
 
@@ -1193,7 +1217,7 @@ export function cancelForecast(state, id) {
   });
 }
 
-/* 閳烘劏鏅查埡?Structural Findings actions 閳烘劏鏅查埡?*/
+/* ---Structural Findings actions ---*/
 
 export function setStructuralFindings(state, findings, chartId) {
   return {

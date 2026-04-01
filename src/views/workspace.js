@@ -13,7 +13,7 @@ export function renderEvidenceRail(state, workspace) {
   return `
     <aside class="evidence-rail">
 
-      <!-- 閳光偓閳光偓 POINT TIER 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓 -->
+      <!-- --- POINT TIER --- -->
       <div class="rail-tier-label">
         <span class="eyebrow">Point</span>
         ${selectedPoint ? `<span class="rail-tier-badge">${selectedPoint.label}</span>` : ""}
@@ -32,7 +32,7 @@ export function renderEvidenceRail(state, workspace) {
         </div>
       </div>
 
-      <!-- 閳光偓閳光偓 CHART TIER 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓 -->
+      <!-- --- CHART TIER --- -->
       <div class="rail-tier-label">
         <span class="eyebrow">Chart</span>
         <span class="rail-tier-badge">${chartLabel}</span>

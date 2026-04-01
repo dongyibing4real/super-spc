@@ -1,5 +1,5 @@
 /**
- * app.js 闂?Application orchestrator.
+ * app.js -- Application orchestrator.
  *
  * Owns: global state, render cycle, D3 chart lifecycle, event delegation, data loading.
  * Delegates rendering to views/ and components/ modules.
@@ -56,22 +56,37 @@ import {
   closeActivePanel,
   collectChartIds,
   focusChart,
+  getFocused,
   getPrimary,
   migrateTreeToRows,
   togglePaneDataTable,
   activateForecast,
   deriveWorkspace,
+  addChart,
+  removeChart,
+  insertChart,
+  computeGridPreview,
+  setColWeight,
+  setRowWeight,
+  DEFAULT_PARAMS,
 } from "./core/state.js";
 import { renderSidebar } from "./components/sidebar.js";
-import { applyParamsToContext, capClass, detectRuleViolations, getCapability } from "./helpers.js";
+import { applyParamsToContext, capClass, CHART_TYPE_LABELS, detectRuleViolations, getCapability } from "./helpers.js";
 import {
   createDataset,
+  deleteDataset,
   fetchColumns,
   fetchDatasets,
   fetchPoints,
   runAnalysis,
 } from "./data/api.js";
 import { buildDefaultContext, transformAnalysis, transformPoints } from "./data/transforms.js";
+import { parseCSV } from "./data/csv-engine.js";
+import {
+  createTable, filterRows, sortTable, findReplace, removeDuplicates,
+  handleMissing, cleanText, renameColumn, changeColumnType, previewTypeConversion,
+  addCalculatedColumn, recodeValues, binColumn, splitColumn, concatColumns,
+} from "./data/data-prep-engine.js";
 import { createChart } from "./components/chart/index.js";
 
 import { renderNotice, renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
@@ -87,22 +102,21 @@ import { generateFindings } from "./core/findings-engine.js";
 import { buildForecastView } from "./prediction/build-forecast-view.js";
 import { DEFAULT_FORECAST_HORIZON } from "./prediction/constants.js";
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Global state 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Global state ===*/
 const root = document.getElementById("app");
 let state = createInitialState();
 let charts = { primary: null, challenger: null };
-const FOCUSED_TAIL_WINDOW = 60;
 const forecastPromptTimers = new Map();
 const forecastPromptEligibility = new Map();
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Unsaved changes guard 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Unsaved changes guard ===*/
 window.addEventListener("beforeunload", (e) => {
   if (state.dataPrep.unsavedChanges) {
     e.preventDefault();
   }
 });
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Router 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Router ===*/
 function renderRoute() {
   if (state.loading) return renderLoadingState();
   if (state.error) return renderErrorState(state);
@@ -209,15 +223,13 @@ function extendForecastToViewport(nextState, id, nextXMax) {
   return setForecastHorizon(nextState, requiredHorizon, id);
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Chart data builder 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Chart data builder ===*/
 function buildChartData(id) {
   const slot = state.charts[id];
   const points = getChartPoints(slot);
   const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
   const lastIdx = Math.max(0, points.length - 1);
-  const baseHorizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
-  const autoMin = Math.max(0, lastIdx - (FOCUSED_TAIL_WINDOW - 1));
-  const xDefaultDomain = { min: autoMin, max: lastIdx + baseHorizon };
+  const xDefaultDomain = { min: 0, max: lastIdx };
   const forecast = buildForecastView({
     points,
     limits: slot.limits,
@@ -250,7 +262,7 @@ function buildChartData(id) {
   };
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Main render 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Main render ===*/
 function renderShortcutOverlay() {
   return `
     <div class="shortcut-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
@@ -308,7 +320,9 @@ function render() {
         charts[id] = createChart(mount, {
           onSelectPoint: (index) => {
             state = focusChart(state, id);
-            commitChart(selectPoint(state, index, id));
+            state = selectPoint(state, index, id);
+            commitChart(state);
+            commitEvidenceRail(state);
           },
           onContextMenu: (x, y, info) => {
             state = focusChart(state, id);
@@ -346,20 +360,6 @@ function render() {
             commitChart(cancelForecast(state, id));
           },
           onAxisReset: (axis) => commitChart(resetAxis(state, axis, id)),
-          onProjectionResult: (result) => {
-            const chip = mount.closest('.chart-pane')?.querySelector('.drift-chip');
-            if (!chip) return;
-            if (!result || result.driftScore === 0) {
-              chip.style.display = 'none';
-              return;
-            }
-            chip.style.display = '';
-            const score = result.driftScore.toFixed(2);
-            const ooc = result.oocEstimate;
-            const intent = result.driftScore > 0.7 ? 'danger' : result.driftScore >= 0.3 ? 'warning' : 'success';
-            chip.className = `drift-chip status-chip ${intent}`;
-            chip.textContent = ooc ? `drift ${score} 閻?~${ooc} to OOC` : `drift ${score}`;
-          },
         });
       }
       charts[id].update(buildChartData(id));
@@ -389,24 +389,29 @@ function render() {
   }
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Commit functions 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Commit functions ===*/
 function commit(next) { state = next; render(); }
 
 function commitChart(next) {
   state = next;
+  const chartDataCache = {};
   for (const id of state.chartOrder) {
-    if (charts[id]) charts[id].update(buildChartData(id));
+    chartDataCache[id] = buildChartData(id);
+    if (charts[id]) charts[id].update(chartDataCache[id]);
   }
   for (const id of state.chartOrder) {
-    const paneCaps = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-caps`);
-    if (!paneCaps) continue;
     const cap = getCapability(state, id);
-    const summary = buildChartData(id).forecast?.driftSummary;
-    paneCaps.innerHTML = `
-      ${cap.cpk ? `<span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
-      <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>` : ""}
-      ${summary ? `<span class="drift-chip status-chip ${summary.intent}">${summary.label}</span>` : ""}
-    `;
+    const titlebar = root.querySelector(`.chart-pane[data-chart-id="${id}"] .chart-pane-titlebar`);
+    if (!titlebar) continue;
+    const existing = titlebar.querySelector('.pane-caps');
+    if (cap.cpk) {
+      const html = `<span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
+        <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>`;
+      if (existing) { existing.innerHTML = html; }
+      else { const d = document.createElement('div'); d.className = 'pane-caps'; d.innerHTML = html; titlebar.querySelector('.pane-actions')?.before(d); }
+    } else if (existing) {
+      existing.remove();
+    }
   }
   // Update focus visual
   root.querySelectorAll('.chart-pane').forEach(p => {
@@ -437,7 +442,7 @@ function commitContextMenu(next) {
   }
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Targeted commit 闂?recipe rail (chip editors, layer toggles) 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Targeted commit ---recipe rail (chip editors, layer toggles) ===*/
 function commitRecipeRail(next) {
   state = next;
   const rail = root.querySelector(".recipe-rail");
@@ -445,7 +450,7 @@ function commitRecipeRail(next) {
   morphEl(rail, renderRecipeRail(state));
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?FLIP animation helpers 闂?smooth card float transitions 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===FLIP animation helpers ---smooth card float transitions ===*/
 function snapshotRailPositions() {
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return null;
   const rail = root.querySelector(".recipe-rail");
@@ -459,7 +464,7 @@ function snapshotRailPositions() {
 
 function playRailFlip(firstMap, duration = 250) {
   if (!firstMap) return;
-  // Run synchronously 闂?before the browser paints the un-inverted state.
+  // Run synchronously ---before the browser paints the un-inverted state.
   // Reading getBoundingClientRect forces layout, then animate() starts
   // from the INVERT position on the very first painted frame.
   const rail = root.querySelector(".recipe-rail");
@@ -477,7 +482,7 @@ function playRailFlip(firstMap, duration = 250) {
   });
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Targeted commit 闂?notice bar 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Targeted commit ---notice bar ===*/
 function commitNotice(next) {
   state = next;
   const existing = root.querySelector(".notice");
@@ -488,7 +493,7 @@ function commitNotice(next) {
   }
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Targeted commit 闂?full workspace (recipe rail + chart arena + chart data) 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Targeted commit ---full workspace (recipe rail + chart arena + chart data) ===*/
 function commitWorkspace(next) {
   state = next;
 
@@ -523,7 +528,7 @@ function commitWorkspace(next) {
   }
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Targeted commit 闂?evidence rail 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Targeted commit ---evidence rail ===*/
 function commitEvidenceRail(next) {
   state = next;
   const rail = root.querySelector(".evidence-rail");
@@ -532,7 +537,7 @@ function commitEvidenceRail(next) {
   morphEl(rail, renderEvidenceRail(state, workspace));
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Slot builder 闂?shared by loadDatasetById and reanalyze 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Slot builder ---shared by loadDatasetById and reanalyze ===*/
 function buildSlots(analyses, baseContext) {
   const slots = {};
   state.chartOrder.forEach((id, i) => {
@@ -548,7 +553,7 @@ function buildSlots(analyses, baseContext) {
   return slots;
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Data loading 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Data loading ===*/
 async function loadDatasetById(datasetId) {
   state = setLoadingState(state, true);
   render();
@@ -589,8 +594,12 @@ async function loadDatasetById(datasetId) {
         };
       }
     });
+    const failedCharts = state.chartOrder.filter((_, i) => analysisResults[i].status === "rejected");
     state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId });
     state = setStructuralFindings(state, generateFindings(state));
+    if (failedCharts.length > 0) {
+      state = { ...state, ui: { ...state.ui, notice: { tone: "warning", title: "Analysis failed", body: `${failedCharts.length} chart(s) could not be analyzed.` } } };
+    }
     render();
   } catch (err) {
     state = setError(state, err.message);
@@ -624,11 +633,15 @@ async function reanalyze() {
           chartLabels: t.chartLabels, phases: t.phases,
         };
       }
-      // If rejected, slot is omitted 闂?loadDataset will keep existing chart data
+      // If rejected, slot is omitted ---loadDataset will keep existing chart data
     });
 
+    const failedCharts = state.chartOrder.filter((_, i) => analysisResults[i].status === "rejected");
     state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId: dsId });
     state = setStructuralFindings(state, generateFindings(state));
+    if (failedCharts.length > 0) {
+      state = { ...state, ui: { ...state.ui, notice: { tone: "warning", title: "Analysis failed", body: `${failedCharts.length} chart(s) could not be analyzed.` } } };
+    }
     commitWorkspace(state);
   } catch (err) {
     state = setError(state, err.message);
@@ -636,7 +649,7 @@ async function reanalyze() {
   }
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Event handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Event handlers ===*/
 root.addEventListener("click", async (e) => {
   // Focus-on-click: clicking anywhere inside a chart pane focuses that chart
   const clickedPane = e.target.closest('.chart-pane[data-chart-id]');
@@ -721,13 +734,28 @@ root.addEventListener("click", async (e) => {
       if (cid && cid !== state.focusedChartId && state.charts[cid]) {
         const snap = snapshotRailPositions();
         state = focusChart(state, cid);
-        // Targeted updates instead of full render 闂?avoids D3 chart rebuild
+        // Targeted updates instead of full render --- avoids D3 chart rebuild
         root.querySelectorAll(".chart-pane").forEach(p => {
           p.classList.toggle("pane-focused", p.dataset.chartId === state.focusedChartId);
         });
-        commitRecipeRail(state);
+        // Lightweight rail reorder: move DOM nodes to match chartOrder, toggle focus class.
+        // Skips full morphdom — nothing inside cards changed, only order and focus state.
+        const rail = root.querySelector(".recipe-rail");
+        if (rail) {
+          const cardMap = new Map();
+          rail.querySelectorAll(".rail-card[data-chart-id]").forEach(el => cardMap.set(el.dataset.chartId, el));
+          // Focused chart first, then the rest in chartOrder
+          const order = [state.focusedChartId, ...state.chartOrder.filter(id => id !== state.focusedChartId)];
+          for (const id of order) {
+            const card = cardMap.get(id);
+            if (card) {
+              card.classList.toggle("rail-card-focused", id === state.focusedChartId);
+              rail.appendChild(card); // moves existing node to end — reorders without recreating
+            }
+          }
+        }
         commitEvidenceRail(state);
-        playRailFlip(snap, 300);
+        playRailFlip(snap, 250);
       }
       break;
     }
@@ -818,7 +846,7 @@ root.addEventListener("click", async (e) => {
     case "delete-dataset": {
       const dsId = t.dataset.datasetId;
       if (state.dataPrep.confirmingDeleteId === dsId) {
-        // Second click 闂?confirmed
+        // Second click ---confirmed
         state = { ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: null } };
         try {
           await deleteDataset(dsId);
@@ -826,7 +854,7 @@ root.addEventListener("click", async (e) => {
           commit(deletePrepDataset(setDatasets(state, datasets), dsId));
         } catch (err) { commit(setPrepError(state, err.message)); }
       } else {
-        // First click 闂?enter confirmation state
+        // First click ---enter confirmation state
         commit({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: dsId } });
       }
       break;
@@ -972,7 +1000,7 @@ root.addEventListener("click", async (e) => {
       }
       break;
     }
-    /* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Panel toggle handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+    /* ===Panel toggle handlers ===*/
     case "prep-filter": { commit(setActivePanel(state, 'filter')); break; }
     case "prep-find-replace": { commit(setActivePanel(state, 'find')); break; }
     case "prep-dedup": { commit(setActivePanel(state, 'dedup')); break; }
@@ -984,7 +1012,7 @@ root.addEventListener("click", async (e) => {
     case "prep-bin": { commit(setActivePanel(state, 'bin')); break; }
     case "prep-split": { commit(setActivePanel(state, 'split')); break; }
     case "prep-concat": { commit(setActivePanel(state, 'concat')); break; }
-    /* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Panel apply handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+    /* ===Panel apply handlers ===*/
     case "prep-apply-filter": {
       if (!state.dataPrep.arqueroTable) break;
       const col = root.querySelector('[data-field="filter-col"]')?.value;
@@ -1053,7 +1081,7 @@ root.addEventListener("click", async (e) => {
       } catch (err) { commit(setPrepError(state, err.message)); }
       break;
     }
-    /* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Phase 2 apply handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+    /* ===Phase 2 apply handlers ===*/
     case "prep-apply-rename": {
       if (!state.dataPrep.arqueroTable) break;
       const oldName = root.querySelector('[data-field="rename-col"]')?.value;
@@ -1195,7 +1223,7 @@ root.addEventListener("click", async (e) => {
       }
       break;
     }
-    /* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Phase 3 handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+    /* ===Phase 3 handlers ===*/
     case "prep-validate": { commit(setActivePanel(state, 'validate')); break; }
     case "toggle-row-exclude": {
       const rowIdx = Number(t.dataset.row);
@@ -1313,7 +1341,7 @@ root.addEventListener("keydown", (e) => {
     }
   }
 
-  // Global shortcuts 闂?skip when typing in an input/textarea/select
+  // Global shortcuts ---skip when typing in an input/textarea/select
   const tag = document.activeElement?.tagName;
   const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
   if (!inInput && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -1377,7 +1405,7 @@ root.addEventListener("keydown", (e) => {
   }
 });
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Header drag 闂?zone-inference + ghost preview 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Header drag ---zone-inference + ghost preview ===*/
 let pendingDrag = null;  // recorded on pointerdown, promoted to dragState after threshold
 let dragState = null;
 let ghostOverlay = null;
@@ -1396,7 +1424,7 @@ function getDropZone(paneEl, clientX, clientY, prevZone) {
   else if (relX > 0.75) zone = "right";
   else zone = "center";
 
-  // DRAG-006: hysteresis 闂?stay on previous zone if cursor is within 15px of a boundary
+  // DRAG-006: hysteresis ---stay on previous zone if cursor is within 15px of a boundary
   if (prevZone && prevZone !== zone) {
     const HYSTERESIS = 15;
     const topB = r.top + r.height * 0.25;
@@ -1437,9 +1465,9 @@ function removeGhostOverlay() {
 let dividerDrag = null; // { type: "col"|"row", row: number, col?: number, arenaRect }
 
 root.addEventListener("pointerdown", (e) => {
-  // (sidebar resize removed 闂?row ops moved to horizontal toolbar)
+  // (sidebar resize removed ---row ops moved to horizontal toolbar)
 
-  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Grid divider drag 闂佸啿鍘滈崑鎾绘煃閸忓浜?
+  // ---Grid divider drag ---
   const div = e.target.closest(".grid-divider");
   if (div) {
     e.preventDefault();
@@ -1456,7 +1484,7 @@ root.addEventListener("pointerdown", (e) => {
     return;
   }
 
-  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Header drag 闂?record pending, promote after 4px threshold (DRAG-003) 闂佸啿鍘滈崑鎾绘煃閸忓浜?
+  // ---Header drag ---record pending, promote after 4px threshold (DRAG-003) ---
   const handle = e.target.closest("[data-drag-handle]");
   if (!handle) return;
   if (state.chartOrder.length < 2) return;
@@ -1469,7 +1497,7 @@ root.addEventListener("pointerdown", (e) => {
 });
 
 root.addEventListener("pointermove", (e) => {
-  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Grid divider live resize 闂佸啿鍘滈崑鎾绘煃閸忓浜?
+  // ---Grid divider live resize ---
   if (dividerDrag) {
     if (dividerDrag.type === "col") {
       const rowEl = root.querySelectorAll(".chart-row")[dividerDrag.row];
@@ -1503,7 +1531,7 @@ root.addEventListener("pointermove", (e) => {
     return;
   }
 
-  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Promote pending drag once 4px threshold is crossed (DRAG-003) 闂佸啿鍘滈崑鎾绘煃閸忓浜?
+  // ---Promote pending drag once 4px threshold is crossed (DRAG-003) ---
   if (pendingDrag && !dragState) {
     const dx = e.clientX - pendingDrag.startX;
     const dy = e.clientY - pendingDrag.startY;
@@ -1517,7 +1545,7 @@ root.addEventListener("pointermove", (e) => {
     // DRAG-007: suppress text selection during drag
     document.body.style.userSelect = "none";
 
-    // Ghost cursor follower 闂?DRAG-008: use params.chart_type not context
+    // Ghost cursor follower ---DRAG-008: use params.chart_type not context
     const ghost = document.createElement("div");
     ghost.className = "drag-ghost";
     ghost.textContent = CHART_TYPE_LABELS[state.charts[chartId]?.params?.chart_type] || "Chart";
@@ -1539,7 +1567,7 @@ root.addEventListener("pointermove", (e) => {
     updateGhostOverlay(state.chartLayout, chartId);
   }
 
-  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Header drag: zone inference + ghost preview 闂佸啿鍘滈崑鎾绘煃閸忓浜?
+  // ---Header drag: zone inference + ghost preview ---
   if (!dragState) return;
   const { ghost, chartId } = dragState;
 
@@ -1562,7 +1590,7 @@ root.addEventListener("pointermove", (e) => {
     const previewLayout = computeGridPreview(state.chartLayout, chartId, foundTarget, foundZone);
     updateGhostOverlay(previewLayout, chartId);
   } else {
-    // Back over source pane 闂?show current layout with source highlighted
+    // Back over source pane ---show current layout with source highlighted
     updateGhostOverlay(state.chartLayout, chartId);
   }
 });
@@ -1620,7 +1648,7 @@ root.addEventListener("dblclick", (e) => {
   saveLayout();
 });
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Pane titlebar right-click 闂?split/close context menu 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Pane titlebar right-click ---split/close context menu ===*/
 let paneMenu = null;
 
 function closePaneMenu() {
@@ -1645,7 +1673,7 @@ document.addEventListener("pointerdown", (e) => {
 }, true);
 
 root.addEventListener("contextmenu", (e) => {
-  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Pane titlebar right-click 闂佸啿鍘滈崑鎾绘煃閸忓浜?
+  // ---Pane titlebar right-click ---
   const titlebar = e.target.closest(".chart-pane-titlebar");
   if (titlebar) {
     e.preventDefault();
@@ -1654,7 +1682,7 @@ root.addEventListener("contextmenu", (e) => {
     return;
   }
 
-  // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Chart canvas right-click (existing behavior) 闂佸啿鍘滈崑鎾绘煃閸忓浜?
+  // ---Chart canvas right-click (existing behavior) ---
   if (e.defaultPrevented) return;
   const ch = e.target.closest(".chart-stage");
   if (!ch) return;
@@ -1667,7 +1695,7 @@ root.addEventListener("contextmenu", (e) => {
   commitContextMenu(openContextMenu(state, e.clientX - r.left, e.clientY - r.top, { target: 'canvas', role: state.focusedChartId }));
 });
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Change handlers 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Change handlers ===*/
 root.addEventListener("change", async (e) => {
   // Prep panel conditional visibility
   if (e.target.matches('[data-field="filter-op"]')) {
@@ -1880,14 +1908,14 @@ root.addEventListener("change", async (e) => {
   }
 });
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Retry handler 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Retry handler ===*/
 root.addEventListener("click", (e) => {
   const t = e.target.closest('[data-action="retry-load"]');
   if (!t) return;
   main();
 });
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Layout capacity 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Layout capacity ===*/
 function isWorkspaceFull() {
   const arenaEl = root.querySelector(".chart-arena");
   if (!arenaEl) return false;
@@ -1897,7 +1925,7 @@ function isWorkspaceFull() {
   return collectChartIds(state.chartLayout).length >= maxCharts;
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Layout persistence 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Layout persistence ===*/
 const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
 
 function saveLayout() {
@@ -1915,7 +1943,7 @@ function saveLayout() {
       data.chartParams[id] = state.charts[id]?.params || null;
     }
     localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(data));
-  } catch { /* localStorage unavailable or full 闂?silently ignore */ }
+  } catch { /* localStorage unavailable or full ---silently ignore */ }
 }
 
 function restoreLayout() {
@@ -1947,7 +1975,7 @@ function restoreLayout() {
   } catch { return null; }
 }
 
-/* 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?Boot 闂佸磭鍎ら崝蹇涘疾閺屻儱鐓?*/
+/* ===Boot ===*/
 render();
 
 async function main() {

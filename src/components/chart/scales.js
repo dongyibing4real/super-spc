@@ -83,7 +83,7 @@ export function createScales(data, config, seriesKey = 'primaryValue') {
   const { width, height, padding } = config;
   const n = data.points.length;
 
-  // X domain: default is [0, n-1], overridable by the app-provided viewport.
+  // X domain: default is [0, n-1] — fits all data points in the chart.
   const xDefault = config.xDefaultDomain ?? { min: 0, max: n - 1 };
   const { min: xMin, max: xMax } = config.xDomainOverride ?? xDefault;
 
