@@ -6,6 +6,14 @@ import {
   navigateSelectionToViolation,
 } from "../src/events/keydown-handler.js";
 
+function mockStore(initialState) {
+  let state = initialState;
+  return {
+    getState() { return state; },
+    setState(next) { state = next; return state; },
+  };
+}
+
 test("navigateSelectionToViolation moves forward and wraps", () => {
   assert.equal(navigateSelectionToViolation([2, 5, 9], 4, "n"), 5);
   assert.equal(navigateSelectionToViolation([2, 5, 9], 9, "n"), 2);
@@ -18,6 +26,15 @@ test("navigateSelectionToViolation moves backward and wraps", () => {
 
 test("handleAppKeydown closes shortcut overlay on escape", () => {
   const calls = [];
+  const store = mockStore({
+    ui: { shortcutOverlay: true, contextMenu: null, pendingNewChart: null },
+    route: "workspace",
+    dataPrep: { selectedDatasetId: null, transforms: [] },
+  });
+
+  const origSetState = store.setState;
+  store.setState = (next) => { calls.push(["setState", next.ui.shortcutOverlay]); return origSetState(next); };
+
   const event = {
     key: "Escape",
     metaKey: false,
@@ -28,22 +45,9 @@ test("handleAppKeydown closes shortcut overlay on escape", () => {
   };
 
   const handled = handleAppKeydown(event, {
+    store,
     root: { querySelector() { return null; } },
-    state: { ui: { shortcutOverlay: true, contextMenu: null, pendingNewChart: null }, route: "workspace", dataPrep: { selectedDatasetId: null, transforms: [] } },
     documentRef: { activeElement: null },
-    getFocused() { return null; },
-    setState(next) { calls.push(["setState", next.ui.shortcutOverlay]); },
-    patchUi(nextUi) { return { ui: { ...nextUi } }; },
-    commit() {},
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail() {},
-    moveSelection() {},
-    navigateSelectionToViolation,
-    openContextMenu() {},
-    closeContextMenu() {},
-    setActivePanel() {},
-    selectPoint() {},
     render() { calls.push("render"); },
   });
 
@@ -52,7 +56,12 @@ test("handleAppKeydown closes shortcut overlay on escape", () => {
 });
 
 test("handleAppKeydown opens context menu with shift+F10", () => {
-  let committed = null;
+  const store = mockStore({
+    ui: { shortcutOverlay: false, contextMenu: null, pendingNewChart: null },
+    route: "workspace",
+    dataPrep: { selectedDatasetId: null, transforms: [] },
+  });
+
   const event = {
     key: "F10",
     shiftKey: true,
@@ -69,30 +78,24 @@ test("handleAppKeydown opens context menu with shift+F10", () => {
   };
 
   handleAppKeydown(event, {
+    store,
     root: { querySelector() { return null; } },
-    state: { ui: { shortcutOverlay: false, contextMenu: null, pendingNewChart: null }, route: "workspace", dataPrep: { selectedDatasetId: null, transforms: [] } },
     documentRef: { activeElement: null },
-    getFocused() { return null; },
-    setState() {},
-    patchUi(nextUi) { return { ui: { ...nextUi } }; },
-    commit() {},
-    commitChart() {},
-    commitContextMenu(next) { committed = next; },
-    commitRecipeRail() {},
-    moveSelection() {},
-    navigateSelectionToViolation,
-    openContextMenu(state, x, y) { return { ...state, ui: { contextMenu: { x, y } } }; },
-    closeContextMenu() {},
-    setActivePanel() {},
-    selectPoint() {},
     render() {},
   });
 
-  assert.deepEqual(committed.ui.contextMenu, { x: 400, y: 200 });
+  const cm = store.getState().ui.contextMenu;
+  assert.equal(cm.x, 400);
+  assert.equal(cm.y, 200);
 });
 
 test("handleAppKeydown clears pending new chart on escape", () => {
-  let committed = null;
+  const store = mockStore({
+    ui: { shortcutOverlay: false, contextMenu: null, pendingNewChart: { chart_type: "imr" } },
+    route: "workspace",
+    dataPrep: { selectedDatasetId: null, transforms: [] },
+  });
+
   const event = {
     key: "Escape",
     metaKey: false,
@@ -108,24 +111,11 @@ test("handleAppKeydown clears pending new chart on escape", () => {
   };
 
   handleAppKeydown(event, {
+    store,
     root: { querySelector() { return null; } },
-    state: { ui: { shortcutOverlay: false, contextMenu: null, pendingNewChart: { chart_type: "imr" } }, route: "workspace", dataPrep: { selectedDatasetId: null, transforms: [] } },
     documentRef: { activeElement: null },
-    getFocused() { return null; },
-    setState() {},
-    patchUi(nextUi) { return { ui: { ...nextUi } }; },
-    commit() {},
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail(next) { committed = next; },
-    moveSelection() {},
-    navigateSelectionToViolation,
-    openContextMenu() {},
-    closeContextMenu() {},
-    setActivePanel() {},
-    selectPoint() {},
     render() {},
   });
 
-  assert.equal(committed.ui.pendingNewChart, null);
+  assert.equal(store.getState().ui.pendingNewChart, null);
 });

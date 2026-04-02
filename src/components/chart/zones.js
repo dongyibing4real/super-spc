@@ -1,6 +1,14 @@
 /**
- * Render zone shading (1σ/2σ/3σ bands) per DESIGN.md.
- * Zone A (2σ–3σ): red tint. Zone B (1σ–2σ): amber tint. Zone C (0–1σ): green tint.
+ * Render zone shading (1σ/2σ/3σ bands).
+ *
+ * Zone A (2σ–3σ): red tint — danger zone, most visible.
+ * Zone B (1σ–2σ): amber tint — warning zone.
+ * Zone C (0–1σ): green tint — healthy zone, most subtle.
+ *
+ * Opacities calibrated for #F6F7F9 light background (ambient tier):
+ *   Zone A 0.05, Zone B 0.03, Zone C 0.025
+ * Gradient from center outward: barely tinted → subtly tinted.
+ * Red is perceptually dominant so needs less opacity than green.
  */
 export function renderZones(layer, scales, data, config) {
   const { y, sigma } = scales;
@@ -17,12 +25,12 @@ export function renderZones(layer, scales, data, config) {
   const yLCL = y(data.limits.lcl);
 
   const zones = [
-    { key: 'a-upper', y: yUCL, h: yS2U - yUCL, fill: 'rgba(205,66,70,0.06)' },
-    { key: 'b-upper', y: yS2U, h: yS1U - yS2U, fill: 'rgba(200,118,25,0.04)' },
-    { key: 'c-upper', y: yS1U, h: yCL - yS1U, fill: 'rgba(35,133,81,0.04)' },
-    { key: 'c-lower', y: yCL, h: yS1L - yCL, fill: 'rgba(35,133,81,0.04)' },
-    { key: 'b-lower', y: yS1L, h: yS2L - yS1L, fill: 'rgba(200,118,25,0.04)' },
-    { key: 'a-lower', y: yS2L, h: yLCL - yS2L, fill: 'rgba(205,66,70,0.06)' },
+    { key: 'a-upper', y: yUCL, h: yS2U - yUCL, fill: 'rgba(205,66,70,0.05)' },
+    { key: 'b-upper', y: yS2U, h: yS1U - yS2U, fill: 'rgba(200,118,25,0.03)' },
+    { key: 'c-upper', y: yS1U, h: yCL - yS1U, fill: 'rgba(35,133,81,0.025)' },
+    { key: 'c-lower', y: yCL, h: yS1L - yCL, fill: 'rgba(35,133,81,0.025)' },
+    { key: 'b-lower', y: yS1L, h: yS2L - yS1L, fill: 'rgba(200,118,25,0.03)' },
+    { key: 'a-lower', y: yS2L, h: yLCL - yS2L, fill: 'rgba(205,66,70,0.05)' },
   ];
 
   const sel = layer.selectAll('rect').data(zones, d => d.key);

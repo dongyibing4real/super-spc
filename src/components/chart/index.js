@@ -495,12 +495,14 @@ export function createChart(container, options = {}) {
       .attr('height', currentHeight - p.top - p.bottom);
 
     renderForecastHandle(data, scales, sizedConfig);
+    // Forecast prompt eligibility: measure the visible empty space between
+    // the last data point and the right edge of the plot area.
     const lastIdx = data.points.length - 1;
-    const gapPx = data.points?.length
-      ? scales.x(lastIdx + (data.forecast?.horizon || 0)) - scales.x(lastIdx)
-      : 0;
+    const plotRight = sizedConfig.width - sizedConfig.padding.right;
+    const lastPointX = data.points?.length ? scales.x(lastIdx) : plotRight;
+    const gapPx = Math.max(0, plotRight - lastPointX);
     const plotWidth = Math.max(0, sizedConfig.width - sizedConfig.padding.left - sizedConfig.padding.right);
-    const minPromptGap = Math.max(20, Math.min(56, plotWidth * 0.08));
+    const minPromptGap = Math.max(12, Math.min(40, plotWidth * 0.04));
     config.onForecastPromptEligibilityChange?.({
       eligible: gapPx >= minPromptGap,
     });

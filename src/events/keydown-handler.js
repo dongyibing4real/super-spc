@@ -1,21 +1,14 @@
-export function handleAppKeydown(event, ctx) {
-  const {
-    root,
-    state,
-    documentRef,
-    getFocused,
-    setState,
-    patchUi,
-    commit,
-    commitChart,
-    commitContextMenu,
-    commitRecipeRail,
-    moveSelection,
-    navigateSelectionToViolation,
-    openContextMenu,
-    closeContextMenu,
-    setActivePanel,
-  } = ctx;
+import {
+  moveSelection,
+  openContextMenu,
+  closeContextMenu,
+  selectPoint,
+  setActivePanel,
+  getFocused,
+} from "../core/state.js";
+
+export function handleAppKeydown(event, { store, root, documentRef, render }) {
+  const state = store.getState();
 
   if (state.ui.contextMenu && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
     event.preventDefault();
@@ -33,8 +26,8 @@ export function handleAppKeydown(event, ctx) {
   if (state.ui.shortcutOverlay) {
     if (event.key === "Escape" || event.key === "?") {
       event.preventDefault();
-      setState(patchUi({ shortcutOverlay: false }));
-      ctx.render();
+      store.setState({ ...state, ui: { ...state.ui, shortcutOverlay: false } });
+      render();
       return true;
     }
   }
@@ -44,8 +37,8 @@ export function handleAppKeydown(event, ctx) {
   if (!inInput && !event.metaKey && !event.ctrlKey && !event.altKey) {
     if (event.key === "?") {
       event.preventDefault();
-      setState(patchUi({ shortcutOverlay: true }));
-      ctx.render();
+      store.setState({ ...state, ui: { ...state.ui, shortcutOverlay: true } });
+      render();
       return true;
     }
 
@@ -54,7 +47,8 @@ export function handleAppKeydown(event, ctx) {
       const panel = { f: "filter", d: "find", r: "rename", t: "change_type", c: "calculated" }[dpKey];
       if (panel) {
         event.preventDefault();
-        commit(setActivePanel(state, panel));
+        store.setState(setActivePanel(state, panel));
+        render();
         return true;
       }
       if (dpKey === "z" && state.dataPrep.transforms.length > 0) {
@@ -72,7 +66,7 @@ export function handleAppKeydown(event, ctx) {
       const indices = [...new Set(violations.flatMap((v) => v.indices || []))].sort((a, b) => a - b);
       if (indices.length === 0) return true;
       const target = navigateSelectionToViolation(indices, state.selectedPointIndex ?? -1, event.key);
-      commitChart(ctx.selectPoint(state, target));
+      store.setState(selectPoint(state, target));
       return true;
     }
   }
@@ -82,30 +76,30 @@ export function handleAppKeydown(event, ctx) {
 
   if (event.key === "ArrowRight") {
     event.preventDefault();
-    commitChart(moveSelection(state, 1));
+    store.setState(moveSelection(state, 1));
     return true;
   }
   if (event.key === "ArrowLeft") {
     event.preventDefault();
-    commitChart(moveSelection(state, -1));
+    store.setState(moveSelection(state, -1));
     return true;
   }
   if (event.key === "Enter" && event.target.matches("[data-action='select-point']")) {
     event.preventDefault();
-    commitChart(ctx.selectPoint(state, Number(event.target.dataset.index)));
+    store.setState(selectPoint(state, Number(event.target.dataset.index)));
     return true;
   }
   if (event.key === "F10" && event.shiftKey) {
     event.preventDefault();
-    commitContextMenu(openContextMenu(state, 400, 200));
+    store.setState(openContextMenu(state, 400, 200));
     return true;
   }
   if (event.key === "Escape" && state.ui.contextMenu) {
-    commitContextMenu(closeContextMenu(state));
+    store.setState(closeContextMenu(state));
     return true;
   }
   if (event.key === "Escape" && state.ui.pendingNewChart) {
-    commitRecipeRail(patchUi({ pendingNewChart: null }));
+    store.setState({ ...state, ui: { ...state.ui, pendingNewChart: null } });
     return true;
   }
 

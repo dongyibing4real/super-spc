@@ -66,6 +66,19 @@
   --r-md: 6px;
   --r-lg: 8px;
 
+  /* Chart design tokens — opacity scale (5 levels) */
+  --chart-o-bg: 0.03;
+  --chart-o-subtle: 0.12;
+  --chart-o-muted: 0.30;
+  --chart-o-medium: 0.55;
+  --chart-o-full: 1.0;
+
+  /* Chart design tokens — stroke weight scale (4 levels) */
+  --chart-w-hair: 0.5px;
+  --chart-w-fine: 0.75px;
+  --chart-w-mid: 1.0px;
+  --chart-w-data: 1.5px;
+
   
   --dur-micro: 60ms;
   --dur-short: 100ms;
@@ -1341,7 +1354,9 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 500;
   
 }
-.phase-line { stroke: rgba(209,152,11,0.25); stroke-dasharray: 4 6; stroke-width: 1; }
+/* Phase boundaries — solid line with subtle background band, not orphan dashes */
+.phase-line { stroke: rgba(209,152,11,0.30); stroke-width: 0.75; }
+.phase-band { fill: rgba(209,152,11,0.02); }
 .phase-label {
   fill: var(--chart-text-2);
   font-family: ui-monospace, monospace;
@@ -1350,14 +1365,14 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-/* Limit lines — reference geometry, thinner than data series */
-.limit-line { stroke-width: 1; }
-.limit-line.critical { stroke: rgba(205,66,70,0.65); }
-.limit-line.center { stroke: rgba(35,133,81,0.75); }
+/* Limit lines — structure tier: subordinate to data, readable but quiet */
+.limit-line { stroke-width: 0.75; }
+.limit-line.critical { stroke: rgba(205,66,70,0.30); }
+.limit-line.center { stroke: rgba(35,133,81,0.30); stroke-width: 1.0; }
 .limit-line.spec { stroke: rgba(139,92,246,0.30); stroke-dasharray: 3 4; stroke-width: 0.75; }
-/* Series lines — primary is dominant, challenger recedes via opacity */
-.primary-path { fill: none; stroke: var(--blue); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
-.challenger-path { fill: none; stroke: var(--teal-bright); stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; opacity: 0.4; }
+/* Series lines — primary is data tier (loudest), challenger at medium tier */
+.primary-path { fill: none; stroke: var(--blue); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.challenger-path { fill: none; stroke: var(--teal-bright); stroke-width: 0.75; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
 /* Points — small and clean, color is the signal not size */
 .chart-point {
   fill: var(--blue); stroke: var(--chart-bg); stroke-width: 0.75;
@@ -1372,9 +1387,12 @@ h1, h2, h3, h4, h5, h6 {
 .selection-crosshair {
   stroke: var(--blue); stroke-width: 0.75; opacity: 0.55;
 }
+/* SVG hit targets: suppress browser focus outlines — keyboard focus handled by crosshair */
+.point-hit { outline: none; }
+.point-hit:focus { outline: none; }
 .point-group.is-excluded .chart-point { opacity: 0.25; }
-.excluded-mark { stroke: var(--amber); stroke-width: 1.25; opacity: 0.5; }
-.event-line { stroke: rgba(139,92,246,0.25); stroke-width: 1; }
+.excluded-mark { stroke: var(--amber); stroke-width: 0.75; opacity: 0.30; }
+.event-line { stroke: rgba(139,92,246,0.12); stroke-width: 0.75; }
 .event-chip { fill: rgba(139,92,246,0.06); stroke: rgba(139,92,246,0.15); rx: 3; }
 .event-text { fill: #8B5CF6; font-family: ui-monospace, monospace; font-size: 9px; font-weight: 500; }
 

@@ -1,3 +1,40 @@
+import {
+  setPrepError,
+  clearPrepTransforms,
+  setActivePanel,
+  closeActivePanel,
+  toggleRowExclusion,
+  updateColumnMeta,
+  addColumnMeta,
+  addPrepTransform,
+  setPrepTable,
+  setColumns,
+  setProfileCache,
+  markPrepSaved,
+  undoPrepTransform,
+  undoPrepTransformTo,
+  setDatasets,
+} from "../core/state.js";
+
+import { createDataset, fetchDatasets } from "../data/api.js";
+
+import {
+  filterRows,
+  findReplace,
+  removeDuplicates,
+  handleMissing,
+  cleanText,
+  renameColumn,
+  changeColumnType,
+  addCalculatedColumn,
+  recodeValues,
+  binColumn,
+  splitColumn,
+  concatColumns,
+} from "../data/data-prep-engine.js";
+
+import { replayPrepTransforms } from "../runtime/prep-runtime.js";
+
 function value(root, field) {
   return root.querySelector(`[data-field="${field}"]`)?.value;
 }
@@ -6,51 +43,13 @@ function checked(root, field) {
   return root.querySelector(`[data-field="${field}"]`)?.checked || false;
 }
 
-function closeWithRender(ctx, nextState) {
-  ctx.setState(nextState);
-  ctx.render();
+function closeWithRender(store, render, nextState) {
+  store.setState(nextState);
+  render();
 }
 
-export async function handlePrepClick(event, ctx) {
-  const {
-    state,
-    root,
-    documentRef,
-    windowRef,
-    setState,
-    render,
-    commit,
-    createDataset,
-    fetchDatasets,
-    setDatasets,
-    setPrepError,
-    clearPrepTransforms,
-    setActivePanel,
-    closeActivePanel,
-    toggleRowExclusion,
-    updateColumnMeta,
-    addColumnMeta,
-    addPrepTransform,
-    setPrepTable,
-    setColumns,
-    setProfileCache,
-    markPrepSaved,
-    undoPrepTransform,
-    undoPrepTransformTo,
-    replayPrepTransforms,
-    cleanText,
-    filterRows,
-    findReplace,
-    removeDuplicates,
-    handleMissing,
-    renameColumn,
-    changeColumnType,
-    addCalculatedColumn,
-    recodeValues,
-    binColumn,
-    splitColumn,
-    concatColumns,
-  } = ctx;
+export async function handlePrepClick(event, { store, root, documentRef, windowRef, render }) {
+  const state = store.getState();
 
   const actionTarget = event.target.closest("[data-action]");
   if (!actionTarget) return false;
@@ -69,7 +68,7 @@ export async function handlePrepClick(event, ctx) {
         next = setProfileCache(next, {});
         if (next.dataPrep.transforms.length === 0) next = markPrepSaved(next);
       }
-      setState(next);
+      store.setState(next);
       render();
       return true;
     }
@@ -86,7 +85,7 @@ export async function handlePrepClick(event, ctx) {
       }
       let next = addPrepTransform(state, { type: "trim", params: { columns: cols.map((column) => column.name) } });
       next = setPrepTable(next, table);
-      setState(next);
+      store.setState(next);
       render();
       return true;
     }
@@ -107,10 +106,11 @@ export async function handlePrepClick(event, ctx) {
         const datasets = await fetchDatasets();
         let next = setDatasets(state, datasets);
         next = markPrepSaved(next);
-        setState(next);
+        store.setState(next);
         render();
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -149,50 +149,65 @@ export async function handlePrepClick(event, ctx) {
         clearTimeout(windowRef._resetConfirmTimer);
         let next = clearPrepTransforms(state);
         next = { ...next, dataPrep: { ...next.dataPrep, confirmingReset: false } };
-        commit(next);
+        store.setState(next);
+        render();
       } else {
         const next = { ...state, dataPrep: { ...state.dataPrep, confirmingReset: true } };
-        commit(next);
+        store.setState(next);
+        render();
         windowRef._resetConfirmTimer = setTimeout(() => {
-          if (state.dataPrep.confirmingReset) {
-            commit({ ...state, dataPrep: { ...state.dataPrep, confirmingReset: false } });
+          const current = store.getState();
+          if (current.dataPrep.confirmingReset) {
+            store.setState({ ...current, dataPrep: { ...current.dataPrep, confirmingReset: false } });
+            render();
           }
         }, 3000);
       }
       return true;
     }
     case "prep-filter":
-      commit(setActivePanel(state, "filter"));
+      store.setState(setActivePanel(state, "filter"));
+      render();
       return true;
     case "prep-find-replace":
-      commit(setActivePanel(state, "find"));
+      store.setState(setActivePanel(state, "find"));
+      render();
       return true;
     case "prep-dedup":
-      commit(setActivePanel(state, "dedup"));
+      store.setState(setActivePanel(state, "dedup"));
+      render();
       return true;
     case "prep-missing":
-      commit(setActivePanel(state, "missing"));
+      store.setState(setActivePanel(state, "missing"));
+      render();
       return true;
     case "prep-rename":
-      commit(setActivePanel(state, "rename"));
+      store.setState(setActivePanel(state, "rename"));
+      render();
       return true;
     case "prep-change-type":
-      commit(setActivePanel(state, "change_type"));
+      store.setState(setActivePanel(state, "change_type"));
+      render();
       return true;
     case "prep-calc":
-      commit(setActivePanel(state, "calculated"));
+      store.setState(setActivePanel(state, "calculated"));
+      render();
       return true;
     case "prep-recode":
-      commit(setActivePanel(state, "recode"));
+      store.setState(setActivePanel(state, "recode"));
+      render();
       return true;
     case "prep-bin":
-      commit(setActivePanel(state, "bin"));
+      store.setState(setActivePanel(state, "bin"));
+      render();
       return true;
     case "prep-split":
-      commit(setActivePanel(state, "split"));
+      store.setState(setActivePanel(state, "split"));
+      render();
       return true;
     case "prep-concat":
-      commit(setActivePanel(state, "concat"));
+      store.setState(setActivePanel(state, "concat"));
+      render();
       return true;
     case "prep-apply-filter": {
       if (!state.dataPrep.arqueroTable) return true;
@@ -207,9 +222,10 @@ export async function handlePrepClick(event, ctx) {
         let next = addPrepTransform(state, { type: "filter", params: { column, operator, value: filterVal } });
         next = setPrepTable(next, table);
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -236,9 +252,10 @@ export async function handlePrepClick(event, ctx) {
         let next = addPrepTransform(state, { type: "find_replace", params: { column, find: search, replace, useRegex } });
         next = setPrepTable(next, table);
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -251,9 +268,10 @@ export async function handlePrepClick(event, ctx) {
         let next = addPrepTransform(state, { type: "dedup", params: { keyColumns: selectedColumns } });
         next = setPrepTable(next, table);
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -268,9 +286,10 @@ export async function handlePrepClick(event, ctx) {
         let next = addPrepTransform(state, { type: "missing", params: { column, strategy, customValue: customValue || null } });
         next = setPrepTable(next, table);
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -281,7 +300,8 @@ export async function handlePrepClick(event, ctx) {
       if (!oldName || !newName) return true;
       const existing = state.columnConfig.columns.map((column) => column.name);
       if (existing.includes(newName)) {
-        commit(setPrepError(state, `Column "${newName}" already exists`));
+        store.setState(setPrepError(state, `Column "${newName}" already exists`));
+        render();
         return true;
       }
       try {
@@ -290,9 +310,10 @@ export async function handlePrepClick(event, ctx) {
         next = setPrepTable(next, table);
         next = updateColumnMeta(next, oldName, { name: newName });
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -307,9 +328,10 @@ export async function handlePrepClick(event, ctx) {
         next = setPrepTable(next, table);
         next = updateColumnMeta(next, column, { dtype: targetType });
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -320,7 +342,8 @@ export async function handlePrepClick(event, ctx) {
       if (!newColName || !expression) return true;
       const columns = state.columnConfig.columns.map((column) => column.name);
       if (columns.includes(newColName)) {
-        commit(setPrepError(state, `Column "${newColName}" already exists`));
+        store.setState(setPrepError(state, `Column "${newColName}" already exists`));
+        render();
         return true;
       }
       try {
@@ -329,9 +352,10 @@ export async function handlePrepClick(event, ctx) {
         next = setPrepTable(next, table);
         next = addColumnMeta(next, [{ name: newColName, dtype: "numeric" }]);
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -354,9 +378,10 @@ export async function handlePrepClick(event, ctx) {
         next = setPrepTable(next, table);
         if (newColName) next = addColumnMeta(next, [{ name: newColName, dtype: "text" }]);
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -371,7 +396,8 @@ export async function handlePrepClick(event, ctx) {
         const breaksStr = value(root, "bin-breaks") || "";
         customBreaks = breaksStr.split(",").map((part) => parseFloat(part.trim())).filter((n) => !isNaN(n)).sort((a, b) => a - b);
         if (customBreaks.length === 0) {
-          commit(setPrepError(state, "Enter valid break values"));
+          store.setState(setPrepError(state, "Enter valid break values"));
+          render();
           return true;
         }
       }
@@ -382,9 +408,10 @@ export async function handlePrepClick(event, ctx) {
         next = setPrepTable(next, table);
         next = addColumnMeta(next, [{ name: newColName, dtype: "text" }]);
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -401,9 +428,10 @@ export async function handlePrepClick(event, ctx) {
         const newCols = Array.from({ length: maxParts }, (_, i) => ({ name: `${column}_${i + 1}`, dtype: "text" }));
         next = addColumnMeta(next, newCols);
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -419,9 +447,10 @@ export async function handlePrepClick(event, ctx) {
         next = setPrepTable(next, table);
         next = addColumnMeta(next, [{ name: newColName, dtype: "text" }]);
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(state, err.message));
+        render();
       }
       return true;
     }
@@ -436,11 +465,15 @@ export async function handlePrepClick(event, ctx) {
       return true;
     }
     case "prep-validate":
-      commit(setActivePanel(state, "validate"));
+      store.setState(setActivePanel(state, "validate"));
+      render();
       return true;
     case "toggle-row-exclude": {
       const rowIdx = Number(actionTarget.dataset.row);
-      if (!isNaN(rowIdx)) commit(toggleRowExclusion(state, rowIdx));
+      if (!isNaN(rowIdx)) {
+        store.setState(toggleRowExclusion(state, rowIdx));
+        render();
+      }
       return true;
     }
     case "prep-toggle-all-visible-rows": {
@@ -454,7 +487,8 @@ export async function handlePrepClick(event, ctx) {
         if (shouldSelectAll) current.delete(i);
         else current.add(i);
       }
-      commit({ ...state, dataPrep: { ...state.dataPrep, excludedRows: [...current].sort((a, b) => a - b) } });
+      store.setState({ ...state, dataPrep: { ...state.dataPrep, excludedRows: [...current].sort((a, b) => a - b) } });
+      render();
       return true;
     }
     case "prep-apply-validate": {
@@ -475,7 +509,7 @@ export async function handlePrepClick(event, ctx) {
       if (rule) {
         let next = updateColumnMeta(state, column, { validation: rule });
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       }
       return true;
     }
@@ -484,7 +518,7 @@ export async function handlePrepClick(event, ctx) {
       if (column) {
         let next = updateColumnMeta(state, column, { validation: null });
         next = closeActivePanel(next);
-        closeWithRender(ctx, next);
+        closeWithRender(store, render, next);
       }
       return true;
     }

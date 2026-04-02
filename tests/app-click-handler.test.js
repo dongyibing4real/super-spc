@@ -1,10 +1,82 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mock } from "node:test";
 
-import { handleAppClick } from "../src/events/app-click-handler.js";
+function mockStore(initialState) {
+  let state = initialState;
+  return {
+    getState() { return state; },
+    setState(next) { state = next; return state; },
+  };
+}
+
+// We need to mock the module-level imports before importing the handler.
+// Use node:test's mock.module to stub state.js, api.js, and data-prep-engine.js.
+
+let stubs;
+
+function resetStubs() {
+  stubs = {
+    navigate: (state, route) => ({ ...state, route }),
+    setPrepParsedData: (state, payload) => ({ ...state, parsed: payload }),
+    loadPrepPoints: (state, pts) => ({ ...state, datasetPoints: pts }),
+    setPrepError: (state, msg) => ({ ...state, prepError: msg }),
+    resetAxis: (state, axis, role) => ({ ...state, axis, role }),
+    closeContextMenu: (state) => ({ ...state, ui: { ...state.ui, contextMenu: null } }),
+    setActiveChipEditor: (state, chipId) => ({ ...state, activeChipEditor: chipId }),
+    selectPrepDataset: (state, dsId) => ({ ...state, selectedDatasetId: dsId }),
+    setColumns: (state, cols) => ({ ...state, columns: cols }),
+    deletePrepDataset: (state, dsId) => ({ ...state, deletedDataset: dsId }),
+    setDatasets: (state, datasets) => ({ ...state, datasets }),
+    setExpandedProfileColumn: (state, col) => ({ ...state, expandedColumn: col }),
+    fetchPoints: async () => [],
+    fetchColumns: async () => [],
+    fetchDatasets: async () => [],
+    deleteDataset: async () => {},
+    createTable: (rows, cols) => ({ rows, cols }),
+  };
+}
+
+resetStubs();
+
+mock.module("../src/core/state.js", {
+  namedExports: {
+    navigate: (...args) => stubs.navigate(...args),
+    setPrepParsedData: (...args) => stubs.setPrepParsedData(...args),
+    loadPrepPoints: (...args) => stubs.loadPrepPoints(...args),
+    setPrepError: (...args) => stubs.setPrepError(...args),
+    resetAxis: (...args) => stubs.resetAxis(...args),
+    closeContextMenu: (...args) => stubs.closeContextMenu(...args),
+    setActiveChipEditor: (...args) => stubs.setActiveChipEditor(...args),
+    selectPrepDataset: (...args) => stubs.selectPrepDataset(...args),
+    setColumns: (...args) => stubs.setColumns(...args),
+    deletePrepDataset: (...args) => stubs.deletePrepDataset(...args),
+    setDatasets: (...args) => stubs.setDatasets(...args),
+    setExpandedProfileColumn: (...args) => stubs.setExpandedProfileColumn(...args),
+  },
+});
+
+mock.module("../src/data/api.js", {
+  namedExports: {
+    fetchPoints: (...args) => stubs.fetchPoints(...args),
+    fetchColumns: (...args) => stubs.fetchColumns(...args),
+    fetchDatasets: (...args) => stubs.fetchDatasets(...args),
+    deleteDataset: (...args) => stubs.deleteDataset(...args),
+  },
+});
+
+mock.module("../src/data/data-prep-engine.js", {
+  namedExports: {
+    createTable: (...args) => stubs.createTable(...args),
+  },
+});
+
+const { handleAppClick } = await import("../src/events/app-click-handler.js");
 
 test("handleAppClick closes shortcut overlay", async () => {
+  resetStubs();
   const calls = [];
+  const store = mockStore({ ui: { shortcutOverlay: true } });
   const event = {
     target: {
       closest(selector) {
@@ -14,41 +86,25 @@ test("handleAppClick closes shortcut overlay", async () => {
   };
 
   const handled = await handleAppClick(event, {
-    state: {},
+    store,
     root: {},
-    setState(next) { calls.push(["setState", next]); },
     render() { calls.push(["render"]); },
-    commit() {},
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail() {},
-    patchUi(nextUi) { return { ui: nextUi }; },
-    navigate() {},
-    fetchPoints() {},
-    fetchColumns() {},
-    createTable() {},
-    setPrepParsedData() {},
-    loadPrepPoints() {},
-    setPrepError() {},
-    resetAxis() {},
-    closeContextMenu() {},
-    setActiveChipEditor() {},
-    selectPrepDataset() {},
-    setColumns() {},
-    deleteDataset() {},
-    fetchDatasets() {},
-    deletePrepDataset() {},
-    setDatasets() {},
     loadDatasetById() {},
-    setExpandedProfileColumn() {},
   });
 
   assert.equal(handled, true);
-  assert.deepEqual(calls, [["setState", { ui: { shortcutOverlay: false } }], ["render"]]);
+  assert.deepEqual(store.getState().ui, { shortcutOverlay: false });
+  assert.deepEqual(calls, [["render"]]);
 });
 
-test("handleAppClick routes reset-axis through chart and context menu commits", async () => {
-  const calls = [];
+test("handleAppClick routes reset-axis through store.setState", async () => {
+  resetStubs();
+  const setStateCalls = [];
+  const initialState = { focusedChartId: "chart-1", ui: { contextMenu: { role: "chart-2" } } };
+  const store = mockStore(initialState);
+  const origSetState = store.setState.bind(store);
+  store.setState = (next) => { setStateCalls.push(next); return origSetState(next); };
+
   const event = {
     target: {
       closest(selector) {
@@ -60,46 +116,36 @@ test("handleAppClick routes reset-axis through chart and context menu commits", 
   };
 
   const handled = await handleAppClick(event, {
-    state: { focusedChartId: "chart-1", ui: { contextMenu: { role: "chart-2" } } },
+    store,
     root: {},
-    setState() {},
     render() {},
-    commit() {},
-    commitChart(next) { calls.push(["commitChart", next]); },
-    commitContextMenu(next) { calls.push(["commitContextMenu", next]); },
-    commitRecipeRail() {},
-    patchUi() {},
-    navigate() {},
-    fetchPoints() {},
-    fetchColumns() {},
-    createTable() {},
-    setPrepParsedData() {},
-    loadPrepPoints() {},
-    setPrepError() {},
-    resetAxis(state, axis, role) {
-      return { ...state, axis, role };
-    },
-    closeContextMenu(state) { return { ...state, ui: { contextMenu: null } }; },
-    setActiveChipEditor() {},
-    selectPrepDataset() {},
-    setColumns() {},
-    deleteDataset() {},
-    fetchDatasets() {},
-    deletePrepDataset() {},
-    setDatasets() {},
     loadDatasetById() {},
-    setExpandedProfileColumn() {},
   });
 
   assert.equal(handled, true);
-  assert.deepEqual(calls[0], ["commitChart", { focusedChartId: "chart-1", ui: { contextMenu: { role: "chart-2" } }, axis: "x", role: "chart-2" }]);
-  assert.deepEqual(calls[1], ["commitContextMenu", { focusedChartId: "chart-1", ui: { contextMenu: null } }]);
+  // First setState: resetAxis result
+  assert.deepEqual(setStateCalls[0], {
+    focusedChartId: "chart-1",
+    ui: { contextMenu: { role: "chart-2" } },
+    axis: "x",
+    role: "chart-2",
+  });
+  // Second setState: closeContextMenu result (uses getState which now has axis/role)
+  assert.equal(setStateCalls[1].ui.contextMenu, null);
 });
 
 test("handleAppClick selects prep dataset and hydrates prep table", async () => {
-  const calls = [];
   const pts = [{ raw_data: { a: "1" } }];
   const cols = [{ name: "a" }];
+  resetStubs();
+  stubs.fetchPoints = async () => pts;
+  stubs.fetchColumns = async () => cols;
+
+  const calls = [];
+  const store = mockStore({});
+  const origSetState = store.setState.bind(store);
+  store.setState = (next) => { calls.push(["setState", next]); return origSetState(next); };
+
   const event = {
     target: {
       closest(selector) {
@@ -111,59 +157,51 @@ test("handleAppClick selects prep dataset and hydrates prep table", async () => 
   };
 
   const handled = await handleAppClick(event, {
-    state: {},
+    store,
     root: {},
-    setState(next) { calls.push(["setState", next]); },
     render() { calls.push(["render"]); },
-    commit(next) { calls.push(["commit", next]); },
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail() {},
-    patchUi() {},
-    navigate() {},
-    async fetchPoints() { return pts; },
-    async fetchColumns() { return cols; },
-    createTable(rows, tableCols) {
-      calls.push(["createTable", rows, tableCols]);
-      return { rows, cols: tableCols };
-    },
-    setPrepParsedData(state, payload) {
-      return { ...state, parsed: payload };
-    },
-    loadPrepPoints(state, nextPts) {
-      return { ...state, datasetPoints: nextPts };
-    },
-    setPrepError() {},
-    resetAxis() {},
-    closeContextMenu() {},
-    setActiveChipEditor() {},
-    selectPrepDataset(state, dsId) {
-      return { ...state, selectedDatasetId: dsId };
-    },
-    setColumns(state, nextCols) {
-      return { ...state, columns: nextCols };
-    },
-    deleteDataset() {},
-    fetchDatasets() {},
-    deletePrepDataset() {},
-    setDatasets() {},
     loadDatasetById() {},
-    setExpandedProfileColumn() {},
   });
 
   assert.equal(handled, true);
-  assert.deepEqual(calls[0], ["commit", { selectedDatasetId: "ds-2" }]);
-  assert.equal(calls[1][0], "createTable");
+  // First setState: selectPrepDataset
+  assert.equal(calls[0][0], "setState");
+  assert.equal(calls[0][1].selectedDatasetId, "ds-2");
+  // First render after selectPrepDataset
+  assert.deepEqual(calls[1], ["render"]);
+  // Second setState: final hydrated state
   assert.equal(calls[2][0], "setState");
   assert.equal(calls[2][1].columns[0].name, "a");
   assert.equal(calls[2][1].parsed.columns[0].name, "a");
+  // Second render after hydration
   assert.deepEqual(calls[3], ["render"]);
 });
 
 test("handleAppClick hydrates dataprep after navigate when selected dataset comes from activeDatasetId", async () => {
-  const calls = [];
   const pts = [{ raw_data: { a: "1" } }, { raw_data: { a: "2" } }];
   const cols = [{ name: "a" }];
+  resetStubs();
+  stubs.fetchPoints = async () => pts;
+  stubs.fetchColumns = async () => cols;
+  stubs.navigate = (state, route) => ({
+    ...state,
+    route,
+    dataPrep: { ...state.dataPrep, selectedDatasetId: state.activeDatasetId },
+  });
+  stubs.loadPrepPoints = (state, nextPts) => ({
+    ...state,
+    dataPrep: { ...state.dataPrep, datasetPoints: nextPts },
+  });
+
+  const calls = [];
+  const store = mockStore({
+    activeDatasetId: "ds-1",
+    dataPrep: { selectedDatasetId: null, datasetPoints: [] },
+    columnConfig: { columns: [{ name: "fallback" }] },
+  });
+  const origSetState = store.setState.bind(store);
+  store.setState = (next) => { calls.push(["setState", next]); return origSetState(next); };
+
   const event = {
     target: {
       closest(selector) {
@@ -175,64 +213,27 @@ test("handleAppClick hydrates dataprep after navigate when selected dataset come
   };
 
   const handled = await handleAppClick(event, {
-    state: {
-      activeDatasetId: "ds-1",
-      dataPrep: { selectedDatasetId: null, datasetPoints: [] },
-      columnConfig: { columns: [{ name: "fallback" }] },
-    },
+    store,
     root: {},
-    setState(next) { calls.push(["setState", next]); },
     render() { calls.push(["render"]); },
-    commit(next) { calls.push(["commit", next]); },
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail() {},
-    patchUi() {},
-    navigate(state, route) {
-      return {
-        ...state,
-        route,
-        dataPrep: { ...state.dataPrep, selectedDatasetId: state.activeDatasetId },
-      };
-    },
-    async fetchPoints() { return pts; },
-    async fetchColumns() { return cols; },
-    createTable(rows, tableCols) {
-      calls.push(["createTable", rows, tableCols]);
-      return { rows, cols: tableCols };
-    },
-    setPrepParsedData(state, payload) {
-      return { ...state, parsed: payload };
-    },
-    loadPrepPoints(state, nextPts) {
-      return { ...state, dataPrep: { ...state.dataPrep, datasetPoints: nextPts } };
-    },
-    setPrepError() {},
-    resetAxis() {},
-    closeContextMenu() {},
-    setActiveChipEditor() {},
-    selectPrepDataset() {},
-    setColumns() {},
-    deleteDataset() {},
-    fetchDatasets() {},
-    deletePrepDataset() {},
-    setDatasets() {},
     loadDatasetById() {},
-    setExpandedProfileColumn() {},
   });
 
   assert.equal(handled, true);
-  assert.equal(calls[0][0], "commit");
+  // First setState + render: navigate commit
+  assert.equal(calls[0][0], "setState");
   assert.equal(calls[0][1].route, "dataprep");
   assert.equal(calls[0][1].dataPrep.selectedDatasetId, "ds-1");
-  assert.equal(calls[1][0], "createTable");
+  assert.deepEqual(calls[1], ["render"]);
+  // Second setState + render: hydration
   assert.equal(calls[2][0], "setState");
   assert.deepEqual(calls[2][1].dataPrep.datasetPoints, pts);
   assert.deepEqual(calls[3], ["render"]);
 });
 
 test("handleAppClick toggles delete confirmation on first delete click", async () => {
-  let committed = null;
+  resetStubs();
+  const store = mockStore({ dataPrep: { confirmingDeleteId: null } });
   const event = {
     target: {
       closest(selector) {
@@ -244,41 +245,22 @@ test("handleAppClick toggles delete confirmation on first delete click", async (
   };
 
   const handled = await handleAppClick(event, {
-    state: { dataPrep: { confirmingDeleteId: null } },
+    store,
     root: {},
-    setState() {},
     render() {},
-    commit(next) { committed = next; },
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail() {},
-    patchUi() {},
-    navigate() {},
-    fetchPoints() {},
-    fetchColumns() {},
-    createTable() {},
-    setPrepParsedData() {},
-    loadPrepPoints() {},
-    setPrepError() {},
-    resetAxis() {},
-    closeContextMenu() {},
-    setActiveChipEditor() {},
-    selectPrepDataset() {},
-    setColumns() {},
-    deleteDataset() {},
-    fetchDatasets() {},
-    deletePrepDataset() {},
-    setDatasets() {},
     loadDatasetById() {},
-    setExpandedProfileColumn() {},
   });
 
   assert.equal(handled, true);
-  assert.deepEqual(committed, { dataPrep: { confirmingDeleteId: "ds-9" } });
+  assert.deepEqual(store.getState(), { dataPrep: { confirmingDeleteId: "ds-9" } });
 });
 
 test("handleAppClick loads prep dataset into workspace and applies excluded rows", async () => {
-  let committed = null;
+  resetStubs();
+  const store = mockStore({
+    dataPrep: { selectedDatasetId: "ds-1", excludedRows: [1] },
+    points: [{ excluded: false }, { excluded: false }],
+  });
   const event = {
     target: {
       closest(selector) {
@@ -290,40 +272,15 @@ test("handleAppClick loads prep dataset into workspace and applies excluded rows
   };
 
   const handled = await handleAppClick(event, {
-    state: {
-      dataPrep: { selectedDatasetId: "ds-1", excludedRows: [1] },
-      points: [{ excluded: false }, { excluded: false }],
-    },
+    store,
     root: {},
-    setState() {},
     render() {},
-    commit(next) { committed = next; },
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail() {},
-    patchUi() {},
-    navigate(state, route) { return { ...state, route }; },
-    fetchPoints() {},
-    fetchColumns() {},
-    createTable() {},
-    setPrepParsedData() {},
-    loadPrepPoints() {},
-    setPrepError() {},
-    resetAxis() {},
-    closeContextMenu() {},
-    setActiveChipEditor() {},
-    selectPrepDataset() {},
-    setColumns() {},
-    deleteDataset() {},
-    fetchDatasets() {},
-    deletePrepDataset() {},
-    setDatasets() {},
     async loadDatasetById() {},
-    setExpandedProfileColumn() {},
   });
 
   assert.equal(handled, true);
-  assert.equal(committed.route, "workspace");
-  assert.equal(committed.points[0].excluded, false);
-  assert.equal(committed.points[1].excluded, true);
+  const final = store.getState();
+  assert.equal(final.route, "workspace");
+  assert.equal(final.points[0].excluded, false);
+  assert.equal(final.points[1].excluded, true);
 });

@@ -54,15 +54,15 @@ function _renderSinglePhaseLimits(layer, labelLayer, y, sigma, data, config, L, 
       .attr('x1', L).attr('x2', R)
       .attr('y1', d.y).attr('y2', d.y);
     if (d.dash) line.attr('stroke-dasharray', d.dash);
-    if (d.color) line.attr('stroke', d.color).attr('stroke-width', 1);
+    if (d.color) line.attr('stroke', d.color).attr('stroke-width', 0.75);
   });
 
   // Sigma reference lines (dashed, subtle)
   const sigmaLines = [
-    { y: yS1U, color: 'rgba(35,133,81,0.15)' },
-    { y: yS2U, color: 'rgba(200,118,25,0.15)' },
-    { y: yS1L, color: 'rgba(35,133,81,0.15)' },
-    { y: yS2L, color: 'rgba(200,118,25,0.15)' },
+    { y: yS1U, color: 'rgba(35,133,81,0.12)' },
+    { y: yS2U, color: 'rgba(200,118,25,0.12)' },
+    { y: yS1L, color: 'rgba(35,133,81,0.12)' },
+    { y: yS2L, color: 'rgba(200,118,25,0.12)' },
   ];
 
   sigmaLines.forEach(d => {
@@ -94,7 +94,7 @@ function _renderPerPhaseLimits(layer, labelLayer, x, y, phases, data, config, L,
       .attr('x1', L).attr('x2', R)
       .attr('y1', d.y).attr('y2', d.y);
     if (d.dash) line.attr('stroke-dasharray', d.dash);
-    if (d.color) line.attr('stroke', d.color).attr('stroke-width', 1);
+    if (d.color) line.attr('stroke', d.color).attr('stroke-width', 0.75);
   });
 
   // Per-phase control limits and sigma lines

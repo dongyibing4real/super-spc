@@ -3,6 +3,14 @@ import assert from "node:assert/strict";
 
 import { handleWorkspaceClick } from "../src/events/click-handler.js";
 
+function mockStore(initialState) {
+  let state = initialState;
+  return {
+    getState() { return state; },
+    setState(next) { state = next; return state; },
+  };
+}
+
 function createPane(chartId) {
   return {
     dataset: { chartId },
@@ -15,10 +23,13 @@ function createPane(chartId) {
   };
 }
 
-test("handleWorkspaceClick focuses clicked pane and updates recipe/evidence rails", () => {
-  const recipeCalls = [];
-  const evidenceCalls = [];
+test("handleWorkspaceClick focuses clicked pane and updates store", () => {
   const panes = [createPane("chart-1"), createPane("chart-2")];
+  const store = mockStore({
+    focusedChartId: "chart-1",
+    charts: { "chart-1": {}, "chart-2": {} },
+    ui: { contextMenu: null, pendingNewChart: null },
+  });
   const event = {
     target: {
       closest(selector) {
@@ -31,62 +42,34 @@ test("handleWorkspaceClick focuses clicked pane and updates recipe/evidence rail
   };
 
   const handled = handleWorkspaceClick(event, {
-    state: {
-      focusedChartId: "chart-1",
-      charts: { "chart-1": {}, "chart-2": {} },
-      ui: { contextMenu: null, pendingNewChart: null },
-    },
+    store,
     root: {
       querySelectorAll(selector) {
         return selector === ".chart-pane" ? panes : [];
       },
     },
-    commit() {},
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail(next) { recipeCalls.push(next); },
-    commitEvidenceRail(next) { evidenceCalls.push(next); },
-    commitNotice() {},
-    patchUi() {},
-    setActiveChipEditor() {},
-    clearNotice() {},
-    closeContextMenu() {},
-    selectPoint() {},
-    toggleChartOption() {},
-    togglePointExclusion() {},
-    toggleTransform() {},
-    failTransformStep() {},
-    recoverTransformStep() {},
-    setChallengerStatus() {},
-    selectStructuralFinding() {},
-    setFindingsChart() {},
-    setStructuralFindings() {},
-    generateFindings() {},
-    togglePaneDataTable() {},
-    focusChart(state, chartId) {
-      return { ...state, focusedChartId: chartId };
-    },
-    snapshotRailPositions() {},
-    playRailFlip() {},
-    isWorkspaceFull() { return false; },
-    getFocused() {},
-    DEFAULT_PARAMS: {},
-    addChart() {},
-    removeChart() {},
+    render() {},
     saveLayout() {},
     reanalyze() {},
     chartRuntime: { destroyChart() {} },
+    snapshotRailPositions() {},
+    playRailFlip() {},
+    isWorkspaceFull() { return false; },
   });
 
   assert.equal(handled, false);
-  assert.equal(recipeCalls[0].focusedChartId, "chart-2");
-  assert.equal(evidenceCalls[0].focusedChartId, "chart-2");
+  const finalState = store.getState();
+  assert.equal(finalState.focusedChartId, "chart-2");
   assert.deepEqual(panes[0].classList.toggled[0], ["pane-focused", false]);
   assert.deepEqual(panes[1].classList.toggled[0], ["pane-focused", true]);
 });
 
 test("handleWorkspaceClick clears pending new chart when clicking outside pending rail card", () => {
-  const recipeCalls = [];
+  const store = mockStore({
+    activeChipEditor: null,
+    charts: {},
+    ui: { contextMenu: null, pendingNewChart: { chart_type: "imr" } },
+  });
   const event = {
     target: {
       closest(selector) {
@@ -99,53 +82,29 @@ test("handleWorkspaceClick clears pending new chart when clicking outside pendin
   };
 
   const handled = handleWorkspaceClick(event, {
-    state: {
-      activeChipEditor: null,
-      charts: {},
-      ui: { contextMenu: null, pendingNewChart: { chart_type: "imr" } },
-    },
+    store,
     root: { querySelectorAll() { return []; } },
-    commit() {},
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail(next) { recipeCalls.push(next); },
-    commitEvidenceRail() {},
-    commitNotice() {},
-    patchUi(nextUi) { return { ui: nextUi }; },
-    setActiveChipEditor() {},
-    clearNotice() {},
-    closeContextMenu() {},
-    selectPoint() {},
-    toggleChartOption() {},
-    togglePointExclusion() {},
-    toggleTransform() {},
-    failTransformStep() {},
-    recoverTransformStep() {},
-    setChallengerStatus() {},
-    selectStructuralFinding() {},
-    setFindingsChart() {},
-    setStructuralFindings() {},
-    generateFindings() {},
-    togglePaneDataTable() {},
-    focusChart(state) { return state; },
-    snapshotRailPositions() {},
-    playRailFlip() {},
-    isWorkspaceFull() { return false; },
-    getFocused() {},
-    DEFAULT_PARAMS: {},
-    addChart() {},
-    removeChart() {},
+    render() {},
     saveLayout() {},
     reanalyze() {},
     chartRuntime: { destroyChart() {} },
+    snapshotRailPositions() {},
+    playRailFlip() {},
+    isWorkspaceFull() { return false; },
   });
 
   assert.equal(handled, true);
-  assert.equal(recipeCalls[0].ui.pendingNewChart, null);
+  assert.equal(store.getState().ui.pendingNewChart, null);
 });
 
 test("handleWorkspaceClick seeds pending chart from focused chart on open-add-chart", () => {
-  let committed = null;
+  const initialState = {
+    focusedChartId: "chart-1",
+    charts: { "chart-1": { params: { chart_type: "xbar-r", value_column: "value", subgroup_column: "group", phase_column: "phase" } } },
+    chartOrder: ["chart-1"],
+    ui: { contextMenu: null, pendingNewChart: null },
+  };
+  const store = mockStore(initialState);
   const event = {
     target: {
       closest(selector) {
@@ -157,67 +116,40 @@ test("handleWorkspaceClick seeds pending chart from focused chart on open-add-ch
   };
 
   const handled = handleWorkspaceClick(event, {
-    state: {
-      charts: {},
-      ui: { contextMenu: null, pendingNewChart: null },
-    },
+    store,
     root: { querySelectorAll() { return []; } },
-    commit() {},
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail(next) { committed = next; },
-    commitEvidenceRail() {},
-    commitNotice() {},
-    patchUi(nextUi) { return { ui: nextUi }; },
-    setActiveChipEditor() {},
-    clearNotice() {},
-    closeContextMenu() {},
-    selectPoint() {},
-    toggleChartOption() {},
-    togglePointExclusion() {},
-    toggleTransform() {},
-    failTransformStep() {},
-    recoverTransformStep() {},
-    setChallengerStatus() {},
-    selectStructuralFinding() {},
-    setFindingsChart() {},
-    setStructuralFindings() {},
-    generateFindings() {},
-    togglePaneDataTable() {},
-    focusChart(state) { return state; },
-    snapshotRailPositions() {},
-    playRailFlip() {},
-    isWorkspaceFull() { return false; },
-    getFocused() {
-      return {
-        params: {
-          chart_type: "xbar-r",
-          value_column: "value",
-          subgroup_column: "group",
-          phase_column: "phase",
-        },
-      };
-    },
-    DEFAULT_PARAMS: { sigma_method: "moving_range" },
-    addChart() {},
-    removeChart() {},
+    render() {},
     saveLayout() {},
     reanalyze() {},
     chartRuntime: { destroyChart() {} },
+    snapshotRailPositions() {},
+    playRailFlip() {},
+    isWorkspaceFull() { return false; },
   });
 
   assert.equal(handled, true);
-  assert.deepEqual(committed.ui.pendingNewChart, {
-    sigma_method: "moving_range",
-    chart_type: "xbar-r",
-    value_column: "value",
-    subgroup_column: "group",
-    phase_column: "phase",
-  });
+  const pending = store.getState().ui.pendingNewChart;
+  assert.equal(pending.chart_type, "xbar-r");
+  assert.equal(pending.value_column, "value");
+  assert.equal(pending.subgroup_column, "group");
+  assert.equal(pending.phase_column, "phase");
 });
 
 test("handleWorkspaceClick removes chart and destroys runtime instance", () => {
   const calls = [];
+  const initialState = {
+    focusedChartId: "chart-1",
+    charts: { "chart-1": {}, "chart-2": {} },
+    chartOrder: ["chart-1", "chart-2"],
+    chartLayout: {
+      rows: [["chart-1", "chart-2"]],
+      colWeights: [[0.5, 0.5]],
+      rowWeights: [1],
+    },
+    nextChartId: 3,
+    ui: { contextMenu: null, pendingNewChart: null },
+  };
+  const store = mockStore(initialState);
   const event = {
     target: {
       closest(selector) {
@@ -229,54 +161,23 @@ test("handleWorkspaceClick removes chart and destroys runtime instance", () => {
   };
 
   const handled = handleWorkspaceClick(event, {
-    state: {
-      charts: { "chart-2": {} },
-      ui: { contextMenu: null, pendingNewChart: null },
-    },
+    store,
     root: { querySelectorAll() { return []; } },
-    commit(next) { calls.push(["commit", next]); },
-    commitChart() {},
-    commitContextMenu() {},
-    commitRecipeRail() {},
-    commitEvidenceRail() {},
-    commitNotice() {},
-    patchUi() {},
-    setActiveChipEditor() {},
-    clearNotice() {},
-    closeContextMenu() {},
-    selectPoint() {},
-    toggleChartOption() {},
-    togglePointExclusion() {},
-    toggleTransform() {},
-    failTransformStep() {},
-    recoverTransformStep() {},
-    setChallengerStatus() {},
-    selectStructuralFinding() {},
-    setFindingsChart() {},
-    setStructuralFindings() {},
-    generateFindings() {},
-    togglePaneDataTable() {},
-    focusChart(state) { return state; },
-    snapshotRailPositions() {},
-    playRailFlip() {},
-    isWorkspaceFull() { return false; },
-    getFocused() {},
-    DEFAULT_PARAMS: {},
-    addChart() {},
-    removeChart(state, chartId) {
-      calls.push(["removeChart", chartId]);
-      return { ...state, removed: chartId };
-    },
-    saveLayout() { calls.push(["saveLayout"]); },
+    render() {},
+    saveLayout() { calls.push("saveLayout"); },
     reanalyze() {},
     chartRuntime: {
       destroyChart(chartId) { calls.push(["destroyChart", chartId]); },
     },
+    snapshotRailPositions() {},
+    playRailFlip() {},
+    isWorkspaceFull() { return false; },
   });
 
   assert.equal(handled, true);
-  assert.deepEqual(calls[0], ["removeChart", "chart-2"]);
-  assert.deepEqual(calls[1], ["destroyChart", "chart-2"]);
-  assert.deepEqual(calls[2], ["commit", { charts: { "chart-2": {} }, ui: { contextMenu: null, pendingNewChart: null }, removed: "chart-2" }]);
-  assert.deepEqual(calls[3], ["saveLayout"]);
+  assert.deepEqual(calls[0], ["destroyChart", "chart-2"]);
+  assert.equal(calls[1], "saveLayout");
+  // chart-2 should be removed from state
+  const finalState = store.getState();
+  assert.ok(!finalState.charts["chart-2"], "chart-2 should be removed");
 });

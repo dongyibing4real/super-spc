@@ -5,14 +5,14 @@
 The control chart is the single most important element in the product. Everything else serves it.
 
 - **Rendering:** D3.js-based SVG with ResizeObserver for auto-sizing. Layered group structure with clip paths for plot area containment.
-- **Zone shading is required.** Every professional SPC tool (JMP, Minitab, InfinityQS) shows 1σ/2σ/3σ zone fills. Zone C (inner) gets a subtle green tint, Zone B gets amber, Zone A gets red. This is SPC table stakes — not optional decoration. Per-phase support: zone calculations use phase-specific limits when multiple phases exist.
+- **Zone shading is required.** Every professional SPC tool (JMP, Minitab, InfinityQS) shows 1σ/2σ/3σ zone fills. Zone C (inner) gets a subtle green tint, Zone B gets amber, Zone A gets red. Opacities use the **ambient tier** (0.025–0.05) — zones should be felt, not seen. Per-phase support: zone calculations use phase-specific limits when multiple phases exist.
 - **Capability indices (Cpk, Ppk) must be visible** in the pane titlebar, inline with method name. Color-coded: green (≥1.33), amber (1.0-1.33), red (<1.0) via `capClass()` utility. Only appears when `capability` is computed.
 - **Rule violation markers on points.** When a Nelson/Westgard rule fires, the triggering points are indicated by color (red for OOC, amber context in evidence rail). No concentric rings — color alone is the signal.
 - **Grid lines stay soft** (`--chart-grid`, 0.5px). Grid supports reading, never dominates. Togglable via context menu.
 - **Limit labels pin to chart edge** with their numeric value: `UCL 8.145`, `CL 8.078`, `LCL 8.011`. Rendered as pill-shaped edge labels outside the clip path.
-- **Phase boundaries** use dashed gold lines with a labeled chip above the chart area. Per-phase control limits render as independent line segments.
+- **Phase boundaries** use solid gold lines (0.75px, opacity 0.30) with alternating background bands and a labeled chip above the chart area. Per-phase control limits render as independent line segments.
 - **Selected point** gets a thin crosshair (4-arm, 0.75px, 55% opacity) and updates the evidence rail signal section. ARIA labels include: label, value, unit, rule violations list.
-- **Excluded points** are dimmed (25% opacity) with an X-mark overlay in amber (opacity 0.6, stroke-width 1.5). Togglable via `excludedMarkers` context menu option.
+- **Excluded points** are dimmed (25% opacity) with an X-mark overlay in amber (opacity 0.30, stroke-width 0.75px). Togglable via `excludedMarkers` context menu option.
 - **Histogram sidebar (planned):** A vertical histogram docked to the Y-axis showing data distribution.
 
 ## Point Styling (Industry-Grade — JMP/Minitab Standard)
@@ -33,16 +33,52 @@ The control chart is the single most important element in the product. Everythin
 
 Hit target: invisible 8-10px radius circle expands click area for accessibility.
 
+## Chart Design Tokens
+
+All chart visual elements use a principled token system instead of ad-hoc values.
+
+### Opacity Scale (5 levels)
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--chart-o-bg` | 0.03 | Zone fills, phase bands (ambient tier) |
+| `--chart-o-subtle` | 0.12 | Sigma reference lines, event annotations |
+| `--chart-o-muted` | 0.30 | Structure: UCL/LCL, CL, phases, specs, excluded marks |
+| `--chart-o-medium` | 0.55 | Selection crosshair, challenger overlay |
+| `--chart-o-full` | 1.0 | Primary data line, points |
+
+### Stroke Weight Scale (4 levels)
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--chart-w-hair` | 0.5px | Grid, sigma reference lines |
+| `--chart-w-fine` | 0.75px | UCL/LCL, specs, phases, crosshair, point stroke |
+| `--chart-w-mid` | 1.0px | CL only (structural anchor) |
+| `--chart-w-data` | 1.5px | Primary series line |
+
+### 3-Tier Visual Hierarchy
+- **TIER 1 — DATA** (dominant): Primary line 1.5px, points at full opacity. The hero.
+- **TIER 2 — STRUCTURE** (subordinate): Limits, phases, specs at 0.30 opacity, 0.75px. Readable but quiet.
+- **TIER 3 — AMBIENT** (felt, not seen): Zones at 0.025–0.05, grid at 0.5px. Background texture.
+
 ## Line & Limit Weights
 
-| Element | Stroke | Opacity | Dash | Notes |
-|---------|--------|---------|------|-------|
-| Primary series | 1.25px | 1.0 | solid | Dominant visual element |
-| Challenger series | 1px | 0.4 | solid | Recedes via opacity, no dashes |
-| UCL/LCL | 1px | 0.65 | solid | Reference geometry, thinner than data |
-| CL (center) | 1px | 0.75 | solid | Anchor line, slightly more visible than limits |
-| Spec limits (USL/LSL) | 0.75px | 0.30 | `3 4` | Subtle dashed reference |
-| Sigma refs (±1σ, ±2σ) | 0.5px | 0.15 | solid | Background hairlines |
+| Element | Stroke | Opacity | Dash | Token Tier | Notes |
+|---------|--------|---------|------|------------|-------|
+| Primary series | 1.5px | 1.0 | solid | DATA | Dominant visual element |
+| Challenger series | 0.75px | 0.55 | solid | MEDIUM | Recedes via opacity, no dashes |
+| UCL/LCL | 0.75px | 0.30 | solid | STRUCTURE | Reference geometry, quiet |
+| CL (center) | 1.0px | 0.30 | solid | STRUCTURE (mid weight) | Structural anchor |
+| Spec limits (USL/LSL) | 0.75px | 0.30 | `3 4` | STRUCTURE | Subtle dashed reference |
+| Sigma refs (±1σ, ±2σ) | 0.5px | 0.12 | solid | AMBIENT | Background hairlines |
+| Phase boundary | 0.75px | 0.30 | solid | STRUCTURE | Gold vertical line |
+| Event annotation | 0.75px | 0.12 | solid | AMBIENT | Purple vertical line |
+
+## Zone Shading (Ambient Tier)
+
+| Zone | Range | Color | Opacity | Notes |
+|------|-------|-------|---------|-------|
+| Zone A | 2σ–3σ | `rgba(205,66,70)` | 0.05 | Red is perceptually dominant, needs less |
+| Zone B | 1σ–2σ | `rgba(200,118,25)` | 0.03 | Amber, middle |
+| Zone C | 0–1σ | `rgba(35,133,81)` | 0.025 | Green, barely there |
 
 ## SVG Rendering Layers (Z-order back to front)
 1. `zones` — color-coded sigma bands (clipped)
@@ -53,14 +89,14 @@ Hit target: invisible 8-10px radius circle expands click area for accessibility.
 6. `phaseLabels` — phase chips (unclipped)
 7. `limits` — control/spec limit lines (clipped)
 8. `limitLabels` — edge labels with pills (unclipped)
-9. `challenger` — overlay series line (teal dashed)
-10. `primary` — main data series line (blue solid)
+9. `challenger` — overlay series line (teal solid, 55% opacity)
+10. `primary` — main data series line (blue solid, 1.5px)
 11. `projection` — forecast cone (clipped)
 12. `events` — event annotation lines + chips
 13. `points` — data point circles
 14. `projectionUi` — forecast prompt/shell UI
 15. `xAxis` — x-axis baseline + labels
-16. `selection` — selection halo
+16. `selection` — selection crosshair (4-arm precision lines)
 17. `forecastHandle` — (reserved)
 
 ## Chart Toggles (via context menu)
@@ -174,6 +210,6 @@ Below the compare strip, a secondary info bar showing data provenance.
 
 ## Challenger Overlay
 - Single challenger series per chart (not a full multi-overlay system)
-- Renders as solid teal line at 40% opacity (no dashes — dashed lines are noisy at density)
+- Renders as solid teal line at 55% opacity, 0.75px stroke (medium tier — no dashes)
 - Toggle: `data.toggles.overlay`
 - Used for primary vs challenger method comparison
