@@ -77,7 +77,7 @@ export async function handleAppClick(event, { store, root, render, loadDatasetBy
           fetchPoints(dsId),
           fetchColumns(dsId).catch(() => []),
         ]);
-        let next = setColumns(state, cols);
+        let next = setColumns(store.getState(), cols);
         next = loadPrepPoints(next, pts);
         const rawRows = pts.map((p) => p.raw_data || {});
         const arqueroTable = createTable(rawRows, cols);
@@ -86,7 +86,7 @@ export async function handleAppClick(event, { store, root, render, loadDatasetBy
         store.setState(next);
         render();
       } catch (err) {
-        store.setState(setPrepError(state, err.message));
+        store.setState(setPrepError(store.getState(), err.message));
         render();
       }
       return true;

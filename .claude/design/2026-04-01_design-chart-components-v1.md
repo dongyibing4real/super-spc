@@ -10,10 +10,11 @@ The control chart is the single most important element in the product. Everythin
 - **Rule violation markers on points.** When a Nelson/Westgard rule fires, the triggering points are indicated by color (red for OOC, amber context in evidence rail). No concentric rings — color alone is the signal.
 - **Grid lines stay soft** (`--chart-grid`, 0.5px). Grid supports reading, never dominates. Togglable via context menu.
 - **Limit labels pin to chart edge** with their numeric value: `UCL 8.145`, `CL 8.078`, `LCL 8.011`. Rendered as pill-shaped edge labels outside the clip path.
-- **Phase boundaries** (JMP-style): a horizontal header band sits above the plot area with phase labels in each strip. Uniform subtle gray background (0.06 opacity). Vertical gold divider lines (0.75px, opacity 0.30) extend from the header through the chart plot area. Sans-serif font, 10px, weight 500. Header band height scales with `vScale` (18px at full height). `computeLayout()` adds extra top padding when phases exist. Per-phase control limits render as independent line segments that attach to phase boundary lines (full phase width, not point-to-point).
-- **Phase selection:** Click a phase header label to select it (toggle). Selected phase gets blue highlight background and bold label. The selected phase's UCL/CL/LCL values appear as edge labels on the right y-axis. When no phase is selected in a multi-phase chart, no edge labels are shown (avoids ambiguity). Click empty space to deselect.
+- **Phase boundaries** (JMP-style): a horizontal header band sits above the plot area with phase labels in each strip. Uniform subtle gray background (0.06 opacity). Vertical gold divider lines (0.75px, opacity 0.30) extend from the header through the chart plot area. Sans-serif font, 10px, weight 500. Header band height scales with `vScale` (18px at full height). `computeLayout()` adds extra top padding when phases exist. Per-phase control limits render as independent line segments that attach to phase boundary lines (full phase width, not point-to-point). **Phase variable label:** A right-aligned label showing the phase column name (e.g. "Cavity", "Hour") renders in the left y-axis gutter at the header band's vertical center — tells the user this is a phase header and which variable defines the phases. Styled as IBM Plex Sans 600-weight, `rgba(147,153,163,0.55)`, font size adaptive to header height (7-9px). When no named variable is set, falls back to "Phase".
+- **Phase selection:** Click a phase header label to select it (toggle). Selected phase gets blue highlight background and bold label. The selected phase's UCL/CL/LCL values appear as edge labels on the right y-axis. When no phase is selected in a multi-phase chart, no edge labels are shown (avoids ambiguity). Click empty space outside the phase to deselect. Clicking within the selected phase's plot area does NOT deselect it (the tinted fill rect absorbs clicks via stopPropagation). **Plot area fill:** the selected phase's plot area gets a subtle blue tint (`rgba(45,114,210,0.04)`) rendered in the clipped layer, reinforcing which phase is active. **Evidence rail integration:** the evidence rail shows a Phase tier (between Point and Chart tiers) using the product's `signal-hero` card pattern with blue left accent. Content: phase name heading, OOC status chip (red if violations, green if in control), point count badge, color-coded Control Limits section (UCL/LCL in red, CL in green with subtle tinted row backgrounds), and Spread section showing range width and 1σ value. Phase position shown as "N of M" badge in tier header.
 - **Y-axis scale** adapts to the highest and lowest UCL/LCL across all phases when multiple phases exist, ensuring all limit lines are visible.
 - **Selected point** stays at full opacity while all others dim to 0.35 (JMP convention). Click empty chart space to deselect. ARIA labels include: label, value, unit, rule violations list.
+- **Marquee (rubber-band) multi-point selection** (JMP-style): Click-hold-drag in the plot area draws a dashed blue selection rectangle (`rgba(45,114,210,0.08)` fill, `rgba(45,114,210,0.50)` stroke, `4 3` dash). On mouseup, all points inside the rectangle are selected at full opacity, others dim to 0.35. Minimum 5px drag threshold prevents accidental activation on simple clicks. **Evidence rail integration:** Selection tier (between Point and Phase tiers) shows teal-accent hero card with point count, OOC status chip, and Summary Statistics section (Mean, Std Dev, Min, Max, Range). Click empty space or single-click a point to clear multi-selection. Single-point click on a point-hit target does not trigger marquee.
 - **Excluded points** are dimmed (25% opacity) with an X-mark overlay in amber (opacity 0.30, stroke-width 0.75px). Togglable via `excludedMarkers` context menu option.
 - **Histogram sidebar (planned):** A vertical histogram docked to the Y-axis showing data distribution.
 
@@ -29,7 +30,7 @@ The control chart is the single most important element in the product. Everythin
 | Excluded | 25% opacity + X-mark | Primary color dimmed, amber X overlay | r=3.5 |
 | Challenger | Filled circle | `--teal-bright` (#32A467), opacity 0.7 | r=3.5 |
 
-**Selection model** (JMP-style): When a point is selected, it stays at full opacity while all other points dim to 0.35 opacity. No crosshair arms, no halos — opacity differentiation is the signal.
+**Selection model** (JMP-style): Single-click selects one point at full opacity, all others dim to 0.35. Click-hold-drag draws a marquee rectangle to select multiple points (all at full opacity, others dim). Multi-selection shows aggregate stats (mean, std dev, min, max, range) in the evidence rail Selection tier. No crosshair arms, no halos — opacity differentiation is the signal.
 
 **Rule violations:** Indicated by point color alone (red for OOC, amber tint via evidence rail). No concentric rings — ring-on-ring is visual clutter.
 
@@ -58,7 +59,7 @@ All chart visual elements use a principled token system instead of ad-hoc values
 
 ### 3-Tier Visual Hierarchy
 - **TIER 1 — DATA** (dominant): Primary line 1.5px, points at full opacity. The hero.
-- **TIER 2 — STRUCTURE** (subordinate): Limits, phases, specs at 0.30 opacity, 0.75px. Readable but quiet.
+- **TIER 2 — STRUCTURE** (subordinate): CL at 0.75 opacity/1.5px (structural anchor), UCL/LCL at 0.65 opacity/1.0px, phases/specs at 0.30 opacity/0.75px. Readable but quiet.
 - **TIER 3 — AMBIENT** (felt, not seen): Zones at 0.025–0.05, grid at 0.5px. Background texture.
 
 ## Line & Limit Weights
@@ -67,10 +68,10 @@ All chart visual elements use a principled token system instead of ad-hoc values
 |---------|--------|---------|------|------------|-------|
 | Primary series | 2px | 1.0 | solid | DATA | Dominant visual element |
 | Challenger series | 0.75px | 0.55 | solid | MEDIUM | Recedes via opacity, no dashes |
-| UCL/LCL | 0.75px | 0.30 | solid | STRUCTURE | Reference geometry, quiet |
-| CL (center) | 1.0px | 0.30 | solid | STRUCTURE (mid weight) | Structural anchor |
+| UCL/LCL | 1.0px | 0.65 | solid | STRUCTURE | Reference geometry, clearly visible |
+| CL (center) | 1.5px | 0.75 | solid | STRUCTURE (mid weight) | Structural anchor, most prominent limit |
 | Spec limits (USL/LSL) | 0.75px | 0.30 | `3 4` | STRUCTURE | Subtle dashed reference |
-| Sigma refs (±1σ, ±2σ) | 0.5px | 0.12 | solid | AMBIENT | Background hairlines |
+| Sigma refs (±1σ, ±2σ) | 0.75px | 0.30 | solid | STRUCTURE | Visible reference lines |
 | Phase boundary | 0.75px | 0.30 | solid | STRUCTURE | Gold vertical line |
 | Event annotation | 0.75px | 0.12 | solid | AMBIENT | Purple vertical line |
 
@@ -100,8 +101,9 @@ All chart visual elements use a principled token system instead of ad-hoc values
 13. `points` — data point circles
 14. `projectionUi` — forecast prompt/shell UI
 15. `xAxis` — x-axis baseline + labels
-16. `selection` — selection crosshair (4-arm precision lines)
-17. `forecastHandle` — (reserved)
+16. `selection` — (reserved, no longer used — selection via point opacity)
+17. `marquee` — rubber-band selection rectangle (unclipped)
+18. `forecastHandle` — (reserved)
 
 ## Chart Toggles (via context menu)
 | Toggle | Default | Effect |
@@ -192,6 +194,7 @@ Multi-algorithm prediction system overlaid on the chart canvas.
 - Dashed blue rectangle hit area to trigger forecast
 - Cancel button (white circle with ×)
 - Forecast shell with algorithm selector
+- **Adaptive label:** Wide (>=60px): horizontal "Forecast". Medium (20-60px): vertically stacked characters, font auto-scaled to fit available height/width (7-12px range). Narrow (<20px): no label.
 
 ## Compare Strip (planned)
 Below the chart, a horizontal strip of summary cards showing key analysis metrics at a glance.
@@ -212,8 +215,8 @@ Below the compare strip, a secondary info bar showing data provenance.
 - Color: `--purple` (#8B5CF6), styled as `.event-chip`
 - Read-only from data (not user-editable yet)
 
-## Challenger Overlay
-- Single challenger series per chart (not a full multi-overlay system)
+## Secondary Series Overlay
+- Optional secondary series per chart (not a full multi-overlay system)
 - Renders as solid teal line at 55% opacity, 0.75px stroke (medium tier — no dashes)
 - Toggle: `data.toggles.overlay`
-- Used for primary vs challenger method comparison
+- Used for visual comparison between methods in the workspace

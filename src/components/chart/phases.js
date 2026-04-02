@@ -32,6 +32,27 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
     .attr('width', R - L).attr('height', headerH)
     .attr('fill', 'rgba(147,153,163,0.06)');
 
+  // ── "Phase: {variable}" label in the left gutter of the header band ──
+  // JMP convention: tells the user this band represents phase grouping
+  // and which column variable defines the phases.
+  const phaseVarLabel = data.phase?.label || '';
+  const hasVarName = phaseVarLabel && phaseVarLabel !== 'Single phase' && phaseVarLabel !== 'No phases';
+  const prefixFontSize = Math.max(7, Math.min(9, headerH * 0.55));
+
+  labelLayer.append('text')
+    .attr('class', 'phase-var-label')
+    .attr('x', L - 4)
+    .attr('y', bandTop + headerH / 2)
+    .attr('text-anchor', 'end')
+    .attr('dominant-baseline', 'central')
+    .style('font-size', `${prefixFontSize}px`)
+    .style('font-family', "'IBM Plex Sans', system-ui, sans-serif")
+    .style('font-weight', '600')
+    .style('fill', 'rgba(147,153,163,0.55)')
+    .style('letter-spacing', '0.02em')
+    .style('pointer-events', 'none')
+    .text(hasVarName ? phaseVarLabel : 'Phase');
+
   const selectedPhaseIndex = data.selectedPhaseIndex;
 
   data.phases.forEach((ph, i) => {
@@ -41,6 +62,23 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
     if (pw < 2) return;
 
     const isSelected = selectedPhaseIndex === i;
+
+    // Selected phase fill in the plot area (clipped layer — subtle blue tint)
+    // Clicking inside the selected phase deselects any selected point
+    // but keeps the phase selected (stopPropagation prevents the SVG
+    // background handler from also deselecting the phase).
+    if (isSelected) {
+      layer.append('rect')
+        .attr('class', 'phase-selected-fill')
+        .attr('x', sx).attr('y', T)
+        .attr('width', pw).attr('height', B - T)
+        .attr('fill', 'rgba(45,114,210,0.04)')
+        .style('cursor', 'default')
+        .on('click', (event) => {
+          event.stopPropagation();
+          config.onSelectPoint?.(null);
+        });
+    }
 
     // Clickable hit area for each phase in the header band
     const hitRect = labelLayer.append('rect')

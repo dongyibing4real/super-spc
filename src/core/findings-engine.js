@@ -1,35 +1,34 @@
 /**
  * findings-engine.js — Auto-generates structural findings from analysis data.
  *
- * Each generator is a pure function: (slot, points, state) → Finding[]
+ * Each generator is a pure function: (slot, points, state, standards) → Finding[]
  * Findings regenerate on every analysis — no stale state.
  */
 
 import { computeStats, capClass, SIGMA_METHOD_LABELS } from "../helpers.js";
 
-/* ═══ Finding shape (JSDoc) ═══════════════════════════
- * @typedef {Object} Finding
- * @property {string} id           - Unique per run (generator-id)
- * @property {string} generatorId  - Which generator produced it
- * @property {string} category     - "stability" | "capability" | "statistical" | "pattern"
- * @property {string} severity     - "good" | "warning" | "danger" | "info"
- * @property {string} title        - 2-4 word headline
- * @property {string} detail       - Explanatory sentence
- * @property {Object} [metric]     - { label, value, raw }
- * @property {Object} [context]    - Generator-specific data for detail panel
- */
+const DEFAULT_STANDARDS = {
+  cpkThreshold: 1.33,
+  cpkMarginal: 1.0,
+  maxOocPercent: 2.0,
+  maxOocCount: 3,
+  centeringRatio: 0.9,
+  runsZThreshold: 1.96,
+  zoneDeviation: 0.2,
+};
 
 // ─── Stability generators ───────────────────────────
 
-function stabilityVerdict(slot, points) {
+function stabilityVerdict(slot, points, _state, standards) {
   const violations = slot.violations || [];
   const totalOOC = violations.reduce((sum, v) => sum + v.indices.length, 0);
   const uniqueRules = new Set(violations.map(v => v.testId));
+  const oocPct = points.length > 0 ? (totalOOC / points.length * 100) : 0;
 
   let severity, title;
   if (totalOOC === 0) {
     severity = "good"; title = "Process Stable";
-  } else if (uniqueRules.size <= 2 && totalOOC <= 3) {
+  } else if (uniqueRules.size <= 2 && totalOOC <= standards.maxOocCount && oocPct <= standards.maxOocPercent) {
     severity = "warning"; title = "Minor Instability";
   } else {
     severity = "danger"; title = "Process Unstable";
@@ -43,13 +42,17 @@ function stabilityVerdict(slot, points) {
     title,
     detail: totalOOC === 0
       ? "No rule violations detected. Process is in statistical control."
-      : `${uniqueRules.size} rule${uniqueRules.size !== 1 ? "s" : ""} triggered across ${totalOOC} point${totalOOC !== 1 ? "s" : ""}.`,
+      : `${uniqueRules.size} rule${uniqueRules.size !== 1 ? "s" : ""} triggered across ${totalOOC} point${totalOOC !== 1 ? "s" : ""} (${oocPct.toFixed(1)}%).`,
     metric: { label: "OOC Points", value: String(totalOOC), raw: totalOOC },
     context: {
       ruleCount: uniqueRules.size,
       oocCount: totalOOC,
       totalPoints: points.length,
-      oocRate: points.length > 0 ? (totalOOC / points.length * 100).toFixed(1) + "%" : "—",
+      oocRate: points.length > 0 ? oocPct.toFixed(1) + "%" : "—",
+      oocPctRaw: oocPct,
+      maxOocCount: standards.maxOocCount,
+      maxOocPercent: standards.maxOocPercent,
+      violations,
     },
   }];
 }
@@ -58,13 +61,14 @@ function violationSummary(slot) {
   const violations = slot.violations || [];
   if (violations.length === 0) return [];
 
-  // Group by rule, deduplicate, count points
   const byRule = new Map();
   for (const v of violations) {
     if (!byRule.has(v.testId)) {
-      byRule.set(v.testId, { testId: v.testId, description: v.description, count: 0 });
+      byRule.set(v.testId, { testId: v.testId, description: v.description, count: 0, indices: [] });
     }
-    byRule.get(v.testId).count += v.indices.length;
+    const entry = byRule.get(v.testId);
+    entry.count += v.indices.length;
+    entry.indices.push(...v.indices);
   }
 
   return [...byRule.values()].map(r => ({
@@ -75,7 +79,7 @@ function violationSummary(slot) {
     title: `Rule ${r.testId}`,
     detail: `${r.description} — ${r.count} point${r.count !== 1 ? "s" : ""} flagged.`,
     metric: { label: "Points", value: String(r.count), raw: r.count },
-    context: { testId: r.testId, description: r.description, pointCount: r.count },
+    context: { testId: r.testId, description: r.description, pointCount: r.count, indices: r.indices },
   }));
 }
 
@@ -112,6 +116,8 @@ function phaseComparison(slot) {
       metric: { label: "Mean Shift", value: meanShift.toFixed(4), raw: meanShift },
       context: {
         fromPhase: prev.id, toPhase: curr.id,
+        prevMean: prevCL, currMean: currCL,
+        prevSigma, currSigma,
         meanShift, sigmaChange: sigmaChange.toFixed(1),
         shiftInSigmas: shiftMagnitude.toFixed(2),
       },
@@ -122,12 +128,12 @@ function phaseComparison(slot) {
 
 // ─── Capability generators ──────────────────────────
 
-function capabilityVerdict(slot) {
+function capabilityVerdict(slot, _points, _state, standards) {
   const cap = slot.capability;
   if (!cap || cap.cpk == null) return [];
 
   const cpk = cap.cpk;
-  const cls = capClass(cpk);
+  const cls = capClass(cpk, standards.cpkThreshold, standards.cpkMarginal);
   const severity = cls === "good" ? "good" : cls === "marginal" ? "warning" : "danger";
 
   const parts = [];
@@ -142,21 +148,26 @@ function capabilityVerdict(slot) {
     category: "capability",
     severity,
     title: severity === "good" ? "Capable" : severity === "warning" ? "Marginal Capability" : "Not Capable",
-    detail: `${parts.join(", ")}. Threshold: Cpk >= 1.33.`,
+    detail: `${parts.join(", ")}. Threshold: Cpk >= ${standards.cpkThreshold}.`,
     metric: { label: "Cpk", value: cpk.toFixed(2), raw: cpk },
-    context: { ...cap },
+    context: {
+      ...cap,
+      threshold: standards.cpkThreshold,
+      marginal: standards.cpkMarginal,
+    },
   }];
 }
 
-function centeringAssessment(slot) {
+function centeringAssessment(slot, _points, _state, standards) {
   const cap = slot.capability;
   if (!cap || cap.cpk == null || cap.cp == null || cap.cp === 0) return [];
 
   const ratio = cap.cpk / cap.cp;
+  const halfRatio = standards.centeringRatio * 0.78;
   let severity, title;
-  if (ratio >= 0.9) {
+  if (ratio >= standards.centeringRatio) {
     severity = "good"; title = "Well Centered";
-  } else if (ratio >= 0.7) {
+  } else if (ratio >= halfRatio) {
     severity = "warning"; title = "Off Center";
   } else {
     severity = "danger"; title = "Significantly Off Center";
@@ -168,16 +179,21 @@ function centeringAssessment(slot) {
     category: "capability",
     severity,
     title,
-    detail: `Cpk/Cp ratio: ${(ratio * 100).toFixed(0)}%. ${ratio < 0.9 ? "Process mean is shifted from center of specification range." : "Process mean is near the center of specification range."}`,
+    detail: `Cpk/Cp ratio: ${(ratio * 100).toFixed(0)}%. ${ratio < standards.centeringRatio ? "Process mean is shifted from center of specification range." : "Process mean is near the center of specification range."}`,
     metric: { label: "Cpk/Cp", value: (ratio * 100).toFixed(0) + "%", raw: ratio },
-    context: { ratio, cp: cap.cp, cpk: cap.cpk },
+    context: {
+      ratio, cp: cap.cp, cpk: cap.cpk,
+      centeringStandard: standards.centeringRatio,
+      usl: slot.limits?.usl ?? null,
+      lsl: slot.limits?.lsl ?? null,
+      mean: slot.limits?.center ?? null,
+    },
   }];
 }
 
 // ─── Statistical generators ─────────────────────────
 
 function statisticalSummary(slot, points) {
-  // computeStats expects p.value but our points use p.primaryValue
   const mapped = points.map(p => ({ ...p, value: p.primaryValue ?? p.value }));
   const stats = computeStats(mapped);
   if (!stats) return [];
@@ -217,17 +233,17 @@ function sigmaMethodNote(slot) {
     severity: "info",
     title: "Sigma Method",
     detail: `Estimated via ${label} using ${sigma.n_used} observations. sigma_hat = ${sigma.sigma_hat.toFixed(4)}.`,
-    metric: { label: "sigma", value: sigma.sigma_hat.toFixed(4), raw: sigma.sigma_hat },
+    metric: { label: "\u03C3\u0302", value: sigma.sigma_hat.toFixed(4), raw: sigma.sigma_hat },
     context: { method: sigma.method, label, sigmaHat: sigma.sigma_hat, nUsed: sigma.n_used },
   }];
 }
 
-function zoneDistribution(slot, points) {
+function zoneDistribution(slot, points, _state, standards) {
   const zones = slot.zones;
   if (!zones || !points.length) return [];
 
   const cl = zones.cl;
-  const sigma = zones.zone_a_upper - zones.zone_b_upper; // 1-sigma width
+  const sigma = zones.zone_a_upper - zones.zone_b_upper;
   if (sigma <= 0) return [];
 
   let zoneA = 0, zoneB = 0, zoneC = 0, beyond = 0;
@@ -245,10 +261,9 @@ function zoneDistribution(slot, points) {
   const pctA = (zoneA / total * 100).toFixed(1);
   const pctBeyond = (beyond / total * 100).toFixed(1);
 
-  // Expected: ~68% in C, ~27% in B, ~4.3% in A, ~0.3% beyond
   const cDeviation = Math.abs(zoneC / total - 0.6827);
   let severity = "info";
-  if (cDeviation > 0.2) severity = "warning";
+  if (cDeviation > standards.zoneDeviation) severity = "warning";
 
   return [{
     id: "zone-distribution",
@@ -263,13 +278,15 @@ function zoneDistribution(slot, points) {
       zoneB: { count: zoneB, pct: pctB },
       zoneA: { count: zoneA, pct: pctA },
       beyond: { count: beyond, pct: pctBeyond },
+      expected: { c: "68.3", b: "27.2", a: "4.3", beyond: "0.3" },
+      zoneDeviationStandard: standards.zoneDeviation,
     },
   }];
 }
 
 // ─── Pattern generators ─────────────────────────────
 
-function runsDetection(slot, points) {
+function runsDetection(slot, points, _state, standards) {
   const zones = slot.zones;
   if (!zones || points.length < 10) return [];
 
@@ -292,8 +309,9 @@ function runsDetection(slot, points) {
   if (varianceRuns <= 0) return [];
   const z = (runs - expectedRuns) / Math.sqrt(varianceRuns);
 
+  const zThresh = standards.runsZThreshold;
   let severity = "info", interpretation = "Random pattern";
-  if (Math.abs(z) > 1.96) {
+  if (Math.abs(z) > zThresh) {
     severity = "warning";
     interpretation = z < 0 ? "Too few runs — possible shift or trend" : "Too many runs — possible oscillation";
   }
@@ -303,10 +321,10 @@ function runsDetection(slot, points) {
     generatorId: "runsDetection",
     category: "pattern",
     severity,
-    title: z < -1.96 ? "Shift Pattern" : z > 1.96 ? "Oscillation Pattern" : "Runs Normal",
+    title: z < -zThresh ? "Shift Pattern" : z > zThresh ? "Oscillation Pattern" : "Runs Normal",
     detail: `${runs} runs observed, ${expectedRuns.toFixed(1)} expected. Z=${z.toFixed(2)}. ${interpretation}.`,
     metric: { label: "Runs", value: String(runs), raw: runs },
-    context: { runs, expected: expectedRuns.toFixed(1), z: z.toFixed(2), interpretation, above: n1, below: n2 },
+    context: { runs, expected: expectedRuns.toFixed(1), z: z.toFixed(2), interpretation, above: n1, below: n2, zThreshold: zThresh },
   }];
 }
 
@@ -388,11 +406,12 @@ export function generateFindings(state, chartId) {
   if (!slot) return [];
 
   const points = state.points || [];
+  const standards = { ...DEFAULT_STANDARDS, ...state.findingsStandards };
   const findings = [];
 
   for (const gen of GENERATOR_REGISTRY) {
     try {
-      const result = gen.generate(slot, points, state);
+      const result = gen.generate(slot, points, state, standards);
       if (Array.isArray(result)) findings.push(...result);
     } catch (err) {
       console.warn(`[findings-engine] Generator "${gen.id}" failed:`, err);

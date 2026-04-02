@@ -17,6 +17,7 @@ import {
   selectForecast,
   selectPhase,
   selectPoint,
+  selectPoints,
   setColumns,
   setDatasets,
   setError,
@@ -29,7 +30,7 @@ import {
   resetAxis,
 } from "./core/state.js";
 import { renderSidebar } from "./components/sidebar.js";
-import { capClass, CHART_TYPE_LABELS, detectRuleViolations, getCapability } from "./helpers.js";
+import { capClass, CHART_TYPE_LABELS, detectRuleViolations, getCapability, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "./helpers.js";
 import {
   createDataset,
   fetchColumns,
@@ -50,21 +51,25 @@ import { morphInner } from "./core/morph.js";
 import { buildForecastView } from "./prediction/build-forecast-view.js";
 import { DEFAULT_FORECAST_HORIZON } from "./prediction/constants.js";
 import { createStore } from "./core/store.js";
+import { auditMiddleware } from "./core/middleware/audit.js";
+import { noticeMiddleware } from "./core/middleware/notice.js";
 import { finalizeDatasetLoad, finalizeReanalysis } from "./runtime/analysis-runtime.js";
 import { setupUiSubscribers } from "./runtime/ui-subscribers.js";
 import { createChartRuntimeManager } from "./runtime/chart-runtime-manager.js";
 import { setupChartSubscribers } from "./runtime/chart-subscribers.js";
+import { setupFindingsSubscribers } from "./runtime/findings-subscribers.js";
 import { setupDragInteractions } from "./runtime/drag-runtime.js";
 import { handleAppKeydown } from "./events/keydown-handler.js";
 import { handleAppChange } from "./events/change-handler.js";
 import { handleWorkspaceClick } from "./events/click-handler.js";
 import { handleAppClick } from "./events/app-click-handler.js";
 import { handlePrepClick } from "./events/prep-click-handler.js";
-import { computeGridPreview, insertChart, setColWeight, setRowWeight } from "./core/state.js";
+import { computeGridPreview, insertChart, setColWeight, setRowWeight, setFindingsStandard, setStructuralFindings, setChartParams } from "./core/state.js";
+import { generateFindings } from "./core/findings-engine.js";
 
 /* ===Store ===*/
 const root = document.getElementById("app");
-const store = createStore(createInitialState());
+const store = createStore(createInitialState(), [auditMiddleware, noticeMiddleware]);
 const forecastPromptTimers = new Map();
 const forecastPromptEligibility = new Map();
 
@@ -81,6 +86,10 @@ const chartRuntime = createChartRuntimeManager({
   onSelectPoint(id, index) {
     const state = store.getState();
     store.setState(selectPoint(focusChart(state, id), index, id));
+  },
+  onSelectPoints(id, indices) {
+    const state = store.getState();
+    store.setState(selectPoints(focusChart(state, id), indices, id));
   },
   onSelectPhase(id, phaseIndex) {
     const state = store.getState();
@@ -151,6 +160,8 @@ setupChartSubscribers(store, root, {
   getCapability,
   capClass,
 });
+
+setupFindingsSubscribers(store, root);
 
 /* ===Unsaved changes guard ===*/
 window.addEventListener("beforeunload", (e) => {
@@ -301,11 +312,13 @@ function buildChartData(id) {
       yDomainOverride: slot.overrides.y,
     },
     selectedIndex: hasChartValues ? (slot.selectedPointIndex ?? -1) : state.selectedPointIndex,
+    selectedIndices: hasChartValues ? (slot.selectedPointIndices || null) : (state.selectedPointIndices || null),
     selectedPhaseIndex: slot.selectedPhaseIndex ?? null,
     violations: detectRuleViolations(state, id),
     capability: getCapability(state, id),
     metric: slot.context.metric,
     subgroup: slot.context.subgroup,
+    phase: slot.context.phase,
     chartType: slot.context.chartType,
     seriesKey: "primaryValue",
     seriesType: id,
@@ -399,6 +412,16 @@ function playRailFlip(firstMap, duration = 250) {
   });
 }
 
+/** Pre-validate chart params before hitting the backend. */
+function validatedRunAnalysis(datasetId, params) {
+  if (SUBGROUP_REQUIRED.has(params.chart_type) && !params.subgroup_column) {
+    return Promise.reject(new Error(
+      `${CHART_TYPE_LABELS[params.chart_type] || params.chart_type} requires a subgroup column. Select one in the Subgroup chip.`
+    ));
+  }
+  return runAnalysis(datasetId, params);
+}
+
 /* ===Data loading ===*/
 async function loadDatasetById(datasetId) {
   store.setState(setLoadingState(store.getState(), true));
@@ -412,7 +435,7 @@ async function loadDatasetById(datasetId) {
 
     const state = store.getState();
     const analysisResults = await Promise.allSettled(
-      state.chartOrder.map(id => runAnalysis(datasetId, state.charts[id].params))
+      state.chartOrder.map(id => validatedRunAnalysis(datasetId, state.charts[id].params))
     );
     const { nextState } = finalizeDatasetLoad(store.getState(), {
       datasetId,
@@ -437,7 +460,7 @@ async function reanalyze() {
     const points = await fetchPoints(dsId);
     const freshState = store.getState();
     const analysisResults = await Promise.allSettled(
-      freshState.chartOrder.map(id => runAnalysis(dsId, freshState.charts[id].params))
+      freshState.chartOrder.map(id => validatedRunAnalysis(dsId, freshState.charts[id].params))
     );
     const { nextState } = finalizeReanalysis(store.getState(), { points, analysisResults });
     store.setState(nextState);
@@ -556,6 +579,33 @@ root.addEventListener("contextmenu", (e) => {
     : state;
   const r = root.getBoundingClientRect();
   store.setState(openContextMenu(next, e.clientX - r.left, e.clientY - r.top, { target: 'canvas', role: next.focusedChartId }));
+});
+
+/* ===Standards input (on commit — blur or Enter) ===*/
+root.addEventListener("change", (e) => {
+  if (!e.target.matches("[data-standard-key]")) return;
+  const key = e.target.dataset.standardKey;
+  const value = parseFloat(e.target.value);
+  if (!key || isNaN(value) || value < 0) return;
+  let next = setFindingsStandard(store.getState(), key, value);
+  try { localStorage.setItem("spc-findings-standards", JSON.stringify(next.findingsStandards)); } catch { /* */ }
+  const chartId = next.findingsChartId || next.chartOrder[0];
+  next = setStructuralFindings(next, generateFindings(next, chartId), chartId);
+  store.setState(next);
+});
+
+/* ===Spec limit inputs (LSL/USL/Target on findings page) ===*/
+root.addEventListener("change", (e) => {
+  if (!e.target.matches("[data-spec-key]")) return;
+  const key = e.target.dataset.specKey;
+  const chartId = e.target.dataset.chartId;
+  const raw = e.target.value.trim();
+  const value = raw !== "" ? parseFloat(raw) : null;
+  if (key && chartId && (value === null || !isNaN(value))) {
+    store.setState(setChartParams(store.getState(), chartId, { [key]: value }));
+    render();
+    reanalyze();
+  }
 });
 
 /* ===Change handlers ===*/
@@ -743,7 +793,9 @@ async function main() {
     if (saved && saved.chartOrder.length > 0) {
       const restoredCharts = {};
       for (const cid of saved.chartOrder) {
-        restoredCharts[cid] = createSlot(saved.chartParams[cid] ? { params: saved.chartParams[cid] } : {});
+        const p = saved.chartParams[cid];
+        if (p && INDIVIDUAL_ONLY.has(p.chart_type)) p.subgroup_column = null;
+        restoredCharts[cid] = createSlot(p ? { params: p } : {});
       }
       const state = store.getState();
       store.setState({

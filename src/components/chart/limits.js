@@ -57,12 +57,12 @@ function _renderSinglePhaseLimits(layer, labelLayer, y, sigma, data, config, L, 
     if (d.color) line.attr('stroke', d.color).attr('stroke-width', 0.75);
   });
 
-  // Sigma reference lines (dashed, subtle)
+  // Sigma reference lines (±1σ, ±2σ)
   const sigmaLines = [
-    { y: yS1U, color: 'rgba(35,133,81,0.12)' },
-    { y: yS2U, color: 'rgba(200,118,25,0.12)' },
-    { y: yS1L, color: 'rgba(35,133,81,0.12)' },
-    { y: yS2L, color: 'rgba(200,118,25,0.12)' },
+    { y: yS1U, color: 'rgba(35,133,81,0.30)' },
+    { y: yS2U, color: 'rgba(200,118,25,0.30)' },
+    { y: yS1L, color: 'rgba(35,133,81,0.30)' },
+    { y: yS2L, color: 'rgba(200,118,25,0.30)' },
   ];
 
   sigmaLines.forEach(d => {
@@ -70,7 +70,7 @@ function _renderSinglePhaseLimits(layer, labelLayer, y, sigma, data, config, L, 
       .attr('x1', L).attr('x2', R)
       .attr('y1', d.y).attr('y2', d.y)
       .attr('stroke', d.color)
-      .attr('stroke-width', 0.5);
+      .attr('stroke-width', 0.75);
   });
 
   // Edge labels
@@ -122,17 +122,17 @@ function _renderPerPhaseLimits(layer, labelLayer, x, y, phases, data, config, L,
     // Sigma reference lines per phase
     const sigmaVal = (phase.limits.ucl - phase.limits.center) / 3;
     const sigmaRefs = [
-      { yVal: y(phase.limits.center + sigmaVal), color: 'rgba(35,133,81,0.15)' },
-      { yVal: y(phase.limits.center + 2 * sigmaVal), color: 'rgba(200,118,25,0.15)' },
-      { yVal: y(phase.limits.center - sigmaVal), color: 'rgba(35,133,81,0.15)' },
-      { yVal: y(phase.limits.center - 2 * sigmaVal), color: 'rgba(200,118,25,0.15)' },
+      { yVal: y(phase.limits.center + sigmaVal), color: 'rgba(35,133,81,0.30)' },
+      { yVal: y(phase.limits.center + 2 * sigmaVal), color: 'rgba(200,118,25,0.30)' },
+      { yVal: y(phase.limits.center - sigmaVal), color: 'rgba(35,133,81,0.30)' },
+      { yVal: y(phase.limits.center - 2 * sigmaVal), color: 'rgba(200,118,25,0.30)' },
     ];
     sigmaRefs.forEach(d => {
       layer.append('line')
         .attr('x1', x1).attr('x2', x2)
         .attr('y1', d.yVal).attr('y2', d.yVal)
         .attr('stroke', d.color)
-        .attr('stroke-width', 0.5);
+        .attr('stroke-width', 0.75);
     });
   });
 

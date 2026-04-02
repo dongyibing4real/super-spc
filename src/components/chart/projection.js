@@ -80,31 +80,57 @@ export function renderProjectionPrompt(layer, scales, data, config) {
     .attr('stroke-opacity', 0.14)
     .attr('stroke-dasharray', '3 5');
 
-  // Inline label — centered inside the ghost area, rotates vertical when thin
+  // Inline label — centered inside the ghost area
+  // Wide (>=60px): horizontal "Forecast"
+  // Medium (>=20px): vertical stacked characters with auto-scaled font size
+  // Narrow (<20px): no label
   if (plotHeight >= 28) {
     const isWide = width >= 60;
     const isMedium = width >= 20;
-    const label = isWide ? 'Forecast' : 'F';
     const cx = x0 + width / 2;
     const cy = plotTop + plotHeight / 2;
-    const fontSize = clamp(Math.min(width * 0.18, plotHeight * 0.1), 9, 13);
 
-    if (isWide || isMedium) {
-      // Wide: horizontal label. Medium: vertical rotated label.
+    if (isWide) {
+      const fontSize = clamp(Math.min(width * 0.18, plotHeight * 0.1), 9, 13);
       layer.append('text')
         .attr('class', 'ghost-hint-label')
         .attr('x', cx)
         .attr('y', cy)
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'central')
-        .attr('transform', isMedium && !isWide ? `rotate(-90, ${cx}, ${cy})` : null)
         .attr('fill', BLUE)
         .attr('fill-opacity', 0.28)
         .style('font-size', `${fontSize}px`)
         .style('font-weight', '500')
         .style('letter-spacing', '0.06em')
         .style('pointer-events', 'none')
-        .text(label);
+        .text('Forecast');
+    } else if (isMedium) {
+      // Vertical stacked characters — auto-scale font to fit available height
+      const word = 'Forecast';
+      const charCount = word.length;
+      // Each character needs ~1.4x its font-size in vertical space (line height)
+      const maxFontFromHeight = plotHeight * 0.85 / (charCount * 1.4);
+      const maxFontFromWidth = width * 0.6;
+      const fontSize = clamp(Math.min(maxFontFromHeight, maxFontFromWidth), 7, 12);
+      const lineHeight = fontSize * 1.4;
+      const totalHeight = charCount * lineHeight;
+      const startY = cy - totalHeight / 2 + lineHeight / 2;
+
+      word.split('').forEach((char, ci) => {
+        layer.append('text')
+          .attr('class', 'ghost-hint-label')
+          .attr('x', cx)
+          .attr('y', startY + ci * lineHeight)
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'central')
+          .attr('fill', BLUE)
+          .attr('fill-opacity', 0.28)
+          .style('font-size', `${fontSize}px`)
+          .style('font-weight', '500')
+          .style('pointer-events', 'none')
+          .text(char);
+      });
     }
   }
 

@@ -1,0 +1,594 @@
+
+.finding-queue { display: flex; flex-direction: column; gap: 3px; }
+
+.finding-item {
+  text-align: left; padding: 8px 8px 8px 10px; border-radius: var(--r-md);
+  border: 1px solid var(--border-2); background: var(--bg-3);
+  cursor: pointer; transition: border-color var(--dur-short) var(--ease), background var(--dur-short) var(--ease);
+  border-left: 3px solid transparent;
+}
+.finding-item:hover { border-color: var(--border-3); }
+.finding-item.active {
+  border-color: rgba(45,114,210,0.3); background: var(--blue-dim);
+  border-left-color: var(--blue);
+}
+.finding-item h4 { font-size: 12px; font-weight: 700; margin: 0; }
+.finding-item p { margin: 3px 0 0; color: var(--t-3); font-size: 11px; }
+
+.finding-detail { display: flex; flex-direction: column; gap: 8px; }
+.finding-detail h5 { font-size: 11px; font-weight: 600; color: var(--t-3); text-transform: uppercase; letter-spacing: 0.06em; margin: 4px 0 2px; }
+
+.evidence-list.light li { background: var(--bg-3); border-color: var(--border-2); }
+.evidence-list.light span { color: var(--t-4); }
+.evidence-list.light strong { color: var(--t-2); }
+.evidence-list.light li.unresolved { border-color: rgba(200,118,25,0.2); background: rgba(200,118,25,0.05); }
+
+.rail-list.light li { background: var(--bg-3); border-color: var(--border-2); color: var(--t-3); }
+
+
+/* ── Combined header bar (sticky) ── */
+.findings-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-sm, 4px);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+.health-badge.good { background: var(--green-dim); color: var(--green); }
+.health-badge.warning { background: var(--amber-dim); color: var(--amber); }
+.health-badge.danger { background: var(--red-dim); color: var(--red); }
+.health-badge.info { background: var(--blue-dim); color: var(--blue); }
+
+.header-bar-metrics {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+}
+.header-bar-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.header-bar-cell .eyebrow { font-size: 9px; color: var(--t-4); white-space: nowrap; }
+.header-bar-cell strong { font-size: 12px; white-space: nowrap; }
+.header-bar-cell strong.good { color: var(--green); }
+.header-bar-cell strong.warning { color: var(--amber); }
+.header-bar-cell strong.danger { color: var(--red); }
+
+.header-bar-chart {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--t-2);
+}
+
+.header-bar-specs {
+  display: flex;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-2);
+  flex-shrink: 0;
+}
+.header-bar-specs .standard-input {
+  width: 70px;
+}
+
+.findings-count-badge { display: flex; gap: 8px; font-size: 11px; font-weight: 600; }
+.findings-count-badge .danger { color: var(--red); }
+.findings-count-badge .warning { color: var(--amber); }
+
+
+/* ── Standards config bar ── */
+.findings-standards-bar {
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-sm, 4px);
+  overflow: hidden;
+}
+.standards-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 5px 12px;
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--t-3);
+  cursor: pointer;
+}
+.standards-toggle:hover { background: var(--bg-3); }
+.standards-toggle .chevron {
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+.standards-toggle .chevron.open { transform: rotate(180deg); }
+
+.standards-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+  padding: 6px 12px 10px;
+  border-top: 1px solid var(--border-2);
+}
+.standard-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.standard-field .eyebrow { font-size: 9px; }
+.standard-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  height: 26px;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  background: var(--bg-3);
+  border: 1px solid var(--border-2);
+  border-radius: 2px;
+  color: var(--t-1);
+}
+.standard-input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+
+/* ── Layout ── */
+.findings-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 8px;
+  height: calc(100vh - 120px);
+}
+
+.findings-chart-rail {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.findings-chart-rail h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--t-4); margin: 0 0 6px; }
+.chart-rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+.chart-rail-card {
+  padding: 8px 10px;
+  text-align: left;
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  background: var(--bg-2);
+  cursor: pointer;
+  font: inherit;
+  color: var(--t-1);
+  width: 100%;
+  transition: border-color 0.1s, background 0.1s;
+}
+.chart-rail-card:hover { border-color: var(--border-3); background: var(--bg-3); }
+.chart-rail-card.active { background: var(--blue-dim); border-color: var(--blue); }
+.chart-rail-card .eyebrow { margin: 0; }
+.chart-rail-card-name { font-size: 13px; font-weight: 700; margin: 2px 0; }
+.chart-rail-card-stats {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  color: var(--t-3);
+}
+.chart-rail-card-stats .danger { color: var(--red); }
+.chart-rail-card-stats .good { color: var(--green); }
+
+
+.findings-main {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.findings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+
+.findings-dashboard-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+
+.findings-card-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+.finding-category-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.finding-category-group > .eyebrow {
+  padding: 0 4px;
+  margin-bottom: 2px;
+}
+
+
+.finding-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-2);
+  border-left: 3px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: var(--t-1);
+  transition: border-color 0.1s;
+}
+.finding-card:hover { border-color: var(--border-3); }
+.finding-card.active { border-left-color: var(--blue); background: var(--bg-4); }
+.finding-card.active.good { border-left-color: var(--green); }
+.finding-card.active.warning { border-left-color: var(--amber); }
+.finding-card.active.danger { border-left-color: var(--red); }
+
+.finding-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.finding-card-head h4 { font-size: 12px; font-weight: 600; margin: 0; }
+
+.finding-severity-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.finding-severity-dot.good { background: var(--green); }
+.finding-severity-dot.warning { background: var(--amber); }
+.finding-severity-dot.danger { background: var(--red); }
+.finding-severity-dot.info { background: var(--blue); }
+
+.finding-card-metric {
+  font-size: 10px;
+  color: var(--t-3);
+  padding-left: 13px;
+}
+
+
+/* ── Detail Panel ── */
+.findings-detail-column {
+  min-height: 200px;
+}
+.finding-detail-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.finding-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.finding-detail-head h4 { font-size: 14px; font-weight: 700; margin: 0; }
+.finding-detail-text { color: var(--t-2); font-size: 12px; line-height: 1.5; margin: 0; }
+
+.finding-metric-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border-radius: 3px;
+}
+.finding-metric-hero .data-large {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+}
+
+.finding-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.finding-context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+}
+.finding-context-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+  background: var(--bg-2);
+  border-radius: 2px;
+}
+.finding-context-grid .eyebrow { font-size: 9px; color: var(--t-3); }
+.finding-context-grid strong { font-size: 11px; color: var(--t-2); }
+
+
+/* ── Rule breakdown table ── */
+.finding-rule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.finding-rule-table th {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--t-4);
+  padding: 4px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-2);
+}
+.finding-rule-table td {
+  padding: 4px 6px;
+  color: var(--t-2);
+  border-bottom: 1px solid var(--border-1, rgba(255,255,255,0.04));
+}
+.finding-rule-table tr:last-child td { border-bottom: none; }
+
+
+/* ── Stats table (2-column) ── */
+.finding-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.finding-stats-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-1, rgba(255,255,255,0.04));
+}
+.finding-stats-table td:first-child {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--t-4);
+  width: 100px;
+}
+.finding-stats-table td:last-child { color: var(--t-2); }
+.finding-stats-table tr:last-child td { border-bottom: none; }
+
+
+/* ── OOC rate bar ── */
+.finding-bar-track {
+  height: 6px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.finding-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s;
+}
+.finding-bar-fill.danger { background: var(--red); }
+.finding-bar-fill.good { background: var(--green); }
+.finding-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+}
+
+
+/* ── Capability 2x2 grid ── */
+.finding-2x2-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.finding-cap-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--bg-2);
+  border-radius: 3px;
+}
+.finding-cap-cell .eyebrow { font-size: 9px; }
+.finding-cap-cell strong { font-size: 16px; font-weight: 700; }
+.finding-cap-cell strong.good { color: var(--green); }
+.finding-cap-cell strong.marginal { color: var(--amber); }
+.finding-cap-cell strong.poor { color: var(--red); }
+
+
+/* ── Threshold indicator bar ── */
+.finding-threshold-track {
+  position: relative;
+  height: 8px;
+  background: var(--bg-3);
+  border-radius: 4px;
+  overflow: visible;
+  margin: 4px 0;
+}
+.finding-threshold-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+.finding-threshold-fill.good { background: var(--green); }
+.finding-threshold-fill.marginal { background: var(--amber); }
+.finding-threshold-fill.poor { background: var(--red); }
+.finding-threshold-mark {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 12px;
+  background: var(--t-2);
+  border-radius: 1px;
+  transform: translateX(-1px);
+}
+
+
+/* ── Zone distribution bar ── */
+.finding-zone-bar {
+  display: flex;
+  height: 20px;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.finding-zone-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--t-1);
+}
+.finding-zone-segment.zone-c { background: var(--green-dim); }
+.finding-zone-segment.zone-b { background: var(--blue-dim); }
+.finding-zone-segment.zone-a { background: var(--amber-dim); }
+.finding-zone-segment.zone-beyond { background: var(--red-dim); }
+
+
+/* ── Phase comparison ── */
+.finding-comparison-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.finding-compare-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--bg-2);
+  border-radius: 3px;
+}
+.finding-compare-arrow {
+  font-size: 18px;
+  color: var(--t-4);
+  flex-shrink: 0;
+}
+
+
+/* ── Index chips ── */
+.index-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.index-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--bg-4);
+  border-radius: 2px;
+  font-size: 10px;
+}
+
+
+/* ── Centering bar ── */
+.finding-centering-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+.centering-label { white-space: nowrap; color: var(--t-3); }
+.centering-track {
+  flex: 1;
+  position: relative;
+  height: 8px;
+  background: var(--bg-3);
+  border-radius: 4px;
+}
+.centering-mean {
+  position: absolute;
+  top: -2px;
+  width: 6px;
+  height: 12px;
+  background: var(--blue);
+  border-radius: 3px;
+  transform: translateX(-3px);
+}
+
+
+/* ── AI section ── */
+.findings-ai-section {
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+.findings-ai-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.findings-ai-header p {
+  color: var(--t-3);
+  font-size: 11px;
+  margin: 2px 0 0;
+}
+.findings-ai-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.ai-placeholder-card {
+  padding: 8px;
+  background: var(--bg-3);
+  border: 1px dashed var(--border-2);
+  border-radius: 3px;
+}
+.ai-placeholder-card .eyebrow { margin-bottom: 4px; }
+.ai-placeholder-card p { font-size: 11px; margin: 0; }
+
+
+/* ── Responsive ── */
+@media (max-width: 1200px) {
+  .findings-layout { grid-template-columns: 1fr; height: auto; }
+  .findings-chart-rail { flex-direction: row; }
+  .chart-rail-list { flex-direction: row; overflow-x: auto; }
+  .chart-rail-card { min-width: 140px; }
+  .findings-dashboard-grid { grid-template-columns: 1fr; }
+  .findings-ai-cards { grid-template-columns: 1fr; }
+}

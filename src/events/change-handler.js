@@ -7,6 +7,7 @@ import {
   createSlot,
 } from "../core/state.js";
 import { fetchDatasets as _fetchDatasets } from "../data/api.js";
+import { INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "../helpers.js";
 
 export function parseActionTarget(action) {
   const match = action.match(/^(chart-\d+)-(.+)$/);
@@ -40,7 +41,9 @@ export async function handleAppChange(event, ctx) {
       if (saved && saved.chartOrder.length > 0) {
         const restoredCharts = {};
         for (const cid of saved.chartOrder) {
-          restoredCharts[cid] = createSlot(saved.chartParams[cid] ? { params: saved.chartParams[cid] } : {});
+          const p = saved.chartParams[cid];
+          if (p && INDIVIDUAL_ONLY.has(p.chart_type)) p.subgroup_column = null;
+          restoredCharts[cid] = createSlot(p ? { params: p } : {});
         }
         next = {
           ...next,
@@ -70,9 +73,17 @@ export async function handleAppChange(event, ctx) {
     const pending = { ...state.ui.pendingNewChart };
 
     if (pendingAction === "set-metric-column") pending.value_column = event.target.value || null;
-    else if (pendingAction === "set-subgroup-column") pending.subgroup_column = event.target.value || null;
+    else if (pendingAction === "set-subgroup-column") {
+      if (INDIVIDUAL_ONLY.has(pending.chart_type)) return true;
+      const newSg = event.target.value || null;
+      if (!newSg && SUBGROUP_REQUIRED.has(pending.chart_type)) return true;
+      pending.subgroup_column = newSg;
+    }
     else if (pendingAction === "set-phase-column") pending.phase_column = event.target.value || null;
-    else if (pendingAction === "set-chart-type") pending.chart_type = event.target.value;
+    else if (pendingAction === "set-chart-type") {
+      pending.chart_type = event.target.value;
+      if (INDIVIDUAL_ONLY.has(pending.chart_type)) pending.subgroup_column = null;
+    }
     else if (pendingAction === "set-sigma-method") pending.sigma_method = event.target.value;
     else if (pendingAction === "set-k-sigma") {
       const k = parseFloat(event.target.value);
@@ -108,7 +119,11 @@ export async function handleAppChange(event, ctx) {
   }
   if (baseAction === "set-subgroup-column") {
     const state = store.getState();
-    let next = setChartParams(state, chartId, { subgroup_column: event.target.value || null });
+    const chartType = state.charts[chartId]?.params.chart_type;
+    if (INDIVIDUAL_ONLY.has(chartType)) return true;
+    const newSg = event.target.value || null;
+    if (!newSg && SUBGROUP_REQUIRED.has(chartType)) return true;
+    let next = setChartParams(state, chartId, { subgroup_column: newSg });
     next = setActiveChipEditor(next, null);
     store.setState(next);
     render();
@@ -126,7 +141,10 @@ export async function handleAppChange(event, ctx) {
   }
   if (baseAction === "set-chart-type") {
     const state = store.getState();
-    let next = setChartParams(state, chartId, { chart_type: event.target.value });
+    const newType = event.target.value;
+    const updates = { chart_type: newType };
+    if (INDIVIDUAL_ONLY.has(newType)) updates.subgroup_column = null;
+    let next = setChartParams(state, chartId, updates);
     next = setActiveChipEditor(next, null);
     store.setState(next);
     render();

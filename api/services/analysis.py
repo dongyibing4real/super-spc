@@ -110,18 +110,27 @@ def _group_by_subgroup(
     """Group measurements by subgroup preserving order.
 
     Resolves subgroup key from: (1) explicit subgroup_column in raw_json,
-    (2) DataRow.subgroup field, (3) DEFAULT_SUBGROUP_KEY fallback.
+    (2) DataRow.subgroup field, (3) individual fallback (each point = n=1).
+
+    When no subgroup source is available, each measurement becomes its own
+    subgroup (n=1) so subgrouped charts like X-Bar R still produce one
+    plotted point per measurement instead of collapsing everything into
+    a single giant subgroup.
 
     Returns (ordered_keys, groups_dict) where groups_dict maps key -> list of values.
     """
     groups: dict[str, list[float]] = {}
     ordered_keys: list[str] = []
-    for m in measurements:
+    for i, m in enumerate(measurements):
         if subgroup_column:
             raw = json.loads(m.raw_json) if m.raw_json else {}
             key = str(raw.get(subgroup_column) or m.subgroup or DEFAULT_SUBGROUP_KEY)
+        elif m.subgroup:
+            key = m.subgroup
         else:
-            key = m.subgroup or DEFAULT_SUBGROUP_KEY
+            # No subgroup column and no subgroup field — treat each
+            # measurement as its own subgroup (individual, n=1).
+            key = f"_ind_{i}"
         if key not in groups:
             groups[key] = []
             ordered_keys.append(key)
@@ -1012,21 +1021,19 @@ async def run_analysis(
     subgroup_column = request.subgroup_column
     phase_column = request.phase_column
 
-    # Fall back to DB column roles only when request params are not provided
-    if not value_column or not subgroup_column or not phase_column:
+    # Fall back to DB column roles only for value_column when not provided.
+    # subgroup_column and phase_column are always sent by the frontend;
+    # null means "none" (individual / no phases) — do not override from DB.
+    if not value_column:
         col_stmt = (
             select(DatasetColumn.name, DatasetColumn.role)
             .where(DatasetColumn.dataset_id == dataset_id)
-            .where(DatasetColumn.role.in_(["value", "subgroup", "phase"]))
+            .where(DatasetColumn.role == "value")
         )
         col_result = await session.execute(col_stmt)
         for name, role in col_result.all():
-            if role == "value" and not value_column:
+            if role == "value":
                 value_column = name
-            elif role == "subgroup" and not subgroup_column:
-                subgroup_column = name
-            elif role == "phase" and not phase_column:
-                phase_column = name
 
     if not value_column:
         raise ValueError(

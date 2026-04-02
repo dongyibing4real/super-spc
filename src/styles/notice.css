@@ -1,0 +1,25 @@
+
+@keyframes notice-slide {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border-2);
+  background: var(--bg-2);
+  font-size: 11px;
+  animation: notice-slide var(--dur-long) var(--ease);
+}
+
+.notice strong { font-weight: 700; }
+.notice p { margin: 0; color: var(--t-3); }
+.notice.info    { background: var(--blue-dim); }
+.notice.warning { background: var(--amber-dim); }
+.notice.critical { background: var(--red-dim); }
+.notice.positive { background: var(--green-dim); }
+

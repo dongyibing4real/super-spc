@@ -46,7 +46,6 @@ test("maps normal measurement array", () => {
   assert.equal(points[0].subgroupLabel, "Hour 1");
   assert.equal(points[0].primaryValue, 8.042);
   assert.equal(points[0].phaseId, null);
-  assert.equal(points[0].challengerValue, null);
   assert.equal(points[0].excluded, false);
   assert.equal(points[0].annotation, null);
 

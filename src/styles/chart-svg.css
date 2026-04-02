@@ -1,0 +1,67 @@
+
+.grid-line { stroke: var(--chart-grid); stroke-width: 0.5; }
+.grid-label, .edge-label {
+  fill: var(--chart-text-3);
+  font-family: ui-monospace, monospace;
+  font-weight: 500;
+  
+}
+/* Phase boundaries — solid vertical line only, no background band */
+.phase-line { stroke: rgba(209,152,11,0.30); stroke-width: 0.75; }
+.phase-label {
+  fill: var(--chart-text);
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.phase-label-selected {
+  fill: var(--blue);
+  font-weight: 600;
+}
+.phase-header-hit:hover {
+  fill: rgba(45,114,210,0.06);
+}
+/* Limit lines — structure tier: subordinate to data, readable but quiet */
+.limit-line { stroke-width: 1.0; }
+.limit-line.critical { stroke: rgba(205,66,70,0.65); }
+.limit-line.center { stroke: rgba(35,133,81,0.75); stroke-width: 1.5; }
+.limit-line.spec { stroke: rgba(139,92,246,0.30); stroke-dasharray: 3 4; stroke-width: 0.75; }
+/* Series lines — primary is data tier (loudest), secondary at medium tier */
+.primary-path { fill: none; stroke: var(--blue); stroke-width: 1.0; stroke-linecap: round; stroke-linejoin: round; }
+.secondary-path { fill: none; stroke: var(--teal-bright); stroke-width: 0.75; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
+/* Points — small and clean, color is the signal not size */
+.chart-point {
+  fill: var(--blue); stroke: var(--chart-bg); stroke-width: 0.75;
+  transition: fill var(--dur-short) var(--ease);
+  pointer-events: none;
+}
+.point-group:hover .chart-point { filter: brightness(1.15); }
+.chart-point.ooc { fill: var(--red); }
+.chart-point.secondary-point { fill: var(--teal-bright); opacity: 0.7; }
+.chart-point.secondary-point.ooc { fill: var(--red); }
+/* Selection: JMP-style — selected point full opacity, others dim to 0.35. No crosshair arms. */
+/* SVG hit targets: suppress browser focus outlines — keyboard focus handled by crosshair */
+.point-hit { outline: none; }
+.point-hit:focus { outline: none; }
+/* Nelson test violation ring — amber ring behind the data point (distinct from red OOC fill) */
+.violation-ring { fill: none; stroke: var(--amber); stroke-width: 1; opacity: 0.55; }
+.point-group.is-excluded .chart-point { opacity: 0.25; }
+.excluded-mark { stroke: var(--amber); stroke-width: 0.75; opacity: 0.30; }
+.event-line { stroke: rgba(139,92,246,0.12); stroke-width: 0.75; }
+.event-chip { fill: rgba(139,92,246,0.06); stroke: rgba(139,92,246,0.15); rx: 3; }
+.event-text { fill: #8B5CF6; font-family: ui-monospace, monospace; font-size: 9px; font-weight: 500; }
+
+.x-axis-label {
+  fill: var(--chart-text-3);
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 500;
+}
+
+
+.zone-a { opacity: 1; }
+.zone-b { opacity: 1; }
+.zone-c { opacity: 1; }
+
+

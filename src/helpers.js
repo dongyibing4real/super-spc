@@ -12,10 +12,10 @@ export function getCapability(state, id = null) {
   return state.charts[id]?.capability || { cpk: null, ppk: null, cp: null };
 }
 
-export function capClass(val) {
+export function capClass(val, threshold = 1.33, marginal = 1.0) {
   const v = parseFloat(val);
-  if (v >= 1.33) return "good";
-  if (v >= 1.0) return "marginal";
+  if (v >= threshold) return "good";
+  if (v >= marginal) return "marginal";
   return "poor";
 }
 
@@ -49,6 +49,16 @@ export const CHART_TYPE_LABELS = {
   short_run: "Short Run", g: "G", t: "T",
   hotelling_t2: "Hotelling T\u00B2", mewma: "MEWMA",
 };
+
+/** Chart types that only accept individual measurements (n=1). Subgroup must be cleared. */
+export const INDIVIDUAL_ONLY = new Set(["imr", "mr", "levey_jennings", "run", "g", "t"]);
+
+/** Chart types that require a subgroup column. */
+export const SUBGROUP_REQUIRED = new Set([
+  "xbar_r", "xbar_s", "r", "s",
+  "p", "np", "c", "u", "laney_p", "laney_u",
+  "three_way", "presummarize",
+]);
 
 export const SIGMA_METHOD_LABELS = {
   moving_range: "Moving Range", median_moving_range: "Median MR",
@@ -84,6 +94,29 @@ export function applyParamsToContext(context, params) {
     result.phase = { id: "single", label: "Single phase", detail: "No phase boundaries" };
   }
   return result;
+}
+
+/**
+ * Returns a Set of chart type keys that are invalid given current params and columns.
+ * Used by recipe-rail to disable unselectable <option> elements.
+ */
+export function getDisabledChartTypes(params, columns) {
+  const disabled = new Set();
+  const hasValue = !!params.value_column;
+  const hasSubgroup = !!params.subgroup_column;
+
+  if (!hasValue) {
+    return new Set(Object.keys(CHART_TYPE_LABELS));
+  }
+  if (!hasSubgroup) {
+    for (const ct of SUBGROUP_REQUIRED) disabled.add(ct);
+  }
+  const numericCount = columns.filter(c => c.dtype === "numeric").length;
+  if (numericCount < 2) {
+    disabled.add("hotelling_t2");
+    disabled.add("mewma");
+  }
+  return disabled;
 }
 
 export function computeStats(points) {

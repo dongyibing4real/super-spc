@@ -8,16 +8,17 @@ import {
   toggleTransform,
   failTransformStep,
   recoverTransformStep,
-  setChallengerStatus,
   selectStructuralFinding,
   setFindingsChart,
   setStructuralFindings,
+  toggleFindingsStandardsBar,
   togglePaneDataTable,
   focusChart,
   addChart,
   removeChart,
   DEFAULT_PARAMS,
   getFocused,
+  toggleMethodLabChart,
 } from "../core/state.js";
 import { generateFindings } from "../core/findings-engine.js";
 
@@ -28,11 +29,26 @@ export function handleWorkspaceClick(event, { store, root, render, saveLayout, r
   if (clickedPane) {
     const chartId = clickedPane.dataset.chartId;
     if (chartId && chartId !== state.focusedChartId && state.charts[chartId]) {
+      const snap = snapshotRailPositions();
       const next = focusChart(state, chartId);
       root.querySelectorAll(".chart-pane").forEach((pane) => {
         pane.classList.toggle("pane-focused", pane.dataset.chartId === next.focusedChartId);
       });
+      const rail = root.querySelector(".recipe-rail");
+      if (rail) {
+        const cardMap = new Map();
+        rail.querySelectorAll(".rail-card[data-chart-id]").forEach((el) => cardMap.set(el.dataset.chartId, el));
+        const order = [next.focusedChartId, ...next.chartOrder.filter((id) => id !== next.focusedChartId)];
+        for (const id of order) {
+          const card = cardMap.get(id);
+          if (card) {
+            card.classList.toggle("rail-card-focused", id === next.focusedChartId);
+            rail.appendChild(card);
+          }
+        }
+      }
       store.setState(next);
+      playRailFlip(snap, 250);
     }
   }
 
@@ -79,17 +95,22 @@ export function handleWorkspaceClick(event, { store, root, render, saveLayout, r
     case "recover-transform":
       store.setState(recoverTransformStep(state, actionTarget.dataset.stepId));
       return true;
-    case "set-challenger-status":
-      store.setState(setChallengerStatus(state, actionTarget.dataset.status));
-      return true;
     case "select-structural-finding":
       store.setState(selectStructuralFinding(state, actionTarget.dataset.findingId));
+      return true;
+    case "toggle-findings-standards":
+      store.setState(toggleFindingsStandardsBar(state));
       return true;
     case "switch-findings-chart": {
       const chartId = actionTarget.dataset.chartId;
       const withChart = setFindingsChart(state, chartId);
       const next = setStructuralFindings(withChart, generateFindings(withChart, chartId), chartId);
       store.setState(next);
+      return true;
+    }
+    case "toggle-ml-chart": {
+      const chartId = actionTarget.dataset.chartId;
+      if (chartId) store.setState(toggleMethodLabChart(state, chartId));
       return true;
     }
     case "clear-notice":

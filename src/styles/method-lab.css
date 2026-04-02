@@ -1,0 +1,398 @@
+/* Method Lab — structured comparison layout */
+
+.ml-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ─── Chart Picker (checkbox multi-select) ─── */
+
+.ml-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+}
+
+.ml-picker > .eyebrow {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--t-4);
+  flex-shrink: 0;
+}
+
+.ml-picker-count {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  color: var(--t-4);
+  flex-shrink: 0;
+}
+
+.ml-picker-list {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.ml-picker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px 4px 5px;
+  border-radius: var(--r-xs);
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ml-picker-item:hover {
+  background: var(--bg-4);
+}
+
+.ml-picker-item:focus-visible {
+  outline: 1px solid var(--blue);
+  outline-offset: 1px;
+}
+
+/* Custom checkbox */
+.ml-picker-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid var(--t-4);
+  background: transparent;
+  flex-shrink: 0;
+  transition: background var(--dur-short) var(--ease), border-color var(--dur-short) var(--ease);
+}
+
+.ml-picker-check::after {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background var(--dur-short) var(--ease);
+}
+
+.ml-picker-item.active .ml-picker-check {
+  border-color: var(--blue-bright);
+}
+
+.ml-picker-item.active .ml-picker-check::after {
+  background: var(--blue-bright);
+}
+
+.ml-picker-label {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--t-3);
+}
+
+.ml-picker-item.active .ml-picker-label {
+  color: var(--t-1);
+}
+
+
+/* ─── Header Bar (matches findings header bar pattern) ─── */
+
+.ml-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-sm);
+}
+
+.ml-header-metrics {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+  overflow-x: auto;
+}
+
+/* ─── Section Cards ─── */
+
+.ml-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ml-section-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+}
+
+.ml-section-card > .eyebrow {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--t-4);
+  margin-bottom: 6px;
+}
+
+/* Columns: one per chart, side by side */
+.ml-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.ml-chart-col {
+  background: var(--bg-3);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-xs);
+  padding: 6px 8px;
+}
+
+.ml-chart-col.ml-focused-col {
+  border-left: 2px solid var(--blue);
+}
+
+.ml-col-head {
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-2);
+}
+
+.ml-col-head strong {
+  font-size: 12px;
+}
+
+.ml-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ─── Metric Cell (reusable atom) ─── */
+
+.ml-cell {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0;
+}
+
+.ml-cell .eyebrow {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--t-4);
+}
+
+.ml-cell strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ml-cell.danger strong  { color: var(--red); }
+.ml-cell.good strong    { color: var(--green); }
+.ml-cell.warning strong { color: var(--amber); }
+
+.ml-cell.cap-good strong    { color: var(--green); }
+.ml-cell.cap-marginal strong { color: var(--amber); }
+.ml-cell.cap-poor strong    { color: var(--red); }
+
+
+/* ─── Rule Chips ─── */
+
+.ml-rule-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.ml-rule-chip {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 5px;
+  background: var(--bg-4);
+  border-radius: var(--r-xs);
+  color: var(--t-2);
+  white-space: nowrap;
+}
+
+
+/* ─── Disagreement Section ─── */
+
+.ml-disagree {
+  border-color: var(--amber-dim);
+}
+
+.ml-agree .ml-agreement {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.ml-agree .ml-agreement strong {
+  font-size: 12px;
+  color: var(--green);
+}
+
+.ml-disagree-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.ml-disagree-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ml-disagree-stat strong {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--amber);
+}
+
+.ml-unique-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ml-unique-chip {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  background: var(--bg-4);
+  border-radius: var(--r-xs);
+  color: var(--t-3);
+}
+
+.ml-disagree-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ml-disagree-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 8px;
+  background: var(--bg-3);
+  border-radius: var(--r-xs);
+  border: 1px solid var(--border-2);
+}
+
+.ml-disagree-point {
+  display: flex;
+  flex-direction: column;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.ml-disagree-point strong {
+  font-size: 11px;
+  color: var(--t-2);
+}
+
+.ml-disagree-point .mono {
+  font-size: 10px;
+}
+
+.ml-disagree-verdicts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+}
+
+.ml-verdict {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+}
+
+.ml-verdict.critical {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+.ml-verdict.positive {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.ml-more {
+  font-size: 10px;
+  padding: 4px 0 0;
+}
+
+
+/* ─── Capability / No-Cap ─── */
+
+.ml-no-cap {
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+
+/* ─── Guidance Footer ─── */
+
+.ml-guidance {
+  font-size: 11px;
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--border-2);
+}
+
+
+/* ─── Status dot (shared with findings) ─── */
+
+.ml-header-bar .sdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.ml-agree .sdot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ml-agree .sdot.good { background: var(--green); }
+
+
+/* ─── Responsive ─── */
+
+@media (max-width: 900px) {
+  .ml-columns {
+    grid-template-columns: 1fr;
+  }
+  .ml-header-metrics {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}

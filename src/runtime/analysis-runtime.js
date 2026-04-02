@@ -1,20 +1,30 @@
 import {
-  getPrimary,
+  getFirstChart,
   loadDataset,
   setChartParams,
   setColumns,
   setStructuralFindings,
 } from "../core/state.js";
-import { applyParamsToContext } from "../helpers.js";
+import { applyParamsToContext, INDIVIDUAL_ONLY } from "../helpers.js";
 import { buildDefaultContext, transformAnalysis, transformPoints } from "../data/transforms.js";
 import { generateFindings } from "../core/findings-engine.js";
 
-function buildWarningNotice(failedCharts) {
+function buildWarningNotice(failedCharts, analysisResults) {
   if (failedCharts.length === 0) return null;
+  // Extract the first meaningful error message from failed results
+  let reason = "";
+  if (analysisResults) {
+    for (const r of analysisResults) {
+      if (r.status === "rejected" && r.reason?.message) {
+        reason = r.reason.message;
+        break;
+      }
+    }
+  }
   return {
     tone: "warning",
     title: "Analysis failed",
-    body: `${failedCharts.length} chart(s) could not be analyzed.`,
+    body: reason || `${failedCharts.length} chart(s) could not be analyzed.`,
   };
 }
 
@@ -26,9 +36,10 @@ export function applyColumnRolesToChartParams(state, columns) {
 
   for (const id of next.chartOrder) {
     if (!next.charts[id].params.value_column) {
+      const chartType = next.charts[id].params.chart_type;
       next = setChartParams(next, id, {
         value_column: valueName,
-        subgroup_column: subgroupName,
+        subgroup_column: INDIVIDUAL_ONLY.has(chartType) ? null : subgroupName,
         phase_column: phaseName,
       });
     }
@@ -62,7 +73,7 @@ export function buildSuccessfulAnalysisSlots(state, analysisResults, baseContext
 export function finalizeDatasetLoad(state, { datasetId, datasets, points, columns, analysisResults }) {
   let next = applyColumnRolesToChartParams(state, columns);
   const dataset = datasets.find((item) => item.id === datasetId);
-  const baseContext = dataset ? buildDefaultContext(dataset, columns) : getPrimary(next).context;
+  const baseContext = dataset ? buildDefaultContext(dataset, columns) : getFirstChart(next).context;
   const slots = buildSuccessfulAnalysisSlots(next, analysisResults, baseContext);
   const failedCharts = next.chartOrder.filter((_, i) => analysisResults[i]?.status === "rejected");
 
@@ -73,7 +84,7 @@ export function finalizeDatasetLoad(state, { datasetId, datasets, points, column
   });
   next = setStructuralFindings(next, generateFindings(next));
 
-  const notice = buildWarningNotice(failedCharts);
+  const notice = buildWarningNotice(failedCharts, analysisResults);
   if (notice) {
     next = { ...next, ui: { ...next.ui, notice } };
   }
@@ -85,7 +96,7 @@ export function finalizeReanalysis(state, { points, analysisResults }) {
   const datasetId = state.activeDatasetId;
   const columns = state.columnConfig.columns;
   const dataset = state.datasets.find((item) => item.id === datasetId);
-  const baseContext = dataset ? buildDefaultContext(dataset, columns) : getPrimary(state).context;
+  const baseContext = dataset ? buildDefaultContext(dataset, columns) : getFirstChart(state).context;
   const slots = buildSuccessfulAnalysisSlots(state, analysisResults, baseContext);
   const failedCharts = state.chartOrder.filter((_, i) => analysisResults[i]?.status === "rejected");
 
@@ -96,7 +107,7 @@ export function finalizeReanalysis(state, { points, analysisResults }) {
   });
   next = setStructuralFindings(next, generateFindings(next));
 
-  const notice = buildWarningNotice(failedCharts);
+  const notice = buildWarningNotice(failedCharts, analysisResults);
   if (notice) {
     next = { ...next, ui: { ...next.ui, notice } };
   }

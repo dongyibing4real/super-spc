@@ -1,0 +1,114 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0;
+  background: var(--bg-0);
+  border-right: 1px solid var(--border-2);
+  gap: 2px;
+  user-select: none;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 12px;
+}
+
+.brand-block h1 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--t-2);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.brand-spc {
+  color: var(--t-1);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.nav-section-label {
+  display: block;
+  padding: 8px 12px 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--t-3); 
+}
+
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 0 6px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px; 
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t-3);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  transition: background var(--dur-short) var(--ease), color var(--dur-short) var(--ease);
+  padding: 0 10px;
+  text-align: left;
+  line-height: 1;
+  position: relative;
+  cursor: pointer;
+}
+
+.nav-item .nav-abbr {
+  display: none;
+}
+
+.nav-item:hover { background: var(--bg-3); color: var(--t-1); }
+.nav-item.active {
+  background: var(--blue-dim); color: var(--blue-bright);
+  font-weight: 600;
+  border-left: 2px solid var(--blue); border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--t-4);
+}
+
+.sidebar-foot strong { color: var(--t-3); font-weight: 600; }
+.sidebar-foot span.mono { display: none; }
+
+.status-dot-live {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 4px rgba(35,133,81,0.5);
+}
+.status-dot-live.offline {
+  background: var(--t-4);
+  box-shadow: none;
+}
+
