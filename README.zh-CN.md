@@ -1,119 +1,114 @@
 <div align="center">
 
+<img src="docs/assets/super-spc-logo.svg" alt="Super SPC logo" width="112" />
+
 # Super SPC
 
-**一个完全开源的现代 statistical process control 平台**
+[English](README.md)
 
+### 一个完全开源的现代 statistical process control 平台
 
-[快速开始](#快速开始) &bull; [功能特性](#功能特性) &bull; [图表类型](#图表类型) &bull; [为什么是-super-spc](#为什么是-super-spc) &bull; [架构](#架构)
+<p>
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-0F172A?style=flat-square" alt="License AGPL-3.0" />
+  <img src="https://img.shields.io/badge/frontend-Vite%20%2B%20Vanilla%20JS-1E293B?style=flat-square" alt="Frontend Vite and Vanilla JS" />
+  <img src="https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-1E293B?style=flat-square" alt="Backend FastAPI and SQLite" />
+  <img src="https://img.shields.io/badge/charts-27-1E293B?style=flat-square" alt="27 charts" />
+  <img src="https://img.shields.io/badge/rules-Nelson%20%2B%20Westgard-1E293B?style=flat-square" alt="Nelson and Westgard rules" />
+</p>
+
+[快速开始](#快速开始) &bull; [功能特性](#功能特性) &bull; [图表类型](#图表类型) &bull; [为什么要做这个项目](#为什么要做这个项目) &bull; [架构](#架构)
 
 ---
 
-![Super SPC Workspace - 深色 command-center 风格界面，包含带 zone shading 的 control chart、recipe rail 和 evidence panel](docs/assets/multi-chart.png)
+![Super SPC Workspace - 深色 command-center UI，包含 control charts、recipe rail 和 evidence panel](docs/assets/hero.png)
 
 </div>
 
-## 为什么建立这个项目
+## 为什么要做这个项目
 
-很多产品，比如 **JMP/Minitab** 确实是 **6 sigma** 领域的权威工具，但是它们：
+今天的 SPC 软件，仍然普遍存在价格高、生态封闭、难以扩展的问题。像 **JMP**、**Minitab** 这样的产品在 **Six Sigma** 和质量工程领域依然重要，但它们通常不容易针对新工作流做定制，交互方式仍然高度依赖 wizard，而且对于很多日常 SPC 场景来说成本过高。
 
-- 很难定制化开发需求；
-- 系统迭代慢，流程僵化；
-- 生态过于封闭，核心算法代码闭源，上手难度大；
-- 对 AI/ML 适配性较弱；
+现在，这种取舍没有以前那么必要了。借助现代 frontend tooling、实用的 Python analysis stack，以及 AI-assisted coding，小团队也能够更快地做出严肃、可用的工程软件。
 
-更重要的是：它们太贵！如果你的日常工作只需要关注 SPC，那你可能需要为 90% 你根本用不到的其它功能付费。
-
-况且这些工具的 spc 功能并没有多么 fascinating，大多数经典的算法/工作流即便是自己使用 python 也能实现。
-
-Thanks to AI，现在每个人都可以快速写出自己的产品，**super-spc** 就是这么诞生的。它从许多经典数据可视化/质量管理工具中得到灵感，并结合了现代交互/架构设计。
-
-许多功能尚不完善，还需要集成现代的 PHM/APC 中的 AI/ML 技术。但得益于 ai coding，产品迭代速度可以非常快，欢迎 process engineer，reliability engineer 或任何对这个项目有兴趣的人提出优化建议。
-
-
+**Super SPC** 就是这么诞生的：一个开源的 SPC 平台，提供更强的交互式 chart、evidence-first workflow，以及真正可自托管、可扩展、可持续演进的架构。
 
 ## 功能特性
 
-### Chart is the Hero
+### Interactive Charts
 
-- 最大化 chart 的可交互性，可 marquee select points，可 pan/zoom axis，phase 区域可选中
-- 右侧 rich evidence rail，展示选中点信息以及 method info
-- 可配置的 forcast area，即时预测 series 走向 (开发中)
+- 尽可能强化 chart 的交互能力：支持 `marquee selection`、axis `pan/zoom`、phase 区域选择
+- 右侧提供丰富的 evidence rail，用于展示选中点详情和 method context
+- 支持可配置的 forecast 区域，直接在图中预测 series 走势（进行中）
 
 ![在 IMR chart 上用彩色圆环标出 rule violations](docs/assets/hero.gif)
 
-
-
 ### Multi-Chart Workspace
 
-- 多图排列，拖拽重排
-- 自适应 scale
+- 支持多图并列展示
+- 支持拖拽重排
+- 支持自适应缩放
 
-![multi-chart-demo](docs/assets/multi-chart-arange.gif)
+![Multi-chart workspace demo](docs/assets/multi-chart-arange.gif)
 
 <table>
 <tr>
 <td width="50%">
 
 **24 种 chart types**，覆盖常见 SPC 场景：
-- Shewhart variables 与 attributes
-- CUSUM（tabular + V-mask）
-- 带 residuals 与 forecast 的 EWMA
-- Hotelling T² 与 MEWMA
-- short-run、rare event、Laney P'/U'
-- 带 runs test 的 run chart
+- Shewhart variables 和 attributes
+- CUSUM（`tabular` + `V-mask`）
+- 带 residuals 和 forecast 的 EWMA
+- Hotelling `T²` 和 `MEWMA`
+- `short-run`、`rare event`、`Laney P'` / `Laney U'`
+- 带 `runs test` 的 `run chart`
 
 </td>
 <td width="50%">
 
-**Multi-chart workspace** 支持拖拽布局：
-- chart 彼此独立，不强制配对
-- 每个 chart 都有自己的 accent color（8 色循环）
-- 自适应布局，padding 和字体随 pane 大小变化
-- 保证 plot area 的可用垂直空间
-- 可以直接拖拽 axis 做 pan / scale，交互风格接近 JMP
+**Multi-chart workspace** 支持拖拽式布局：
+- chart 之间相互独立，不强制配对
+- 每个 chart 都有自己的 accent color，按 8 色循环
+- adaptive layout 会根据 pane 大小调整 padding 和字级
+- 在更紧凑的布局下仍尽量保留可用 plot area
+- 支持直接拖拽 axis 进行 `pan` / `scale`，交互方式接近 JMP
 
 </td>
 </tr>
 </table>
 
-
-### Data Prep：减少 round-trip
+### Data Prep
 
 客户端 data engine 基于 [Arquero](https://uwdata.github.io/arquero/)。
 
-| Phase 1（Row Ops） | Phase 2（Column Ops） | Phase 3（Validation） |
+| Phase 1 (Row Ops) | Phase 2 (Column Ops) | Phase 3 (Validation) |
 |---|---|---|
-| Filter（11 种 operator） | Rename | Range validation |
-| Find & Replace（regex） | Change type | Allowed values |
+| Filter (11 operators) | Rename | Range validation |
+| Find & Replace (regex) | Change type | Allowed values |
 | Remove duplicates | Calculated columns | Regex patterns |
-| Missing values（7 种策略） | Recode values | Column profiling |
+| Missing values (7 strategies) | Recode values | Column profiling |
 | Trim & clean | Bin / Split / Concat | Normality assessment |
-| Sort（multi-column） |  | Outlier detection |
+| Sort (multi-column) |  | Outlier detection |
 | Column reorder & hide |  |  |
 
-列头会直接显示 **inline histogram**、**completeness bar** 和 **summary stats**。点击任意列，可以查看完整 statistical profile，包括 quantiles、moments、outlier counts 与 normality assessment。
+列头会直接展示 **inline histogram**、**completeness bar** 和 **summary stats**。点击任意列，可以查看更完整的 statistical profile，包括 `quantiles`、`moments`、`outlier counts` 和 `normality assessment`。
 
 ![Data Prep - 三栏布局，包含 dataset list、transform toolbar 和 data table](docs/assets/data-prep.png)
 
-![Column profiling - 分布 histogram、quantiles 与 normality assessment](docs/assets/column-profile.png)
-
+![Column profiling - distribution histogram、quantiles 和 normality assessment](docs/assets/column-profile.png)
 
 ### Findings
 
-深入每个 chart 的 control 信息，结构化输出 insights
+深入每个 chart 的 control-state 信息，并输出结构化 insights。
 
 ![Findings](docs/assets/findings.gif)
 
+### Method Comparison
 
-### Method Lab
+比较不同 chart method 之间的检测行为差异。
 
-比较不同 chart 之间的检测差异
+![Method Lab](docs/assets/method-lab.gif)
 
-![Method lab](docs/assets/method-lab.gif)
-
-
-### Keyboard-First
+### Keyboard-First Workflow
 
 | Key | Action |
 |---|---|
@@ -124,24 +119,22 @@ Thanks to AI，现在每个人都可以快速写出自己的产品，**super-spc
 
 ## 图表类型
 
-### Shewhart Variables（10）
+### Shewhart Variables (10)
 `XBar-R` &bull; `XBar-S` &bull; `IMR` &bull; `R` &bull; `S` &bull; `MR` &bull; `Run Chart` &bull; `Levey-Jennings` &bull; `Presummarize` &bull; `Three-Way`
 
-### Shewhart Attributes（6）
+### Shewhart Attributes (6)
 `P` &bull; `NP` &bull; `C` &bull; `U` &bull; `Laney P'` &bull; `Laney U'`
 
-### Short Run（4）
+### Short Run (4)
 `Difference` &bull; `Z` &bull; `MR` &bull; `XBar variants`
 
-### Rare Event（2）
+### Rare Event (2)
 `G chart` &bull; `T chart`
 
-### Advanced Platforms（5）
+### Advanced Platforms (5)
 `CUSUM Tabular` &bull; `CUSUM V-Mask` &bull; `EWMA` &bull; `Hotelling T²` &bull; `MEWMA`
 
-**总计 27 种 chart types**，全部支持 zone shading、8 条 Nelson rules、6 条 Westgard rules 和 per-phase limit support。
-
-
+**总计 27 种 chart types**，全部支持 `zone shading`、`Nelson rules`、`Westgard rules` 和 `per-phase` limit support。
 
 ## 架构
 
@@ -154,20 +147,18 @@ Frontend (Vite)
 REST API
 
 Backend (FastAPI)
-- SQLite（WAL mode）
+- SQLite (WAL mode)
 - async SQLAlchemy
 
 Python imports
 
-algo/（Pure Python）
+algo/ (Pure Python)
 - 24 chart types + 8 Nelson rules
 - 6 Westgard rules + 7 sigma methods
 - CUSUM ARL profiler + capability
 - numpy + scipy + attrs
 - pytest + hypothesis
 ```
-
-
 
 ## 快速开始
 
@@ -184,10 +175,10 @@ algo/（Pure Python）
 git clone https://github.com/dongyibing4real/super-spc.git
 cd super-spc
 
-# 安装前端依赖
+# 安装 frontend dependencies
 npm install
 
-# 安装后端依赖
+# 安装 backend dependencies
 cd api
 pip install -r requirements.txt
 cd ..
@@ -196,17 +187,17 @@ cd ..
 cd api
 uvicorn main:app --reload --port 8000
 
-# 新开一个终端，启动 frontend
+# 打开第二个终端，启动 frontend
 npm run dev -- --port 4173
 ```
 
-打开 **http://localhost:4173**，就能看到 app 页面。
+打开 **http://localhost:4173** 即可启动应用。
 
-采用了 vite/fastapi 架构，适合中小团队协作
+项目采用 `Vite + FastAPI` 架构，对小型或中型团队都比较容易扩展。
 
 ## Contributing
 
-欢迎贡献代码。提交 UI 相关变更之前，建议先阅读 `.claude/design/` 下的 design system 文档。
+欢迎贡献代码。提交 UI 相关变更前，建议先阅读 `.claude/design/` 下的 design system 文档。
 
 ```bash
 # 运行 algo test suite
@@ -219,7 +210,7 @@ pytest --hypothesis-show-statistics
 
 ## License
 
-本项目采用 `AGPL-3.0` license，详见 [LICENSE](LICENSE)。
+本项目采用 **AGPL-3.0** 许可证，详见 [LICENSE](LICENSE)。
 
 ---
 
