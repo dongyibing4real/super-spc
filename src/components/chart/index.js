@@ -375,6 +375,7 @@ export function createChart(container, options = {}) {
       yLabelFontSize: layout.yLabelFontSize,
       edgeLabelFontSize: layout.edgeLabelFontSize,
       showAxisTitles: layout.showAxisTitles,
+      phaseHeaderHeight: layout.phaseHeaderHeight,
       width: currentWidth,
       height: currentHeight,
       xDomainOverride: data.toggles.xDomainOverride ?? null,

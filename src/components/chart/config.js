@@ -102,8 +102,12 @@ export function computeLayout(data, width, height) {
   const minBottom = 32 * vScale;
   let bottom = Math.round(Math.max(minBottom, idealBottom * vScale));
 
+  // ── Phase header band (JMP-style: label strip above plot area) ──
+  const hasPhases = data.phases && data.phases.length > 1;
+  const phaseHeaderHeight = hasPhases ? Math.round(18 * vScale) : 0;
+
   // ── Clamp total vertical padding to ≤ 40% of height ─────────
-  const top = Math.round(16 * vScale);
+  const top = Math.round(16 * vScale) + phaseHeaderHeight;
   const maxVerticalPad = height * 0.4;
   if (top + bottom > maxVerticalPad) {
     bottom = Math.round(maxVerticalPad - top);
@@ -114,6 +118,7 @@ export function computeLayout(data, width, height) {
     yLabelFontSize,
     edgeLabelFontSize,
     showAxisTitles,
+    phaseHeaderHeight,
   };
 }
 

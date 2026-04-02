@@ -1357,12 +1357,11 @@ h1, h2, h3, h4, h5, h6 {
 /* Phase boundaries — solid vertical line only, no background band */
 .phase-line { stroke: rgba(209,152,11,0.30); stroke-width: 0.75; }
 .phase-label {
-  fill: var(--chart-text-2);
-  font-family: ui-monospace, monospace;
-  font-size: 9px;
+  fill: var(--chart-text);
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  font-size: 10px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
 }
 /* Limit lines — structure tier: subordinate to data, readable but quiet */
 .limit-line { stroke-width: 0.75; }
