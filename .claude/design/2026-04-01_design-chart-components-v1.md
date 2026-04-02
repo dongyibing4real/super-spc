@@ -10,8 +10,8 @@ The control chart is the single most important element in the product. Everythin
 - **Rule violation markers on points.** When a Nelson/Westgard rule fires, the triggering points are indicated by color (red for OOC, amber context in evidence rail). No concentric rings — color alone is the signal.
 - **Grid lines stay soft** (`--chart-grid`, 0.5px). Grid supports reading, never dominates. Togglable via context menu.
 - **Limit labels pin to chart edge** with their numeric value: `UCL 8.145`, `CL 8.078`, `LCL 8.011`. Rendered as pill-shaped edge labels outside the clip path.
-- **Phase boundaries** use solid gold lines (0.75px, opacity 0.30) with alternating background bands and a labeled chip above the chart area. Per-phase control limits render as independent line segments.
-- **Selected point** gets a thin crosshair (4-arm, 0.75px, 55% opacity) and updates the evidence rail signal section. ARIA labels include: label, value, unit, rule violations list.
+- **Phase boundaries** use solid gold lines (0.75px, opacity 0.30) with plain text labels above each phase region. No background bands, no chip rects. Per-phase control limits render as independent line segments.
+- **Selected point** stays at full opacity while all others dim to 0.35 (JMP convention). Click empty chart space to deselect. ARIA labels include: label, value, unit, rule violations list.
 - **Excluded points** are dimmed (25% opacity) with an X-mark overlay in amber (opacity 0.30, stroke-width 0.75px). Togglable via `excludedMarkers` context menu option.
 - **Histogram sidebar (planned):** A vertical histogram docked to the Y-axis showing data distribution.
 

@@ -816,6 +816,23 @@ export function setActiveChipEditor(state, chipId) {
 }
 
 export function selectPoint(state, index, id = null) {
+  // null/undefined index = deselect (click empty space)
+  if (index == null) {
+    if (id && state.charts[id]) {
+      const slot = state.charts[id];
+      return {
+        ...state,
+        charts: { ...state.charts, [id]: { ...slot, selectedPointIndex: null } },
+        ui: { ...state.ui, contextMenu: null },
+      };
+    }
+    return {
+      ...state,
+      selectedPointIndex: null,
+      ui: { ...state.ui, contextMenu: null }
+    };
+  }
+
   // Subgroup-based charts (X-Bar R, CUSUM, etc.) have their own point space ---
   // chartValues indices don't map to raw state.points indices.  Store selection
   // per-slot so clicks in one chart don't highlight semantically-unrelated

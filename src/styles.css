@@ -1354,9 +1354,8 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 500;
   
 }
-/* Phase boundaries — solid line with subtle background band, not orphan dashes */
+/* Phase boundaries — solid vertical line only, no background band */
 .phase-line { stroke: rgba(209,152,11,0.30); stroke-width: 0.75; }
-.phase-band { fill: rgba(209,152,11,0.02); }
 .phase-label {
   fill: var(--chart-text-2);
   font-family: ui-monospace, monospace;

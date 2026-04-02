@@ -325,10 +325,16 @@ export function createChart(container, options = {}) {
   yAxisHit.on('dblclick', () => config.onAxisReset?.('y'));
 
   svg.on('click', (event) => {
-    if (lastData?.forecast?.mode !== 'active') return;
     const target = event.target;
-    if (target?.closest?.('.forecast-shell-hit') || target?.closest?.('.forecast-cancel')) return;
-    config.onSelectForecast?.(false);
+
+    // Click empty space to deselect points (JMP convention)
+    config.onSelectPoint?.(null);
+
+    // Forecast deselection
+    if (lastData?.forecast?.mode === 'active') {
+      if (target?.closest?.('.forecast-shell-hit') || target?.closest?.('.forecast-cancel')) return;
+      config.onSelectForecast?.(false);
+    }
   });
 
   // Track last data for re-rendering on resize and axis drag clamping
