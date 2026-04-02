@@ -14,3 +14,4 @@ htmlcov/
 .codex/
 .hypothesis/
 *.db
+node_modules/
