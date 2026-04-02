@@ -38,14 +38,14 @@ function _renderSinglePhaseLimits(layer, labelLayer, y, sigma, data, config, L, 
   const yS1L = y(sigma.s1l);
   const yS2L = y(sigma.s2l);
 
-  // Main limit lines
+  // Main limit lines — thin and reference-grade, never heavier than the data series
   const mainLines = [
     { y: yUCL, cls: 'limit-line critical', dash: null },
     { y: yCL, cls: 'limit-line center', dash: null },
     { y: yLCL, cls: 'limit-line critical', dash: null },
-    { y: yUSL, cls: 'limit-line spec', dash: '4 6', color: 'rgba(139,92,246,0.35)' },
-    { y: yLSL, cls: 'limit-line spec', dash: '4 6', color: 'rgba(139,92,246,0.35)' },
-    ...(yTarget != null ? [{ y: yTarget, cls: 'limit-line spec target', dash: '2 4', color: 'rgba(139,92,246,0.5)' }] : []),
+    { y: yUSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
+    { y: yLSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
+    ...(yTarget != null ? [{ y: yTarget, cls: 'limit-line spec target', dash: '2 3', color: 'rgba(139,92,246,0.40)' }] : []),
   ];
 
   mainLines.forEach(d => {
@@ -85,9 +85,9 @@ function _renderPerPhaseLimits(layer, labelLayer, x, y, phases, data, config, L,
 
   // Spec limits span the full chart (not phase-specific)
   [
-    { y: yUSL, cls: 'limit-line spec', dash: '4 6', color: 'rgba(139,92,246,0.35)' },
-    { y: yLSL, cls: 'limit-line spec', dash: '4 6', color: 'rgba(139,92,246,0.35)' },
-    ...(yTarget != null ? [{ y: yTarget, cls: 'limit-line spec target', dash: '2 4', color: 'rgba(139,92,246,0.5)' }] : []),
+    { y: yUSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
+    { y: yLSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
+    ...(yTarget != null ? [{ y: yTarget, cls: 'limit-line spec target', dash: '2 3', color: 'rgba(139,92,246,0.40)' }] : []),
   ].forEach(d => {
     const line = layer.append('line')
       .attr('class', d.cls)

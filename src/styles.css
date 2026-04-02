@@ -1350,28 +1350,30 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.limit-line { stroke-width: 1.5; }
-.limit-line.critical { stroke: rgba(205,66,70,0.75); }
-.limit-line.center { stroke: rgba(35,133,81,0.85); }
-.limit-line.spec { stroke: rgba(139,92,246,0.35); stroke-dasharray: 4 6; stroke-width: 1; }
-.primary-path { fill: none; stroke: var(--blue); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.challenger-path { fill: none; stroke: var(--teal-bright); stroke-width: 0.9; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 5 5; opacity: 0.6; }
+/* Limit lines — reference geometry, thinner than data series */
+.limit-line { stroke-width: 1; }
+.limit-line.critical { stroke: rgba(205,66,70,0.65); }
+.limit-line.center { stroke: rgba(35,133,81,0.75); }
+.limit-line.spec { stroke: rgba(139,92,246,0.30); stroke-dasharray: 3 4; stroke-width: 0.75; }
+/* Series lines — primary is dominant, challenger recedes via opacity */
+.primary-path { fill: none; stroke: var(--blue); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+.challenger-path { fill: none; stroke: var(--teal-bright); stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; opacity: 0.4; }
+/* Points — small and clean, color is the signal not size */
 .chart-point {
-  fill: var(--blue); stroke: var(--chart-bg); stroke-width: 1.5;
+  fill: var(--blue); stroke: var(--chart-bg); stroke-width: 0.75;
   transition: fill var(--dur-short) var(--ease);
-  pointer-events: none; 
+  pointer-events: none;
 }
-
 .point-group:hover .chart-point { filter: brightness(1.15); }
 .chart-point.ooc { fill: var(--red); }
-.chart-point.challenger-point { fill: var(--teal-bright); opacity: 0.78; }
+.chart-point.challenger-point { fill: var(--teal-bright); opacity: 0.7; }
 .chart-point.challenger-point.ooc { fill: var(--red); }
-.selection-halo {
-  fill: none; stroke: rgba(45,114,210,0.38); stroke-width: 1.5;
-  transition: none;
+/* Selection crosshair — precision instrument, not a halo ring */
+.selection-crosshair {
+  stroke: var(--blue); stroke-width: 0.75; opacity: 0.55;
 }
 .point-group.is-excluded .chart-point { opacity: 0.25; }
-.excluded-mark { stroke: var(--amber); stroke-width: 1.5; opacity: 0.6; }
+.excluded-mark { stroke: var(--amber); stroke-width: 1.25; opacity: 0.5; }
 .event-line { stroke: rgba(139,92,246,0.25); stroke-width: 1; }
 .event-chip { fill: rgba(139,92,246,0.06); stroke: rgba(139,92,246,0.15); rx: 3; }
 .event-text { fill: #8B5CF6; font-family: ui-monospace, monospace; font-size: 9px; font-weight: 500; }
@@ -1431,7 +1433,6 @@ h1, h2, h3, h4, h5, h6 {
 .zone-c { opacity: 1; }
 
 
-.rule-violation-ring { fill: none;  }
 
 
 .cap-item {

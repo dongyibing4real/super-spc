@@ -11,16 +11,15 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
   const { points, violations, toggles, selectedIndex } = data;
 
   // Scale point radii to density: shrink when packed, but stay visible.
+  // Industry standard (JMP/Minitab): small points, color is the signal, not size.
   const plotWidth = config.width - config.padding.left - config.padding.right;
   const spacing = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
   const scale = Math.max(0.4, Math.min(1, spacing / 12));
-  const rNormal = Math.max(2.75, 3.75 * scale);
-  const rOOC = Math.max(3.25, 4.75 * scale);
-  const rSelected = Math.max(3.75, 5.5 * scale);
-  // Keep inspection and exception marks precise even in dense charts.
-  const rRing = Math.max(4.75, 6.5 * scale);
+  const rNormal = Math.max(1.75, 2.5 * scale);
+  const rOOC = Math.max(1.75, 2.5 * scale);      // same size as normal — color is the differentiator
+  const rSelected = Math.max(2.25, 3.0 * scale);  // only slightly larger
   const rHit = Math.max(8, 10 * scale);
-  const xSize = Math.max(2.5, 3 * scale);
+  const xSize = Math.max(2, 2.5 * scale);
 
   const groups = layer.selectAll('g.point-group')
     .data(points, (d, i) => d.id || i);
@@ -52,15 +51,6 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
         .attr('x1', cx - xSize).attr('y1', cy - xSize).attr('x2', cx + xSize).attr('y2', cy + xSize);
       g.append('line').attr('class', 'excluded-mark')
         .attr('x1', cx + xSize).attr('y1', cy - xSize).attr('x2', cx - xSize).attr('y2', cy + xSize);
-    }
-
-    // Rule violation ring remains visible, but selected-state emphasis takes precedence.
-    if (hasViolation && !d.excluded && i !== selectedIndex) {
-      const ringStroke = Math.max(0.9, 1.2 * scale);
-      g.append('circle').attr('class', 'rule-violation-ring')
-        .attr('cx', cx).attr('cy', cy).attr('r', rRing)
-        .attr('stroke', ooc ? 'rgba(205,66,70,0.34)' : 'rgba(200,118,25,0.32)')
-        .attr('stroke-width', ringStroke);
     }
 
     // Larger invisible hit target keeps interaction easy without bloating the visual mark.
