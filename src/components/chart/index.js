@@ -327,8 +327,9 @@ export function createChart(container, options = {}) {
   svg.on('click', (event) => {
     const target = event.target;
 
-    // Click empty space to deselect points (JMP convention)
+    // Click empty space to deselect points and phases (JMP convention)
     config.onSelectPoint?.(null);
+    config.onSelectPhase?.(null);
 
     // Forecast deselection
     if (lastData?.forecast?.mode === 'active') {

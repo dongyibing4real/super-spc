@@ -11,6 +11,16 @@ function computeYRange(data, seriesKey) {
   if (data.limits.lsl != null) limitsArr.push(data.limits.lsl);
   if (data.limits.target != null) limitsArr.push(data.limits.target);
 
+  // When phases exist, include ALL phases' UCL/LCL in the y-range so the axis
+  // adapts to the highest and lowest limits across all phases (JMP convention).
+  if (data.phases && data.phases.length > 1) {
+    data.phases.forEach(ph => {
+      if (ph.limits) {
+        limitsArr.push(ph.limits.ucl, ph.limits.lcl, ph.limits.center);
+      }
+    });
+  }
+
   const allValues = [...values, ...limitsArr];
   const dataMin = Math.min(...allValues);
   const dataMax = Math.max(...allValues);

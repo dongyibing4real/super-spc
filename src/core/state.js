@@ -857,6 +857,27 @@ export function selectPoint(state, index, id = null) {
   };
 }
 
+export function selectPhase(state, phaseIndex, id = null) {
+  // null = deselect. Same index = toggle off.
+  if (id && state.charts[id]) {
+    const slot = state.charts[id];
+    const current = slot.selectedPhaseIndex;
+    const next = (phaseIndex == null || phaseIndex === current) ? null : phaseIndex;
+    return {
+      ...state,
+      charts: { ...state.charts, [id]: { ...slot, selectedPhaseIndex: next } },
+      ui: { ...state.ui, contextMenu: null },
+    };
+  }
+  const current = state.selectedPhaseIndex;
+  const next = (phaseIndex == null || phaseIndex === current) ? null : phaseIndex;
+  return {
+    ...state,
+    selectedPhaseIndex: next,
+    ui: { ...state.ui, contextMenu: null },
+  };
+}
+
 export function moveSelection(state, delta) {
   return selectPoint(state, state.selectedPointIndex + delta);
 }

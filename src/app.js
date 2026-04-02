@@ -15,6 +15,7 @@ import {
   activateForecast,
   openContextMenu,
   selectForecast,
+  selectPhase,
   selectPoint,
   setColumns,
   setDatasets,
@@ -80,6 +81,10 @@ const chartRuntime = createChartRuntimeManager({
   onSelectPoint(id, index) {
     const state = store.getState();
     store.setState(selectPoint(focusChart(state, id), index, id));
+  },
+  onSelectPhase(id, phaseIndex) {
+    const state = store.getState();
+    store.setState(selectPhase(focusChart(state, id), phaseIndex, id));
   },
   onContextMenu(id, x, y, info) {
     const state = store.getState();
@@ -296,6 +301,7 @@ function buildChartData(id) {
       yDomainOverride: slot.overrides.y,
     },
     selectedIndex: hasChartValues ? (slot.selectedPointIndex ?? -1) : state.selectedPointIndex,
+    selectedPhaseIndex: slot.selectedPhaseIndex ?? null,
     violations: detectRuleViolations(state, id),
     capability: getCapability(state, id),
     metric: slot.context.metric,

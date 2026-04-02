@@ -6,6 +6,7 @@ export function createChartRuntimeManager({
   forecastPromptEligibility,
   buildChartData,
   onSelectPoint,
+  onSelectPhase,
   onContextMenu,
   onAxisDrag,
   onForecastDrag,
@@ -27,6 +28,7 @@ export function createChartRuntimeManager({
       }
       charts[id] = createChart(mount, {
         onSelectPoint: (index) => onSelectPoint(id, index),
+        onSelectPhase: (phaseIndex) => onSelectPhase(id, phaseIndex),
         onContextMenu: (x, y, info) => onContextMenu(id, x, y, info),
         onAxisDrag: (info) => onAxisDrag(id, info),
         onForecastDrag: (info) => onForecastDrag(id, info),

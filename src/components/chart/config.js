@@ -131,5 +131,6 @@ export const DEFAULT_CONFIG = {
 
   // Callbacks (set by app)
   onSelectPoint: null,
+  onSelectPhase: null,
   onContextMenu: null,
 };

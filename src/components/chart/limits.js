@@ -98,9 +98,11 @@ function _renderPerPhaseLimits(layer, labelLayer, x, y, phases, data, config, L,
   });
 
   // Per-phase control limits and sigma lines
+  // Lines span the full phase width (boundary-to-boundary), not just point-to-point.
+  // This attaches the CL/UCL/LCL lines to the vertical phase boundary lines.
   phases.forEach(phase => {
-    const x1 = x(phase.start);
-    const x2 = x(phase.end - 1);
+    const x1 = Math.max(x(phase.start), L);
+    const x2 = Math.min(x(phase.end), R);
     const yUCL = y(phase.limits.ucl);
     const yCL = y(phase.limits.center);
     const yLCL = y(phase.limits.lcl);
@@ -134,17 +136,23 @@ function _renderPerPhaseLimits(layer, labelLayer, x, y, phases, data, config, L,
     });
   });
 
-  // Edge labels use the last phase's limits (rightmost, closest to the label area)
-  const lastPhase = phases[phases.length - 1];
-  const sigmaVal = (lastPhase.limits.ucl - lastPhase.limits.center) / 3;
-  const fakeSigma = {
-    s1u: lastPhase.limits.center + sigmaVal,
-    s2u: lastPhase.limits.center + 2 * sigmaVal,
-    s1l: lastPhase.limits.center - sigmaVal,
-    s2l: lastPhase.limits.center - 2 * sigmaVal,
-  };
-  const fakeLimits = { ucl: lastPhase.limits.ucl, center: lastPhase.limits.center, lcl: lastPhase.limits.lcl };
-  _renderEdgeLabels(labelLayer, y, fakeSigma, { limits: fakeLimits }, config, R);
+  // Edge labels: show only for the selected phase (if any).
+  // When no phase is selected, hide per-phase edge labels — they would be misleading
+  // since different phases have different limits.
+  const selectedPhaseIndex = data.selectedPhaseIndex;
+  if (selectedPhaseIndex != null && phases[selectedPhaseIndex]) {
+    const selPhase = phases[selectedPhaseIndex];
+    const sigmaVal = (selPhase.limits.ucl - selPhase.limits.center) / 3;
+    const phaseSigma = {
+      s1u: selPhase.limits.center + sigmaVal,
+      s2u: selPhase.limits.center + 2 * sigmaVal,
+      s1l: selPhase.limits.center - sigmaVal,
+      s2l: selPhase.limits.center - 2 * sigmaVal,
+    };
+    const phaseLimits = { ucl: selPhase.limits.ucl, center: selPhase.limits.center, lcl: selPhase.limits.lcl };
+    _renderEdgeLabels(labelLayer, y, phaseSigma, { limits: phaseLimits }, config, R);
+  }
+  // When no phase is selected: no edge labels rendered (intentional — avoids ambiguity)
 }
 
 /** Render edge labels (UCL/CL/LCL + sigma markers) at the right side of the chart. */

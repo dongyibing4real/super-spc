@@ -32,11 +32,28 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
     .attr('width', R - L).attr('height', headerH)
     .attr('fill', 'rgba(147,153,163,0.06)');
 
-  data.phases.forEach((ph) => {
+  const selectedPhaseIndex = data.selectedPhaseIndex;
+
+  data.phases.forEach((ph, i) => {
     const sx = Math.max(x(ph.start), L);
     const ex = Math.min(x(ph.end), R);
     const pw = ex - sx;
     if (pw < 2) return;
+
+    const isSelected = selectedPhaseIndex === i;
+
+    // Clickable hit area for each phase in the header band
+    const hitRect = labelLayer.append('rect')
+      .attr('class', 'phase-header-hit')
+      .attr('x', sx).attr('y', bandTop)
+      .attr('width', pw).attr('height', headerH)
+      .attr('fill', isSelected ? 'rgba(45,114,210,0.10)' : 'transparent')
+      .style('cursor', 'pointer');
+
+    hitRect.on('click', (event) => {
+      event.stopPropagation();
+      config.onSelectPhase?.(i);
+    });
 
     // Phase label text — centered in the header band
     const labelText = ph.label || ph.id;
@@ -44,10 +61,11 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
     const cy = bandTop + headerH / 2;
 
     labelLayer.append('text')
-      .attr('class', 'phase-label')
+      .attr('class', `phase-label${isSelected ? ' phase-label-selected' : ''}`)
       .attr('x', cx).attr('y', cy)
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
+      .style('pointer-events', 'none')
       .text(labelText);
   });
 

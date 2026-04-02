@@ -1363,6 +1363,13 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 500;
   letter-spacing: 0.01em;
 }
+.phase-label-selected {
+  fill: var(--blue);
+  font-weight: 600;
+}
+.phase-header-hit:hover {
+  fill: rgba(45,114,210,0.06);
+}
 /* Limit lines — structure tier: subordinate to data, readable but quiet */
 .limit-line { stroke-width: 0.75; }
 .limit-line.critical { stroke: rgba(205,66,70,0.30); }
