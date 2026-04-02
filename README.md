@@ -1,37 +1,42 @@
 <div align="center">
 
+<img src="docs/assets/super-spc-logo.svg" alt="Super SPC logo" width="112" />
+
 # Super SPC
 
 ### A fully open-source modern statistical process control platform
+
+[Chinese](README.zh-CN.md)
+
+<p>
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-0F172A?style=flat-square" alt="License AGPL-3.0" />
+  <img src="https://img.shields.io/badge/frontend-Vite%20%2B%20Vanilla%20JS-1E293B?style=flat-square" alt="Frontend Vite and Vanilla JS" />
+  <img src="https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-1E293B?style=flat-square" alt="Backend FastAPI and SQLite" />
+  <img src="https://img.shields.io/badge/charts-27-1E293B?style=flat-square" alt="27 charts" />
+  <img src="https://img.shields.io/badge/rules-Nelson%20%2B%20Westgard-1E293B?style=flat-square" alt="Nelson and Westgard rules" />
+</p>
+
+Built for process engineers who want modern SPC without the old wizard-heavy workflow.
 
 [Getting Started](#getting-started) &bull; [Features](#features) &bull; [Chart Types](#chart-types) &bull; [Why Build This Project](#why-build-this-project) &bull; [Architecture](#architecture)
 
 ---
 
-![Super SPC Workspace - dark command-center UI with control charts, recipe rail, and evidence panel](docs/assets/multi-chart.png)
+![Super SPC Workspace - dark command-center UI with control charts, recipe rail, and evidence panel](docs/assets/hero.png)
 
 </div>
 
 ## Why Build This Project
 
-Many established products, such as **JMP** and **Minitab**, are still authoritative tools in the **Six Sigma** and quality engineering space, but they also come with familiar constraints:
+SPC software still tends to be expensive, closed, and awkward to extend. Tools such as **JMP** and **Minitab** remain important in the **Six Sigma** and quality engineering world, but they are often difficult to customize, still centered on wizard-heavy workflows, and priced far above what many teams need for day-to-day SPC work.
 
-- they are difficult to customize for new workflows;
-- product iteration is slow and the interaction model is heavily wizard-driven;
-- the ecosystem is closed, with core algorithm code unavailable;
-- their adaptability to newer AI/ML workflows is limited.
+That tradeoff is less necessary now. With modern frontend tooling, a practical Python analysis stack, and AI-assisted coding, a small team can build serious engineering software much faster than before.
 
-More importantly, they are expensive. If your daily work is focused mainly on SPC, you often end up paying for a large surface area of functionality you may never use.
-
-And even then, the SPC experience itself is not especially fascinating. A large share of the classical methods and workflows can already be reproduced with Python, but the product experience around them is still poor.
-
-Thanks to AI-assisted coding, it is now realistic for a small team, or even a single engineer, to build a serious product in this space. **Super SPC** was created from that shift. It draws inspiration from classic data visualization and quality engineering tools, but rebuilds the experience around modern interaction patterns and a modern application architecture.
-
-There is still plenty to improve. Many areas are unfinished, and there is still room to integrate more AI/ML capability from PHM and APC workflows. But the iteration speed is now much higher than before, and contributions, suggestions, and domain feedback from process engineers, reliability engineers, and anyone interested in this project are very welcome.
+**Super SPC** is our answer to that gap: an open-source SPC platform with interactive charts, evidence-first workflows, and a self-hosted architecture that engineers can actually inspect, extend, and improve.
 
 ## Features
 
-### Chart Is the Hero
+### Interactive Charts
 
 - Maximize chart interactivity: `marquee selection`, axis `pan/zoom`, and selectable phase regions
 - A rich evidence rail on the right side for selected point details and method context
@@ -73,7 +78,7 @@ There is still plenty to improve. Many areas are unfinished, and there is still 
 </tr>
 </table>
 
-### Data Prep With Fewer Round-Trips
+### Data Prep
 
 The client-side data engine is built on [Arquero](https://uwdata.github.io/arquero/).
 
@@ -99,13 +104,13 @@ Drill into each chart's control-state information and expose structured insights
 
 ![Findings](docs/assets/findings.gif)
 
-### Method Lab
+### Method Comparison
 
 Compare detection behavior across different chart methods.
 
 ![Method Lab](docs/assets/method-lab.gif)
 
-### Keyboard-First
+### Keyboard-First Workflow
 
 | Key | Action |
 |---|---|

@@ -1,0 +1,32 @@
+<svg width="960" height="240" viewBox="0 0 960 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="240" rx="24" fill="#F8FAFC"/>
+  <g transform="translate(36 20) scale(0.39)">
+    <defs>
+      <linearGradient id="bg" x1="96" y1="72" x2="416" y2="440" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#0F172A"/>
+        <stop offset="1" stop-color="#111827"/>
+      </linearGradient>
+      <linearGradient id="signal" x1="124" y1="315" x2="391" y2="196" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#38BDF8"/>
+        <stop offset="0.55" stop-color="#22C55E"/>
+        <stop offset="1" stop-color="#F97316"/>
+      </linearGradient>
+    </defs>
+    <rect x="96" y="72" width="320" height="368" rx="40" fill="url(#bg)"/>
+    <rect x="96.75" y="72.75" width="318.5" height="366.5" rx="39.25" stroke="#334155" stroke-width="1.5"/>
+    <path d="M152 152H360" stroke="#475569" stroke-width="10" stroke-linecap="round"/>
+    <path d="M152 256H360" stroke="#475569" stroke-width="10" stroke-linecap="round"/>
+    <path d="M152 360H360" stroke="#475569" stroke-width="10" stroke-linecap="round"/>
+    <path d="M154 310L206 268L250 286L305 210L360 228" stroke="url(#signal)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="206" cy="268" r="16" fill="#E2E8F0"/>
+    <circle cx="250" cy="286" r="16" fill="#E2E8F0"/>
+    <circle cx="305" cy="210" r="16" fill="#FB7185"/>
+    <circle cx="360" cy="228" r="16" fill="#E2E8F0"/>
+    <path d="M204 148C204 120.386 226.386 98 254 98H258C285.614 98 308 120.386 308 148V160H204V148Z" fill="#E2E8F0"/>
+    <path d="M232 134C232 121.85 241.85 112 254 112H258C270.15 112 280 121.85 280 134V160H232V134Z" fill="#0F172A"/>
+  </g>
+
+  <text x="244" y="108" fill="#0F172A" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="62" font-weight="700" letter-spacing="1.4">SUPER SPC</text>
+  <text x="246" y="152" fill="#334155" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="22" font-weight="600" letter-spacing="0.8">MODERN STATISTICAL PROCESS CONTROL</text>
+  <text x="246" y="187" fill="#475569" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="19">Interactive charts, evidence-first workflow, and self-hosted analysis.</text>
+</svg>
