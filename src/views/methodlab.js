@@ -3,6 +3,11 @@ import { toneClass } from "../helpers.js";
 
 export function renderMethodLab(state) {
   const workspace = deriveWorkspace(state);
+  const primaryId = state.chartOrder[0];
+  const challengerId = state.chartOrder[1];
+  const primarySlot = primaryId ? state.charts[primaryId] : null;
+  const challengerSlot = challengerId ? state.charts[challengerId] : null;
+
   return `
     <section class="route-panel">
       <div class="route-header">
@@ -11,7 +16,7 @@ export function renderMethodLab(state) {
           <p class="muted">Primary vs challenger comparison</p>
         </div>
         <div class="segmented">
-          ${["ready","partial","timeout"].map(s => {
+          ${["ready", "partial", "timeout"].map((s) => {
             const isActive = (s === "ready" && state.chartOrder.length > 1) || (s !== "ready" && state.chartOrder.length === 1);
             return `<button data-action="set-challenger-status" data-status="${s}" type="button" class="${isActive ? "active" : ""}">${s === "timeout" ? "Timeout" : s.charAt(0).toUpperCase() + s.slice(1)}</button>`;
           }).join("")}
@@ -20,7 +25,7 @@ export function renderMethodLab(state) {
       <div class="method-grid">
         <article class="panel-card">
           <p class="eyebrow">Primary</p>
-          <h4>${state.charts.primary.context.chartType?.label || "IMR"}</h4>
+          <h4>${primarySlot?.context?.chartType?.label || "IMR"}</h4>
           <ul class="metric-stack">
             <li><span>Detection</span><strong>Classical EWMA</strong></li>
             <li><span>Conclusion</span><strong>Shift confirmed</strong></li>
@@ -29,18 +34,18 @@ export function renderMethodLab(state) {
         </article>
         <article class="panel-card dark">
           <p class="eyebrow">Challenger</p>
-          <h4>${state.charts.challenger?.context.chartType?.label || "â€”"}</h4>
+          <h4>${challengerSlot?.context?.chartType?.label || "¡ª"}</h4>
           <ul class="metric-stack">
-            <li><span>Status</span><strong>${state.chartOrder.length > 1 ? "ready" : "inactive"}</strong></li>
-            <li><span>Detection</span><strong>${workspace.compareCards[1].value}</strong></li>
-            <li><span>False alarms</span><strong>${workspace.compareCards[0].value}</strong></li>
+            <li><span>Status</span><strong>${challengerSlot ? "ready" : "inactive"}</strong></li>
+            <li><span>Detection</span><strong>${workspace.compareCards[1]?.value || "¡ª"}</strong></li>
+            <li><span>False alarms</span><strong>${workspace.compareCards[0]?.value || "¡ª"}</strong></li>
           </ul>
         </article>
         <article class="panel-card span-two">
           <h4>Decision Posture</h4>
           <p class="muted">Challenger never silently replaces primary. Review deltas and keep disagreement visible.</p>
           <div class="comparison-lanes">
-            ${workspace.compareCards.map(item => `
+            ${workspace.compareCards.map((item) => `
               <div class="lane-card ${toneClass(item.tone)}"><span>${item.label}</span><strong>${item.value}</strong></div>
             `).join("")}
           </div>

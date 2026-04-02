@@ -247,15 +247,24 @@ export function cleanText(table, column, operation = 'trim') {
   switch (operation) {
     case 'trim':
       return table.derive({
-        [column]: d => op.trim(d[column]),
+        [column]: escape(d => {
+          const val = d[column];
+          return val == null ? val : String(val).trim();
+        }),
       });
     case 'lower':
       return table.derive({
-        [column]: d => op.lower(d[column]),
+        [column]: escape(d => {
+          const val = d[column];
+          return val == null ? val : String(val).toLowerCase();
+        }),
       });
     case 'upper':
       return table.derive({
-        [column]: d => op.upper(d[column]),
+        [column]: escape(d => {
+          const val = d[column];
+          return val == null ? val : String(val).toUpperCase();
+        }),
       });
     case 'title':
       // Arquero lacks a title-case op; use escape() for native JS

@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js",
-    "test": "node tests/state.test.js && node tests/forecast-view.test.js && node tests/forecast-prediction.test.js"
+    "test": "node tests/state.test.js && node tests/forecast-view.test.js && node tests/forecast-prediction.test.js && node tests/app.workflows.test.js && node tests/app.render-contract.test.js && node tests/app.store.test.js && node tests/ui-subscribers.test.js && node tests/chart-runtime-manager.test.js && node tests/chart-subscribers.test.js && node tests/keydown-handler.test.js && node tests/change-handler.test.js && node tests/click-handler.test.js && node tests/app-click-handler.test.js && node tests/prep-runtime.test.js && node tests/prep-click-handler.test.js && node tests/drag-runtime.test.js && node tests/methodlab-view.test.js"
   },
   "devDependencies": {
     "playwright": "^1.58.2",
@@ -27,3 +27,4 @@
     "papaparse": "^5.5.3"
   }
 }
+

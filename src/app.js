@@ -57,7 +57,6 @@ import {
   collectChartIds,
   focusChart,
   getFocused,
-  getPrimary,
   migrateTreeToRows,
   togglePaneDataTable,
   activateForecast,
@@ -71,7 +70,7 @@ import {
   DEFAULT_PARAMS,
 } from "./core/state.js";
 import { renderSidebar } from "./components/sidebar.js";
-import { applyParamsToContext, capClass, CHART_TYPE_LABELS, detectRuleViolations, getCapability } from "./helpers.js";
+import { capClass, CHART_TYPE_LABELS, detectRuleViolations, getCapability } from "./helpers.js";
 import {
   createDataset,
   deleteDataset,
@@ -80,7 +79,6 @@ import {
   fetchPoints,
   runAnalysis,
 } from "./data/api.js";
-import { buildDefaultContext, transformAnalysis, transformPoints } from "./data/transforms.js";
 import { parseCSV } from "./data/csv-engine.js";
 import {
   createTable, filterRows, sortTable, findReplace, removeDuplicates,
@@ -91,7 +89,6 @@ import { createChart } from "./components/chart/index.js";
 
 import { renderNotice, renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
 import { renderRecipeRail } from "./components/recipe-rail.js";
-import { renderContextMenu } from "./components/context-menu.js";
 import { renderChartArena, renderGhostRows } from "./components/chart-arena.js";
 import { renderWorkspace, renderEvidenceRail } from "./views/workspace.js";
 import { renderDataPrep } from "./views/dataprep.js";
@@ -101,13 +98,103 @@ import { morphInner, morphEl } from "./core/morph.js";
 import { generateFindings } from "./core/findings-engine.js";
 import { buildForecastView } from "./prediction/build-forecast-view.js";
 import { DEFAULT_FORECAST_HORIZON } from "./prediction/constants.js";
+import { createStore } from "./core/store.js";
+import {
+  finalizeDatasetLoad,
+  finalizeReanalysis,
+} from "./runtime/analysis-runtime.js";
+import { setupUiSubscribers } from "./runtime/ui-subscribers.js";
+import { createChartRuntimeManager } from "./runtime/chart-runtime-manager.js";
+import { setupChartSubscribers } from "./runtime/chart-subscribers.js";
+import { setupDragInteractions } from "./runtime/drag-runtime.js";
+import { handleAppKeydown, navigateSelectionToViolation } from "./events/keydown-handler.js";
+import { handleAppChange } from "./events/change-handler.js";
+import { handleWorkspaceClick } from "./events/click-handler.js";
+import { handleAppClick } from "./events/app-click-handler.js";
+import { handlePrepClick } from "./events/prep-click-handler.js";
+import { replayPrepTransforms } from "./runtime/prep-runtime.js";
 
 /* ===Global state ===*/
 const root = document.getElementById("app");
-let state = createInitialState();
-let charts = { primary: null, challenger: null };
+const store = createStore(createInitialState());
+let state = store.getState();
 const forecastPromptTimers = new Map();
 const forecastPromptEligibility = new Map();
+
+store.subscribe((nextState) => {
+  state = nextState;
+});
+
+setupUiSubscribers(store, root);
+
+function setState(nextState) {
+  return store.setState(nextState);
+}
+
+function patchUi(nextUi) {
+  return { ...state, ui: { ...state.ui, ...nextUi } };
+}
+
+const chartRuntime = createChartRuntimeManager({
+  root,
+  createChart,
+  collectChartIds,
+  clearForecastPromptTimer,
+  forecastPromptEligibility,
+  buildChartData,
+  onSelectPoint(id, index) {
+    const next = selectPoint(focusChart(state, id), index, id);
+    commitChart(next);
+    commitEvidenceRail(next);
+  },
+  onContextMenu(id, x, y, info) {
+    commitContextMenu(openContextMenu(focusChart(state, id), x, y, { ...info, role: id }));
+  },
+  onAxisDrag(id, info) {
+    const focused = focusChart(state, id);
+    if (info.axis === "x") {
+      let next = setXDomainOverride(focused, info.min, info.max, id);
+      next = extendForecastToViewport(next, id, info.max);
+      commitChart(next);
+      return;
+    }
+    if (info.axis === "y") {
+      commitChart(setYDomainOverride(focused, info.yMin, info.yMax, id));
+    }
+  },
+  onForecastDrag(id, info) {
+    const focused = focusChart(state, id);
+    let next = setForecastHorizon(focused, info.horizon, id);
+    next = setXDomainOverride(next, info.min, info.max, id);
+    commitChart(next);
+  },
+  onForecastActivity(id) {
+    handleForecastActivity(id);
+  },
+  onForecastPromptEligibilityChange(id, payload) {
+    handleForecastPromptEligibility(id, payload.eligible);
+  },
+  onActivateForecast(id) {
+    let next = activateForecast(focusChart(state, id), id);
+    next = ensureForecastVisible(next, id);
+    commitChart(next);
+  },
+  onSelectForecast(id, selected) {
+    commitChart(selectForecast(focusChart(state, id), selected, id));
+  },
+  onCancelForecast(id) {
+    commitChart(cancelForecast(focusChart(state, id), id));
+  },
+  onAxisReset(id, axis) {
+    commitChart(resetAxis(state, axis, id));
+  },
+});
+
+setupChartSubscribers(store, root, {
+  chartRuntime,
+  getCapability,
+  capClass,
+});
 
 /* ===Unsaved changes guard ===*/
 window.addEventListener("beforeunload", (e) => {
@@ -306,148 +393,33 @@ function render() {
   `);
 
   if (state.route === "workspace") {
-    // Collect visible chart IDs from the layout tree
-    const visibleIds = collectChartIds(state.chartLayout);
-
-    for (const id of visibleIds) {
-      const mount = document.getElementById(`chart-mount-${id}`);
-      if (!mount) continue;
-
-      // Recreate chart if instance is missing or SVG is stale (e.g. after data table toggle)
-      const svgStale = charts[id] && !charts[id].svg?.node()?.isConnected;
-      if (!charts[id] || svgStale) {
-        if (charts[id]) { charts[id].destroy(); charts[id] = null; }
-        charts[id] = createChart(mount, {
-          onSelectPoint: (index) => {
-            state = focusChart(state, id);
-            state = selectPoint(state, index, id);
-            commitChart(state);
-            commitEvidenceRail(state);
-          },
-          onContextMenu: (x, y, info) => {
-            state = focusChart(state, id);
-            commitContextMenu(openContextMenu(state, x, y, { ...info, role: id }));
-          },
-          onAxisDrag: (info) => {
-            state = focusChart(state, id);
-            if (info.axis === 'x') {
-              let next = setXDomainOverride(state, info.min, info.max, id);
-              next = extendForecastToViewport(next, id, info.max);
-              commitChart(next);
-            }
-            if (info.axis === 'y') commitChart(setYDomainOverride(state, info.yMin, info.yMax, id));
-          },
-          onForecastDrag: (info) => {
-            state = focusChart(state, id);
-            let next = setForecastHorizon(state, info.horizon, id);
-            next = setXDomainOverride(next, info.min, info.max, id);
-            commitChart(next);
-          },
-          onForecastActivity: () => handleForecastActivity(id),
-          onForecastPromptEligibilityChange: ({ eligible }) => handleForecastPromptEligibility(id, eligible),
-          onActivateForecast: () => {
-            state = focusChart(state, id);
-            let next = activateForecast(state, id);
-            next = ensureForecastVisible(next, id);
-            commitChart(next);
-          },
-          onSelectForecast: (selected) => {
-            state = focusChart(state, id);
-            commitChart(selectForecast(state, selected, id));
-          },
-          onCancelForecast: () => {
-            state = focusChart(state, id);
-            commitChart(cancelForecast(state, id));
-          },
-          onAxisReset: (axis) => commitChart(resetAxis(state, axis, id)),
-        });
-      }
-      charts[id].update(buildChartData(id));
-    }
-
-    requestAnimationFrame(() => {
-      for (const id of visibleIds) {
-        if (charts[id]) charts[id].update(buildChartData(id));
-      }
-    });
-
-    // Destroy charts not visible in the tree
-    for (const id of Object.keys(charts)) {
-      if (!visibleIds.includes(id) && charts[id]) {
-        clearForecastPromptTimer(id);
-        forecastPromptEligibility.delete(id);
-        charts[id].destroy();
-        charts[id] = null;
-      }
-    }
+    chartRuntime.syncWorkspace(state);
   } else {
-    for (const role of state.chartOrder) {
-      clearForecastPromptTimer(role);
-      forecastPromptEligibility.delete(role);
-      if (charts[role]) { charts[role].destroy(); charts[role] = null; }
-    }
+    chartRuntime.destroyInactive(state);
   }
 }
 
 /* ===Commit functions ===*/
-function commit(next) { state = next; render(); }
+function commit(next) { setState(next); render(); }
 
 function commitChart(next) {
-  state = next;
-  const chartDataCache = {};
-  for (const id of state.chartOrder) {
-    chartDataCache[id] = buildChartData(id);
-    if (charts[id]) charts[id].update(chartDataCache[id]);
-  }
-  for (const id of state.chartOrder) {
-    const cap = getCapability(state, id);
-    const titlebar = root.querySelector(`.chart-pane[data-chart-id="${id}"] .chart-pane-titlebar`);
-    if (!titlebar) continue;
-    const existing = titlebar.querySelector('.pane-caps');
-    if (cap.cpk) {
-      const html = `<span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
-        <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>`;
-      if (existing) { existing.innerHTML = html; }
-      else { const d = document.createElement('div'); d.className = 'pane-caps'; d.innerHTML = html; titlebar.querySelector('.pane-actions')?.before(d); }
-    } else if (existing) {
-      existing.remove();
-    }
-  }
-  // Update focus visual
-  root.querySelectorAll('.chart-pane').forEach(p => {
-    p.classList.toggle('pane-focused', p.dataset.chartId === state.focusedChartId);
-  });
+  setState(next);
 }
 
 function commitLayout(next) {
-  state = next;
+  setState(next);
   // Full re-render for layout changes (tree structure may have changed)
   render();
   saveLayout();
 }
 
 function commitContextMenu(next) {
-  state = next;
-  const stage = root.querySelector(`#chart-mount-${state.focusedChartId}`);
-  if (!stage) return;
-  stage.querySelector(".context-menu")?.remove();
-
-  if (state.ui.contextMenu) {
-    const div = document.createElement("div");
-    div.innerHTML = renderContextMenu(state);
-    stage.appendChild(div.firstElementChild);
-    stage.querySelector(".context-menu [role='menuitem']")?.focus();
-  } else {
-    stage.focus();
-  }
+  setState(next);
 }
 
 /* ===Targeted commit ---recipe rail (chip editors, layer toggles) ===*/
 function commitRecipeRail(next) {
-  state = next;
-  const rail = root.querySelector(".recipe-rail");
-  if (!rail) return;
-  morphEl(rail, renderRecipeRail(state));
+  setState(next);
 }
 
 /* ===FLIP animation helpers ---smooth card float transitions ===*/
@@ -484,78 +456,22 @@ function playRailFlip(firstMap, duration = 250) {
 
 /* ===Targeted commit ---notice bar ===*/
 function commitNotice(next) {
-  state = next;
-  const existing = root.querySelector(".notice");
-  if (existing) existing.remove();
-  if (state.ui.notice) {
-    const main = root.querySelector(".main-shell");
-    if (main) main.insertAdjacentHTML("afterbegin", renderNotice(state));
-  }
+  setState(next);
 }
 
 /* ===Targeted commit ---full workspace (recipe rail + chart arena + chart data) ===*/
 function commitWorkspace(next) {
-  state = next;
-
-  // 1. Recipe rail
-  const rail = root.querySelector(".recipe-rail");
-  if (rail) morphEl(rail, renderRecipeRail(state));
-
-  // 2. Pane method labels + capability badges
-  for (const id of state.chartOrder) {
-    const paneMethod = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-method`);
-    if (paneMethod) paneMethod.textContent = state.charts[id].context.chartType?.label || "";
-    const paneCaps = root.querySelector(`.chart-pane[data-chart-id="${id}"] .pane-caps`);
-    const cap = getCapability(state, id);
-    if (paneCaps && cap.cpk) {
-      paneCaps.innerHTML = `
-        <span class="cap-item"><span class="cap-label">Cpk</span><span class="cap-value ${capClass(cap.cpk)}">${cap.cpk}</span></span>
-        <span class="cap-item"><span class="cap-label">Ppk</span><span class="cap-value ${capClass(cap.ppk)}">${cap.ppk}</span></span>
-      `;
-    }
-  }
-
-  // 4. Update D3 charts
-  for (const id of state.chartOrder) {
-    if (charts[id]) charts[id].update(buildChartData(id));
-  }
-
-  // 5. Evidence rail
-  const evidenceRail = root.querySelector(".evidence-rail");
-  if (evidenceRail) {
-    const workspace = deriveWorkspace(state);
-    morphEl(evidenceRail, renderEvidenceRail(state, workspace));
-  }
+  setState(next);
 }
 
 /* ===Targeted commit ---evidence rail ===*/
 function commitEvidenceRail(next) {
-  state = next;
-  const rail = root.querySelector(".evidence-rail");
-  if (!rail) return;
-  const workspace = deriveWorkspace(state);
-  morphEl(rail, renderEvidenceRail(state, workspace));
-}
-
-/* ===Slot builder ---shared by loadDatasetById and reanalyze ===*/
-function buildSlots(analyses, baseContext) {
-  const slots = {};
-  state.chartOrder.forEach((id, i) => {
-    const p = state.charts[id].params;
-    const t = transformAnalysis(analyses[i], p.usl, p.lsl);
-    slots[id] = {
-      context: applyParamsToContext(baseContext, p),
-      limits: { ...t.limits, target: p.target ?? null }, capability: t.capability, violations: t.violations,
-      sigma: t.sigma, zones: t.zones, chartValues: t.chartValues,
-      chartLabels: t.chartLabels, phases: t.phases,
-    };
-  });
-  return slots;
+  setState(next);
 }
 
 /* ===Data loading ===*/
 async function loadDatasetById(datasetId) {
-  state = setLoadingState(state, true);
+  setState(setLoadingState(state, true));
   render();
   try {
     // 1. Fetch data and columns first
@@ -563,46 +479,23 @@ async function loadDatasetById(datasetId) {
       fetchPoints(datasetId),
       fetchColumns(datasetId).catch(() => []),
     ]);
-    state = setColumns(state, columns);
+    setState(setColumns(state, columns));
 
-    // 2. Set initial column params from column roles (only if not already set)
-    const valueName = columns.find(c => c.role === "value")?.name || null;
-    const sgName = columns.find(c => c.role === "subgroup")?.name || null;
-    const phName = columns.find(c => c.role === "phase")?.name || null;
-    for (const id of state.chartOrder) {
-      if (!state.charts[id].params.value_column) {
-        state = setChartParams(state, id, { value_column: valueName, subgroup_column: sgName, phase_column: phName });
-      }
-    }
-
-    // 3. Run analysis per chart with per-chart params (gracefully handle per-chart failures)
+    // 2. Run analysis per chart with per-chart params (gracefully handle per-chart failures)
     const analysisResults = await Promise.allSettled(
       state.chartOrder.map(id => runAnalysis(datasetId, state.charts[id].params))
     );
-    const ds = state.datasets.find((d) => d.id === datasetId);
-    const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
-    const slots = {};
-    state.chartOrder.forEach((id, i) => {
-      if (analysisResults[i].status === "fulfilled") {
-        const p = state.charts[id].params;
-        const t = transformAnalysis(analysisResults[i].value, p.usl, p.lsl);
-        slots[id] = {
-          context: applyParamsToContext(baseContext, p),
-          limits: { ...t.limits, target: p.target ?? null }, capability: t.capability, violations: t.violations,
-          sigma: t.sigma, zones: t.zones, chartValues: t.chartValues,
-          chartLabels: t.chartLabels, phases: t.phases,
-        };
-      }
-    });
-    const failedCharts = state.chartOrder.filter((_, i) => analysisResults[i].status === "rejected");
-    state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId });
-    state = setStructuralFindings(state, generateFindings(state));
-    if (failedCharts.length > 0) {
-      state = { ...state, ui: { ...state.ui, notice: { tone: "warning", title: "Analysis failed", body: `${failedCharts.length} chart(s) could not be analyzed.` } } };
-    }
+    ({ nextState: state } = finalizeDatasetLoad(state, {
+      datasetId,
+      datasets: state.datasets,
+      points,
+      columns,
+      analysisResults,
+    }));
+    setState(state);
     render();
   } catch (err) {
-    state = setError(state, err.message);
+    setState(setError(state, err.message));
     render();
   }
 }
@@ -616,1036 +509,175 @@ async function reanalyze() {
     const analysisResults = await Promise.allSettled(
       state.chartOrder.map(id => runAnalysis(dsId, state.charts[id].params))
     );
-    const columns = state.columnConfig.columns;
-    const ds = state.datasets.find((d) => d.id === dsId);
-    const baseContext = ds ? buildDefaultContext(ds, columns) : getPrimary(state).context;
-
-    // Build slots only for successful analyses; keep existing data for failed ones
-    const slots = {};
-    state.chartOrder.forEach((id, i) => {
-      if (analysisResults[i].status === "fulfilled") {
-        const p = state.charts[id].params;
-        const t = transformAnalysis(analysisResults[i].value, p.usl, p.lsl);
-        slots[id] = {
-          context: applyParamsToContext(baseContext, p),
-          limits: { ...t.limits, target: p.target ?? null }, capability: t.capability, violations: t.violations,
-          sigma: t.sigma, zones: t.zones, chartValues: t.chartValues,
-          chartLabels: t.chartLabels, phases: t.phases,
-        };
-      }
-      // If rejected, slot is omitted ---loadDataset will keep existing chart data
-    });
-
-    const failedCharts = state.chartOrder.filter((_, i) => analysisResults[i].status === "rejected");
-    state = loadDataset(state, { points: transformPoints(points, columns), slots, datasetId: dsId });
-    state = setStructuralFindings(state, generateFindings(state));
-    if (failedCharts.length > 0) {
-      state = { ...state, ui: { ...state.ui, notice: { tone: "warning", title: "Analysis failed", body: `${failedCharts.length} chart(s) could not be analyzed.` } } };
-    }
+    ({ nextState: state } = finalizeReanalysis(state, { points, analysisResults }));
     commitWorkspace(state);
   } catch (err) {
-    state = setError(state, err.message);
+    setState(setError(state, err.message));
     commitNotice(state);
   }
 }
 
 /* ===Event handlers ===*/
 root.addEventListener("click", async (e) => {
-  // Focus-on-click: clicking anywhere inside a chart pane focuses that chart
-  const clickedPane = e.target.closest('.chart-pane[data-chart-id]');
-  if (clickedPane) {
-    const chartId = clickedPane.dataset.chartId;
-    if (chartId && chartId !== state.focusedChartId && state.charts[chartId]) {
-      state = focusChart(state, chartId);
-      // Update focus visual + recipe rail + evidence rail
-      root.querySelectorAll('.chart-pane').forEach(p => {
-        p.classList.toggle('pane-focused', p.dataset.chartId === state.focusedChartId);
-      });
-      commitRecipeRail(state);
-      commitEvidenceRail(state);
-    }
-  }
+  const handledWorkspaceClick = handleWorkspaceClick(e, {
+    state,
+    root,
+    commit,
+    commitChart,
+    commitContextMenu,
+    commitRecipeRail,
+    commitEvidenceRail,
+    commitNotice,
+    patchUi,
+    setActiveChipEditor,
+    clearNotice,
+    closeContextMenu,
+    selectPoint,
+    toggleChartOption,
+    togglePointExclusion,
+    toggleTransform,
+    failTransformStep,
+    recoverTransformStep,
+    setChallengerStatus,
+    selectStructuralFinding,
+    setFindingsChart,
+    setStructuralFindings,
+    generateFindings,
+    togglePaneDataTable,
+    focusChart,
+    snapshotRailPositions,
+    playRailFlip,
+    isWorkspaceFull,
+    getFocused,
+    DEFAULT_PARAMS,
+    addChart,
+    removeChart,
+    saveLayout,
+    reanalyze,
+    chartRuntime,
+  });
 
   const t = e.target.closest("[data-action]");
   if (!t) {
-    if (state.activeChipEditor) commitRecipeRail(setActiveChipEditor(state, state.activeChipEditor));
-    if (state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
-    if (state.ui.pendingNewChart && !e.target.closest('.rail-card--pending')) {
-      state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
-      commitRecipeRail(state);
-    }
     if (state.dataPrep.activePanel && !e.target.closest('.prep-panel') && !e.target.closest('.prep-transform-toolbar')) {
       commit(closeActivePanel(state));
+      return;
     }
+    if (handledWorkspaceClick) return;
     return;
   }
-  const a = t.dataset.action;
-  switch (a) {
-    case "close-shortcut-overlay":
-      state = { ...state, ui: { ...state.ui, shortcutOverlay: false } };
-      render();
-      return;
-    case "navigate": {
-      commit(navigate(state, t.dataset.route));
-      if (t.dataset.route === "dataprep" && state.dataPrep.selectedDatasetId && state.dataPrep.datasetPoints.length === 0) {
-        try {
-          const dsId = state.dataPrep.selectedDatasetId;
-          const [pts, cols] = await Promise.all([
-            fetchPoints(dsId),
-            fetchColumns(dsId).catch(() => []),
-          ]);
-          const rawRows = pts.map(p => p.raw_data || {});
-          const arqueroTable = createTable(rawRows, cols.length > 0 ? cols : state.columnConfig.columns);
-          state = setPrepParsedData(state, { rawRows, arqueroTable, columns: cols.length > 0 ? cols : state.columnConfig.columns });
-          state = loadPrepPoints(state, pts);
-          render();
-        } catch (err) { commit(setPrepError(state, err.message)); }
-      }
-      break;
-    }
-    case "select-point":       commitChart(selectPoint(state, Number(t.dataset.index))); break;
-    case "toggle-chart": {
-      const next = toggleChartOption(state, t.dataset.option);
-      commitChart(next);
-      if (state.ui.contextMenu) commitContextMenu(next);
-      break;
-    }
-    case "exclude-point":      commitChart(togglePointExclusion(state, Number(t.dataset.index))); commitContextMenu(closeContextMenu(state)); break;
-    case "toggle-transform":   commitEvidenceRail(toggleTransform(state, t.dataset.stepId)); break;
-    case "fail-transform":     commitEvidenceRail(failTransformStep(state, t.dataset.stepId)); break;
-    case "recover-transform":  commitEvidenceRail(recoverTransformStep(state, t.dataset.stepId)); break;
-    case "set-challenger-status": commit(setChallengerStatus(state, t.dataset.status)); break;
-    case "select-structural-finding": commit(selectStructuralFinding(state, t.dataset.findingId)); break;
-    case "switch-findings-chart": {
-      const cid = t.dataset.chartId;
-      state = setFindingsChart(state, cid);
-      state = setStructuralFindings(state, generateFindings(state, cid), cid);
-      render();
-      break;
-    }
-    case "clear-notice":       commitNotice(clearNotice(state)); break;
-    case "toggle-pane-table": {
-      const cid = t.dataset.chartId;
-      if (cid) commit(togglePaneDataTable(state, cid));
-      break;
-    }
-    case "focus-chart": {
-      const cid = t.dataset.chartId;
-      if (cid && cid !== state.focusedChartId && state.charts[cid]) {
-        const snap = snapshotRailPositions();
-        state = focusChart(state, cid);
-        // Targeted updates instead of full render --- avoids D3 chart rebuild
-        root.querySelectorAll(".chart-pane").forEach(p => {
-          p.classList.toggle("pane-focused", p.dataset.chartId === state.focusedChartId);
-        });
-        // Lightweight rail reorder: move DOM nodes to match chartOrder, toggle focus class.
-        // Skips full morphdom — nothing inside cards changed, only order and focus state.
-        const rail = root.querySelector(".recipe-rail");
-        if (rail) {
-          const cardMap = new Map();
-          rail.querySelectorAll(".rail-card[data-chart-id]").forEach(el => cardMap.set(el.dataset.chartId, el));
-          // Focused chart first, then the rest in chartOrder
-          const order = [state.focusedChartId, ...state.chartOrder.filter(id => id !== state.focusedChartId)];
-          for (const id of order) {
-            const card = cardMap.get(id);
-            if (card) {
-              card.classList.toggle("rail-card-focused", id === state.focusedChartId);
-              rail.appendChild(card); // moves existing node to end — reorders without recreating
-            }
-          }
-        }
-        commitEvidenceRail(state);
-        playRailFlip(snap, 250);
-      }
-      break;
-    }
-    case "open-add-chart": {
-      if (isWorkspaceFull()) {
-        state = { ...state, ui: { ...state.ui, notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." } } };
-        commit(state);
-        break;
-      }
-      const focused = getFocused(state);
-      state = { ...state, ui: { ...state.ui, pendingNewChart: {
-        ...DEFAULT_PARAMS,
-        chart_type: focused.params.chart_type,
-        value_column: focused.params.value_column,
-        subgroup_column: focused.params.subgroup_column,
-        phase_column: focused.params.phase_column,
-      } } };
-      commitRecipeRail(state);
-      break;
-    }
-    case "cancel-add-chart": {
-      state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
-      commitRecipeRail(state);
-      break;
-    }
-    case "confirm-add-chart": {
-      const pending = state.ui.pendingNewChart;
-      if (!pending) break;
-      state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
-      state = addChart(state, { chartType: pending.chart_type });
-      // Apply pending params to the newly created chart
-      const newId = `chart-${state.nextChartId - 1}`;
-      if (state.charts[newId]) {
-        state = { ...state, charts: { ...state.charts, [newId]: { ...state.charts[newId], params: { ...pending } } } };
-      }
-      commit(state);
-      saveLayout();
-      if (state.activeDatasetId) reanalyze();
-      break;
-    }
-    case "add-chart-from-rail": {
-      if (isWorkspaceFull()) {
-        state = { ...state, ui: { ...state.ui, notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." } } };
-        commit(state);
-        break;
-      }
-      const focusedType = getFocused(state).params.chart_type;
-      state = addChart(state, { chartType: focusedType });
-      commit(state);
-      saveLayout();
-      if (state.activeDatasetId) reanalyze();
-      break;
-    }
-    case "remove-chart": {
-      const chartId = t.dataset.chartId;
-      if (chartId) {
-        state = removeChart(state, chartId);
-        if (charts[chartId]) { charts[chartId].destroy(); delete charts[chartId]; }
-        commit(state);
-        saveLayout();
-      }
-      break;
-    }
-    case "reset-axis": { const axisRole = state.ui.contextMenu?.role || state.focusedChartId; commitChart(resetAxis(state, t.dataset.axis, axisRole)); commitContextMenu(closeContextMenu(state)); break; }
-    case "toggle-chip-editor": {
-      commitRecipeRail(setActiveChipEditor(state, t.dataset.chip));
-      break;
-    }
-    case "select-prep-dataset": {
-      const dsId = t.dataset.datasetId;
-      commit(selectPrepDataset(state, dsId));
-      try {
-        const [pts, cols] = await Promise.all([
-          fetchPoints(dsId),
-          fetchColumns(dsId).catch(() => []),
-        ]);
-        state = setColumns(state, cols);
-        state = loadPrepPoints(state, pts);
-        // Build Arquero table from server data for transforms
-        const rawRows = pts.map(p => p.raw_data || {});
-        const arqueroTable = createTable(rawRows, cols);
-        state = setPrepParsedData(state, { rawRows, arqueroTable, columns: cols });
-        state = loadPrepPoints(state, pts);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "delete-dataset": {
-      const dsId = t.dataset.datasetId;
-      if (state.dataPrep.confirmingDeleteId === dsId) {
-        // Second click ---confirmed
-        state = { ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: null } };
-        try {
-          await deleteDataset(dsId);
-          const datasets = await fetchDatasets();
-          commit(deletePrepDataset(setDatasets(state, datasets), dsId));
-        } catch (err) { commit(setPrepError(state, err.message)); }
-      } else {
-        // First click ---enter confirmation state
-        commit({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: dsId } });
-      }
-      break;
-    }
-    case "cancel-delete": {
-      commit({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: null } });
-      break;
-    }
-    case "load-prep-to-chart": {
-      if (state.dataPrep.selectedDatasetId) {
-        await loadDatasetById(state.dataPrep.selectedDatasetId);
-        // Apply row exclusions from data prep to chart points
-        const excludedSet = new Set(state.dataPrep.excludedRows || []);
-        if (excludedSet.size > 0 && state.points.length > 0) {
-          state = {
-            ...state,
-            points: state.points.map((p, i) => excludedSet.has(i) ? { ...p, excluded: true } : p),
-          };
-        }
-        commit(navigate(state, "workspace"));
-      }
-      break;
-    }
-    case "select-column": {
-      commit(setExpandedProfileColumn(state, t.dataset.column));
-      break;
-    }
-    case "prep-undo-to":
-    case "prep-undo": {
-      const stepIdx = a === "prep-undo-to" ? parseInt(t.dataset.step, 10) : undefined;
-      if (state.dataPrep.transforms.length > 0) {
-        state = stepIdx != null ? undoPrepTransformTo(state, stepIdx) : undoPrepTransform(state);
-        // Replay transforms from original table using original columns
-        const origCols = state.dataPrep.originalColumns || state.columnConfig.columns;
-        if (state.dataPrep.rawRows && origCols.length > 0) {
-          let table = createTable(state.dataPrep.rawRows, origCols);
-          let columns = origCols.map(c => ({ ...c }));
-          for (const tr of state.dataPrep.transforms) {
-            try {
-              table = applyTransform(table, tr);
-              if (tr.type === 'rename') {
-                columns = columns.map(c => c.name === tr.params.oldName ? { ...c, name: tr.params.newName } : c);
-              } else if (tr.type === 'change_type') {
-                columns = columns.map(c => c.name === tr.params.column ? { ...c, dtype: tr.params.targetType } : c);
-              } else if (tr.type === 'calculated' || tr.type === 'bin' || tr.type === 'concat') {
-                columns.push({ name: tr.params.newColName, dtype: tr.type === 'bin' ? 'text' : tr.type === 'concat' ? 'text' : 'numeric', role: null, ordinal: columns.length });
-              } else if (tr.type === 'split') {
-                for (let i = 0; i < tr.params.maxParts; i++) {
-                  columns.push({ name: `${tr.params.column}_${i + 1}`, dtype: 'text', role: null, ordinal: columns.length });
-                }
-              } else if (tr.type === 'recode' && tr.params.newColName) {
-                columns.push({ name: tr.params.newColName, dtype: 'text', role: null, ordinal: columns.length });
-              }
-            } catch { /* skip failed transforms */ }
-          }
-          state = setPrepTable(state, table);
-          state = setColumns(state, columns);
-          state = setProfileCache(state, {}); // clear stale profiles
-          if (state.dataPrep.transforms.length === 0) {
-            state = markPrepSaved(state);
-          }
-        }
-        render();
-      }
-      break;
-    }
-    case "prep-trim": {
-      const cols = state.columnConfig.columns.filter(c => c.dtype === 'text');
-      if (cols.length > 0 && state.dataPrep.arqueroTable) {
-        let table = state.dataPrep.arqueroTable;
-        for (const c of cols) {
-          try { table = cleanText(table, c.name, 'trim'); } catch { /* skip */ }
-        }
-        state = addPrepTransform(state, { type: 'trim', params: { columns: cols.map(c => c.name) } });
-        state = setPrepTable(state, table);
-        render();
-      }
-      break;
-    }
-    case "prep-save": {
-      if (state.dataPrep.rawRows && state.dataPrep.selectedDatasetId) {
-        try {
-          await createDataset({
-            name: state.datasets.find(d => d.id === state.dataPrep.selectedDatasetId)?.name + ' (cleaned)',
-            columns: state.columnConfig.columns,
-            rows: state.dataPrep.arqueroTable
-              ? state.dataPrep.arqueroTable.objects().map(row => {
-                  const out = {};
-                  for (const [k, v] of Object.entries(row)) out[k] = v != null ? String(v) : '';
-                  return out;
-                })
-              : state.dataPrep.rawRows,
-          });
-          const datasets = await fetchDatasets();
-          state = setDatasets(state, datasets);
-          state = markPrepSaved(state);
-          render();
-        } catch (err) {
-          commit(setPrepError(state, err.message));
-        }
-      }
-      break;
-    }
-    case "prep-export-csv": {
-      const exportTable = state.dataPrep.arqueroTable;
-      const exportCols = state.columnConfig.columns || [];
-      if (exportTable && exportCols.length > 0) {
-        const header = exportCols.map(c => c.name).join(',');
-        const rows = exportTable.objects().map(row =>
-          exportCols.map(c => {
-            const v = row[c.name];
-            if (v == null) return '';
-            const s = String(v);
-            return s.includes(',') || s.includes('"') || s.includes('\n')
-              ? `"${s.replace(/"/g, '""')}"` : s;
-          }).join(',')
-        );
-        const csv = [header, ...rows].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const ds = state.datasets.find(d => d.id === state.dataPrep.selectedDatasetId);
-        a.href = url; a.download = `${ds?.name || 'export'}.csv`;
-        a.click(); URL.revokeObjectURL(url);
-      }
-      break;
-    }
-    case "prep-reset": {
-      if (state.dataPrep.transforms.length === 0) break;
-      if (state.dataPrep.confirmingReset) {
-        clearTimeout(window._resetConfirmTimer);
-        state = clearPrepTransforms(state);
-        state = { ...state, dataPrep: { ...state.dataPrep, confirmingReset: false } };
-        commit(state);
-      } else {
-        state = { ...state, dataPrep: { ...state.dataPrep, confirmingReset: true } };
-        commit(state);
-        window._resetConfirmTimer = setTimeout(() => {
-          if (state.dataPrep.confirmingReset) {
-            commit({ ...state, dataPrep: { ...state.dataPrep, confirmingReset: false } });
-          }
-        }, 3000);
-      }
-      break;
-    }
-    /* ===Panel toggle handlers ===*/
-    case "prep-filter": { commit(setActivePanel(state, 'filter')); break; }
-    case "prep-find-replace": { commit(setActivePanel(state, 'find')); break; }
-    case "prep-dedup": { commit(setActivePanel(state, 'dedup')); break; }
-    case "prep-missing": { commit(setActivePanel(state, 'missing')); break; }
-    case "prep-rename": { commit(setActivePanel(state, 'rename')); break; }
-    case "prep-change-type": { commit(setActivePanel(state, 'change_type')); break; }
-    case "prep-calc": { commit(setActivePanel(state, 'calculated')); break; }
-    case "prep-recode": { commit(setActivePanel(state, 'recode')); break; }
-    case "prep-bin": { commit(setActivePanel(state, 'bin')); break; }
-    case "prep-split": { commit(setActivePanel(state, 'split')); break; }
-    case "prep-concat": { commit(setActivePanel(state, 'concat')); break; }
-    /* ===Panel apply handlers ===*/
-    case "prep-apply-filter": {
-      if (!state.dataPrep.arqueroTable) break;
-      const col = root.querySelector('[data-field="filter-col"]')?.value;
-      const op = root.querySelector('[data-field="filter-op"]')?.value;
-      const val = root.querySelector('[data-field="filter-val"]')?.value;
-      const val2 = root.querySelector('[data-field="filter-val2"]')?.value;
-      if (!col || !op) break;
-      const filterVal = op === 'between' ? [val, val2] : (op === 'is_null' || op === 'is_not_null') ? null : val;
-      try {
-        const table = filterRows(state.dataPrep.arqueroTable, col, op, filterVal);
-        state = addPrepTransform(state, { type: 'filter', params: { column: col, operator: op, value: filterVal } });
-        state = setPrepTable(state, table);
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "prep-apply-find": {
-      if (!state.dataPrep.arqueroTable) break;
-      const fcol = root.querySelector('[data-field="find-col"]')?.value;
-      const search = root.querySelector('[data-field="find-search"]')?.value;
-      const repl = root.querySelector('[data-field="find-replace"]')?.value ?? '';
-      const useRegex = root.querySelector('[data-field="find-regex"]')?.checked || false;
-      if (!search) break;
-      try {
-        let table = state.dataPrep.arqueroTable;
-        if (fcol === '__all__') {
-          for (const c of table.columnNames()) {
-            try { table = findReplace(table, c, search, repl, useRegex); } catch { /* skip */ }
-          }
-        } else {
-          table = findReplace(table, fcol, search, repl, useRegex);
-        }
-        state = addPrepTransform(state, { type: 'find_replace', params: { column: fcol, find: search, replace: repl, useRegex } });
-        state = setPrepTable(state, table);
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "prep-apply-dedup": {
-      if (!state.dataPrep.arqueroTable) break;
-      const checked = [...root.querySelectorAll('[data-field="dedup-col"]:checked')].map(el => el.value);
-      if (checked.length === 0) break;
-      try {
-        const table = removeDuplicates(state.dataPrep.arqueroTable, checked);
-        state = addPrepTransform(state, { type: 'dedup', params: { keyColumns: checked } });
-        state = setPrepTable(state, table);
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "prep-apply-missing": {
-      if (!state.dataPrep.arqueroTable) break;
-      const mcol = root.querySelector('[data-field="missing-col"]')?.value;
-      const strat = root.querySelector('[data-field="missing-strategy"]')?.value;
-      const custom = root.querySelector('[data-field="missing-custom"]')?.value;
-      if (!mcol || !strat) break;
-      try {
-        const table = handleMissing(state.dataPrep.arqueroTable, mcol, strat, custom || null);
-        state = addPrepTransform(state, { type: 'missing', params: { column: mcol, strategy: strat, customValue: custom || null } });
-        state = setPrepTable(state, table);
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    /* ===Phase 2 apply handlers ===*/
-    case "prep-apply-rename": {
-      if (!state.dataPrep.arqueroTable) break;
-      const oldName = root.querySelector('[data-field="rename-col"]')?.value;
-      const newName = root.querySelector('[data-field="rename-new"]')?.value?.trim();
-      if (!oldName || !newName) break;
-      const existing = state.columnConfig.columns.map(c => c.name);
-      if (existing.includes(newName)) { commit(setPrepError(state, `Column "${newName}" already exists`)); break; }
-      try {
-        const table = renameColumn(state.dataPrep.arqueroTable, oldName, newName);
-        state = addPrepTransform(state, { type: 'rename', params: { oldName, newName } });
-        state = setPrepTable(state, table);
-        state = updateColumnMeta(state, oldName, { name: newName });
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "prep-apply-change-type": {
-      if (!state.dataPrep.arqueroTable) break;
-      const tcol = root.querySelector('[data-field="type-col"]')?.value;
-      const targetType = root.querySelector('[data-field="type-target"]')?.value;
-      if (!tcol || !targetType) break;
-      try {
-        const table = changeColumnType(state.dataPrep.arqueroTable, tcol, targetType);
-        state = addPrepTransform(state, { type: 'change_type', params: { column: tcol, targetType } });
-        state = setPrepTable(state, table);
-        state = updateColumnMeta(state, tcol, { dtype: targetType });
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "prep-apply-calc": {
-      if (!state.dataPrep.arqueroTable) break;
-      const calcName = root.querySelector('[data-field="calc-name"]')?.value?.trim();
-      const calcExpr = root.querySelector('[data-field="calc-expr"]')?.value?.trim();
-      if (!calcName || !calcExpr) break;
-      const colNames = state.columnConfig.columns.map(c => c.name);
-      if (colNames.includes(calcName)) { commit(setPrepError(state, `Column "${calcName}" already exists`)); break; }
-      try {
-        const table = addCalculatedColumn(state.dataPrep.arqueroTable, calcName, calcExpr, colNames);
-        state = addPrepTransform(state, { type: 'calculated', params: { newColName: calcName, expression: calcExpr, columns: colNames } });
-        state = setPrepTable(state, table);
-        state = addColumnMeta(state, [{ name: calcName, dtype: 'numeric' }]);
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "prep-apply-recode": {
-      if (!state.dataPrep.arqueroTable) break;
-      const rcol = root.querySelector('[data-field="recode-col"]')?.value;
-      const asNew = root.querySelector('[data-field="recode-new-col"]')?.checked;
-      const newColName = asNew ? root.querySelector('[data-field="recode-new-name"]')?.value?.trim() : null;
-      if (!rcol) break;
-      if (asNew && !newColName) break;
-      // Read mapping rows
-      const mapping = {};
-      const rows = root.querySelectorAll('.prep-mapping-row');
-      rows.forEach(row => {
-        const oldVal = row.querySelector('[data-field="recode-old"]')?.value;
-        const newVal = row.querySelector('[data-field="recode-new"]')?.value;
-        if (oldVal != null && oldVal !== '') mapping[oldVal] = newVal ?? '';
-      });
-      if (Object.keys(mapping).length === 0) break;
-      try {
-        const table = recodeValues(state.dataPrep.arqueroTable, rcol, mapping, newColName);
-        state = addPrepTransform(state, { type: 'recode', params: { column: rcol, mapping, newColName } });
-        state = setPrepTable(state, table);
-        if (newColName) state = addColumnMeta(state, [{ name: newColName, dtype: 'text' }]);
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "prep-apply-bin": {
-      if (!state.dataPrep.arqueroTable) break;
-      const bcol = root.querySelector('[data-field="bin-col"]')?.value;
-      const binCount = parseInt(root.querySelector('[data-field="bin-count"]')?.value || '5', 10);
-      const useCustom = root.querySelector('[data-field="bin-custom"]')?.checked;
-      const binName = root.querySelector('[data-field="bin-name"]')?.value?.trim() || `${bcol}_binned`;
-      let customBreaks = null;
-      if (useCustom) {
-        const breaksStr = root.querySelector('[data-field="bin-breaks"]')?.value || '';
-        customBreaks = breaksStr.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n)).sort((a, b) => a - b);
-        if (customBreaks.length === 0) { commit(setPrepError(state, 'Enter valid break values')); break; }
-      }
-      if (!bcol) break;
-      try {
-        const table = binColumn(state.dataPrep.arqueroTable, bcol, binCount, binName, customBreaks);
-        state = addPrepTransform(state, { type: 'bin', params: { column: bcol, binCount, newColName: binName, customBreaks } });
-        state = setPrepTable(state, table);
-        state = addColumnMeta(state, [{ name: binName, dtype: 'text' }]);
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "prep-apply-split": {
-      if (!state.dataPrep.arqueroTable) break;
-      const scol = root.querySelector('[data-field="split-col"]')?.value;
-      const delim = root.querySelector('[data-field="split-delim"]')?.value || ',';
-      const maxParts = parseInt(root.querySelector('[data-field="split-parts"]')?.value || '2', 10);
-      if (!scol) break;
-      try {
-        const table = splitColumn(state.dataPrep.arqueroTable, scol, delim, maxParts);
-        state = addPrepTransform(state, { type: 'split', params: { column: scol, delimiter: delim, maxParts } });
-        state = setPrepTable(state, table);
-        const newCols = Array.from({ length: maxParts }, (_, i) => ({ name: `${scol}_${i + 1}`, dtype: 'text' }));
-        state = addColumnMeta(state, newCols);
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "prep-apply-concat": {
-      if (!state.dataPrep.arqueroTable) break;
-      const concatCols = [...root.querySelectorAll('[data-field="concat-col"]:checked')].map(el => el.value);
-      const sep = root.querySelector('[data-field="concat-sep"]')?.value ?? ' ';
-      const cname = root.querySelector('[data-field="concat-name"]')?.value?.trim() || 'combined';
-      if (concatCols.length < 2) break;
-      try {
-        const table = concatColumns(state.dataPrep.arqueroTable, concatCols, sep, cname);
-        state = addPrepTransform(state, { type: 'concat', params: { columns: concatCols, separator: sep, newColName: cname } });
-        state = setPrepTable(state, table);
-        state = addColumnMeta(state, [{ name: cname, dtype: 'text' }]);
-        state = closeActivePanel(state);
-        render();
-      } catch (err) { commit(setPrepError(state, err.message)); }
-      break;
-    }
-    case "prep-recode-add-row": {
-      const container = root.querySelector('.prep-mapping-rows');
-      if (container) {
-        const row = document.createElement('div');
-        row.className = 'prep-mapping-row';
-        row.innerHTML = `<input type="text" data-field="recode-old" placeholder="old value" /><span class="prep-panel-label">\u2192</span><input type="text" data-field="recode-new" placeholder="new value" />`;
-        container.appendChild(row);
-      }
-      break;
-    }
-    /* ===Phase 3 handlers ===*/
-    case "prep-validate": { commit(setActivePanel(state, 'validate')); break; }
-    case "toggle-row-exclude": {
-      const rowIdx = Number(t.dataset.row);
-      if (!isNaN(rowIdx)) {
-        commit(toggleRowExclusion(state, rowIdx));
-      }
-      break;
-    }
-    case "prep-toggle-all-visible-rows": {
-      const totalRows = state.dataPrep.arqueroTable
-        ? state.dataPrep.arqueroTable.numRows()
-        : state.dataPrep.datasetPoints.length;
-      const visibleCount = Math.min(totalRows, 500);
-      const current = new Set(state.dataPrep.excludedRows || []);
-      const selectedVisibleCount = Array.from({ length: visibleCount }, (_, i) => i)
-        .reduce((sum, i) => sum + (current.has(i) ? 0 : 1), 0);
-      const shouldSelectAll = selectedVisibleCount !== visibleCount;
-      for (let i = 0; i < visibleCount; i++) {
-        if (shouldSelectAll) current.delete(i);
-        else current.add(i);
-      }
-      commit({ ...state, dataPrep: { ...state.dataPrep, excludedRows: [...current].sort((a, b) => a - b) } });
-      break;
-    }
-    case "prep-apply-validate": {
-      const vcol = root.querySelector('[data-field="validate-col"]')?.value;
-      const vtype = root.querySelector('[data-field="validate-type"]')?.value;
-      if (!vcol || !vtype) break;
-      let rule;
-      if (vtype === 'range') {
-        const min = root.querySelector('[data-field="validate-min"]')?.value;
-        const max = root.querySelector('[data-field="validate-max"]')?.value;
-        rule = { type: 'range', min: min !== '' ? Number(min) : null, max: max !== '' ? Number(max) : null };
-      } else if (vtype === 'allowed') {
-        const valStr = root.querySelector('[data-field="validate-values"]')?.value || '';
-        rule = { type: 'allowed', values: valStr.split(',').map(s => s.trim()).filter(Boolean) };
-      } else if (vtype === 'regex') {
-        const pattern = root.querySelector('[data-field="validate-pattern"]')?.value || '';
-        rule = { type: 'regex', pattern };
-      }
-      if (rule) {
-        state = updateColumnMeta(state, vcol, { validation: rule });
-        state = closeActivePanel(state);
-        render();
-      }
-      break;
-    }
-    case "prep-clear-validate": {
-      const vcol = root.querySelector('[data-field="validate-col"]')?.value;
-      if (vcol) {
-        state = updateColumnMeta(state, vcol, { validation: null });
-        state = closeActivePanel(state);
-        render();
-      }
-      break;
-    }
-  }
-});
+  if (handledWorkspaceClick) return;
 
-/** Apply a single transform to an Arquero table. */
-function applyTransform(table, tr) {
-  switch (tr.type) {
-    case 'filter': return filterRows(table, tr.params.column, tr.params.operator, tr.params.value);
-    case 'sort': return sortTable(table, tr.params.sortSpec);
-    case 'find_replace': {
-      if (tr.params.column === '__all__') {
-        let t = table;
-        for (const c of t.columnNames()) {
-          try { t = findReplace(t, c, tr.params.find, tr.params.replace, tr.params.useRegex); } catch { /* skip */ }
-        }
-        return t;
-      }
-      return findReplace(table, tr.params.column, tr.params.find, tr.params.replace, tr.params.useRegex);
-    }
-    case 'dedup': return removeDuplicates(table, tr.params.keyColumns);
-    case 'missing': return handleMissing(table, tr.params.column, tr.params.strategy, tr.params.customValue);
-    case 'trim': {
-      let t = table;
-      for (const col of tr.params.columns) { try { t = cleanText(t, col, 'trim'); } catch { /* skip */ } }
-      return t;
-    }
-    // Phase 2
-    case 'rename': return renameColumn(table, tr.params.oldName, tr.params.newName);
-    case 'change_type': return changeColumnType(table, tr.params.column, tr.params.targetType);
-    case 'calculated': return addCalculatedColumn(table, tr.params.newColName, tr.params.expression, tr.params.columns);
-    case 'recode': return recodeValues(table, tr.params.column, tr.params.mapping, tr.params.newColName);
-    case 'bin': return binColumn(table, tr.params.column, tr.params.binCount, tr.params.newColName, tr.params.customBreaks);
-    case 'split': return splitColumn(table, tr.params.column, tr.params.delimiter, tr.params.maxParts);
-    case 'concat': return concatColumns(table, tr.params.columns, tr.params.separator, tr.params.newColName);
-    default: return table;
-  }
-}
+  const handledAppClick = await handleAppClick(e, {
+    state,
+    root,
+    setState,
+    render,
+    commit,
+    commitChart,
+    commitContextMenu,
+    commitRecipeRail,
+    patchUi,
+    navigate,
+    fetchPoints,
+    fetchColumns,
+    createTable,
+    setPrepParsedData,
+    loadPrepPoints,
+    setPrepError,
+    resetAxis,
+    closeContextMenu,
+    setActiveChipEditor,
+    selectPrepDataset,
+    setColumns,
+    deleteDataset,
+    fetchDatasets,
+    deletePrepDataset,
+    setDatasets,
+    loadDatasetById,
+    setExpandedProfileColumn,
+  });
+  if (handledAppClick) return;
+
+  const handledPrepClick = await handlePrepClick(e, {
+    state,
+    root,
+    documentRef: document,
+    windowRef: window,
+    setState,
+    render,
+    commit,
+    createDataset,
+    fetchDatasets,
+    setDatasets,
+    setPrepError,
+    markPrepSaved,
+    clearPrepTransforms,
+    setActivePanel,
+    closeActivePanel,
+    toggleRowExclusion,
+    updateColumnMeta,
+    addColumnMeta,
+    addPrepTransform,
+    setPrepTable,
+    setColumns,
+    setProfileCache,
+    undoPrepTransform,
+    undoPrepTransformTo,
+    replayPrepTransforms,
+    filterRows,
+    findReplace,
+    removeDuplicates,
+    handleMissing,
+    cleanText,
+    renameColumn,
+    changeColumnType,
+    addCalculatedColumn,
+    recodeValues,
+    binColumn,
+    splitColumn,
+    concatColumns,
+  });
+  if (handledPrepClick) return;
+});
 
 root.addEventListener("keydown", (e) => {
-  if (state.ui.contextMenu && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-    e.preventDefault();
-    const menu = root.querySelector(".context-menu");
-    if (!menu) return;
-    const items = Array.from(menu.querySelectorAll("[role='menuitem']"));
-    const idx = items.indexOf(document.activeElement);
-    const next = e.key === "ArrowDown"
-      ? items[(idx + 1) % items.length]
-      : items[(idx - 1 + items.length) % items.length];
-    next?.focus();
-    return;
-  }
-
-  // Dismiss shortcut overlay with Escape or ?
-  if (state.ui.shortcutOverlay) {
-    if (e.key === "Escape" || e.key === "?") {
-      e.preventDefault();
-      state = { ...state, ui: { ...state.ui, shortcutOverlay: false } };
-      render();
-      return;
-    }
-  }
-
-  // Global shortcuts ---skip when typing in an input/textarea/select
-  const tag = document.activeElement?.tagName;
-  const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
-  if (!inInput && !e.metaKey && !e.ctrlKey && !e.altKey) {
-    if (e.key === "?") {
-      e.preventDefault();
-      state = { ...state, ui: { ...state.ui, shortcutOverlay: true } };
-      render();
-      return;
-    }
-
-    // Data Prep shortcuts
-    if (state.route === "dataprep" && state.dataPrep.selectedDatasetId) {
-      const dpKey = e.key.toLowerCase();
-      const panel = { f: 'filter', d: 'find', r: 'rename', t: 'change_type', c: 'calculated' }[dpKey];
-      if (panel) {
-        e.preventDefault();
-        commit(setActivePanel(state, panel));
-        return;
-      }
-      if (dpKey === 'z' && state.dataPrep.transforms.length > 0) {
-        e.preventDefault();
-        // Simulate click on the undo button
-        root.querySelector('[data-action="prep-undo"]')?.click();
-        return;
-      }
-    }
-
-    if ((e.key === "n" || e.key === "p") && state.route === "workspace") {
-      e.preventDefault();
-      const focused = getFocused(state);
-      if (!focused) return;
-      const violations = focused.violations || [];
-      // Collect all flagged point indices, deduplicated and sorted
-      const indices = [...new Set(
-        violations.flatMap(v => v.indices || [])
-      )].sort((a, b) => a - b);
-      if (indices.length === 0) return;
-      const cur = state.selectedPointIndex ?? -1;
-      let target;
-      if (e.key === "n") {
-        target = indices.find(i => i > cur) ?? indices[0];
-      } else {
-        const prev = [...indices].reverse().find(i => i < cur);
-        target = prev ?? indices[indices.length - 1];
-      }
-      commitChart(selectPoint(state, target));
-      return;
-    }
-  }
-
-  const ch = e.target.closest("[data-chart-focus], [data-action='select-point']");
-  if (!ch) return;
-  if (e.key === "ArrowRight") { e.preventDefault(); commitChart(moveSelection(state, 1)); }
-  if (e.key === "ArrowLeft") { e.preventDefault(); commitChart(moveSelection(state, -1)); }
-  if (e.key === "Enter" && e.target.matches("[data-action='select-point']")) { e.preventDefault(); commitChart(selectPoint(state, Number(e.target.dataset.index))); }
-  if (e.key === "F10" && e.shiftKey) { e.preventDefault(); commitContextMenu(openContextMenu(state, 400, 200)); }
-  if (e.key === "Escape" && state.ui.contextMenu) commitContextMenu(closeContextMenu(state));
-  if (e.key === "Escape" && state.ui.pendingNewChart) {
-    state = { ...state, ui: { ...state.ui, pendingNewChart: null } };
-    commitRecipeRail(state);
-  }
-});
-
-/* ===Header drag ---zone-inference + ghost preview ===*/
-let pendingDrag = null;  // recorded on pointerdown, promoted to dragState after threshold
-let dragState = null;
-let ghostOverlay = null;
-let ghostRafId = null;
-
-/** Compute drop zone with hysteresis to prevent flickering at boundaries */
-function getDropZone(paneEl, clientX, clientY, prevZone) {
-  const r = paneEl.getBoundingClientRect();
-  if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) return null;
-  const relX = (clientX - r.left) / r.width;
-  const relY = (clientY - r.top) / r.height;
-  let zone;
-  if (relY < 0.25) zone = "top";
-  else if (relY > 0.75) zone = "bottom";
-  else if (relX < 0.25) zone = "left";
-  else if (relX > 0.75) zone = "right";
-  else zone = "center";
-
-  // DRAG-006: hysteresis ---stay on previous zone if cursor is within 15px of a boundary
-  if (prevZone && prevZone !== zone) {
-    const HYSTERESIS = 15;
-    const topB = r.top + r.height * 0.25;
-    const botB = r.bottom - r.height * 0.25;
-    const lefB = r.left + r.width * 0.25;
-    const rigB = r.right - r.width * 0.25;
-    const nearBoundary =
-      Math.abs(clientY - topB) < HYSTERESIS ||
-      Math.abs(clientY - botB) < HYSTERESIS ||
-      Math.abs(clientX - lefB) < HYSTERESIS ||
-      Math.abs(clientX - rigB) < HYSTERESIS;
-    if (nearBoundary) return prevZone;
-  }
-  return zone;
-}
-
-// DRAG-005: rAF-throttled overlay update
-function updateGhostOverlay(ghostRows, incomingId) {
-  if (!ghostOverlay || !ghostRows) return;
-  if (ghostRafId) cancelAnimationFrame(ghostRafId);
-  ghostRafId = requestAnimationFrame(() => {
-    ghostOverlay.innerHTML = renderGhostRows(ghostRows, incomingId);
-    ghostOverlay.style.display = "flex";
-    ghostRafId = null;
+  handleAppKeydown(e, {
+    root,
+    state,
+    documentRef: document,
+    getFocused,
+    setState,
+    patchUi,
+    commit,
+    commitChart,
+    commitContextMenu,
+    commitRecipeRail,
+    moveSelection,
+    navigateSelectionToViolation,
+    openContextMenu,
+    closeContextMenu,
+    setActivePanel,
+    selectPoint,
+    render,
   });
-}
-
-function hideGhostOverlay() {
-  if (ghostRafId) { cancelAnimationFrame(ghostRafId); ghostRafId = null; }
-  if (ghostOverlay) ghostOverlay.style.display = "none";
-}
-
-function removeGhostOverlay() {
-  if (ghostRafId) { cancelAnimationFrame(ghostRafId); ghostRafId = null; }
-  if (ghostOverlay) { ghostOverlay.remove(); ghostOverlay = null; }
-}
-
-let dividerDrag = null; // { type: "col"|"row", row: number, col?: number, arenaRect }
-
-root.addEventListener("pointerdown", (e) => {
-  // (sidebar resize removed ---row ops moved to horizontal toolbar)
-
-  // ---Grid divider drag ---
-  const div = e.target.closest(".grid-divider");
-  if (div) {
-    e.preventDefault();
-    e.stopPropagation();
-    div.setPointerCapture(e.pointerId);
-    div.classList.add("grid-divider-active");
-
-    const arenaRect = root.querySelector(".chart-arena").getBoundingClientRect();
-    if (div.classList.contains("grid-divider-col")) {
-      dividerDrag = { type: "col", row: +div.dataset.row, col: +div.dataset.col, arenaRect };
-    } else {
-      dividerDrag = { type: "row", row: +div.dataset.row, arenaRect };
-    }
-    return;
-  }
-
-  // ---Header drag ---record pending, promote after 4px threshold (DRAG-003) ---
-  const handle = e.target.closest("[data-drag-handle]");
-  if (!handle) return;
-  if (state.chartOrder.length < 2) return;
-  const pane = handle.closest(".chart-pane");
-  if (!pane) return;
-  if (e.target.closest("button")) return;
-
-  e.preventDefault();
-  pendingDrag = { chartId: handle.dataset.dragHandle, pane, startX: e.clientX, startY: e.clientY, pointerId: e.pointerId };
 });
 
-root.addEventListener("pointermove", (e) => {
-  // ---Grid divider live resize ---
-  if (dividerDrag) {
-    if (dividerDrag.type === "col") {
-      const rowEl = root.querySelectorAll(".chart-row")[dividerDrag.row];
-      if (!rowEl) return;
-      const wraps = rowEl.querySelectorAll(":scope > .chart-pane-wrap");
-      const leftW = wraps[dividerDrag.col];
-      const rightW = wraps[dividerDrag.col + 1];
-      if (leftW && rightW) {
-        const totalPct = parseFloat(leftW.style.flex.split(" ")[2]) + parseFloat(rightW.style.flex.split(" ")[2]);
-        const paneLeftEdge = leftW.getBoundingClientRect().left;
-        const combinedWidth = leftW.getBoundingClientRect().width + rightW.getBoundingClientRect().width;
-        const localRatio = Math.max(0.1, Math.min(0.9, (e.clientX - paneLeftEdge) / combinedWidth));
-        leftW.style.flex = `0 0 ${(totalPct * localRatio).toFixed(2)}%`;
-        rightW.style.flex = `0 0 ${(totalPct * (1 - localRatio)).toFixed(2)}%`;
-        dividerDrag.pendingRatio = localRatio;
-      }
-    } else {
-      const rowEls = root.querySelectorAll(".chart-row");
-      const topEl = rowEls[dividerDrag.row];
-      const botEl = rowEls[dividerDrag.row + 1];
-      if (topEl && botEl) {
-        const topEdge = topEl.getBoundingClientRect().top;
-        const combinedHeight = topEl.getBoundingClientRect().height + botEl.getBoundingClientRect().height;
-        const localRatio = Math.max(0.1, Math.min(0.9, (e.clientY - topEdge) / combinedHeight));
-        const totalPct = parseFloat(topEl.style.flex.split(" ")[2]) + parseFloat(botEl.style.flex.split(" ")[2]);
-        topEl.style.flex = `0 0 ${(totalPct * localRatio).toFixed(2)}%`;
-        botEl.style.flex = `0 0 ${(totalPct * (1 - localRatio)).toFixed(2)}%`;
-        dividerDrag.pendingRatio = localRatio;
-      }
-    }
-    return;
-  }
-
-  // ---Promote pending drag once 4px threshold is crossed (DRAG-003) ---
-  if (pendingDrag && !dragState) {
-    const dx = e.clientX - pendingDrag.startX;
-    const dy = e.clientY - pendingDrag.startY;
-    if (Math.sqrt(dx * dx + dy * dy) < 4) return;
-
-    const { chartId, pane, pointerId } = pendingDrag;
-    pendingDrag = null;
-
-    // DRAG-001: capture pointer so fast moves don't lose events
-    pane.setPointerCapture(pointerId);
-    // DRAG-007: suppress text selection during drag
-    document.body.style.userSelect = "none";
-
-    // Ghost cursor follower ---DRAG-008: use params.chart_type not context
-    const ghost = document.createElement("div");
-    ghost.className = "drag-ghost";
-    ghost.textContent = CHART_TYPE_LABELS[state.charts[chartId]?.params?.chart_type] || "Chart";
-    document.body.appendChild(ghost);
-    pane.classList.add("dragging");
-
-    // Ghost overlay on the arena
-    const arenaEl = root.querySelector(".chart-arena");
-    if (arenaEl) {
-      ghostOverlay = document.createElement("div");
-      ghostOverlay.className = "arena-ghost-overlay";
-      ghostOverlay.style.display = "none";
-      arenaEl.appendChild(ghostOverlay);
-    }
-
-    dragState = { chartId, pane, ghost, dropTarget: null, dropZone: null };
-
-    // DRAG-004: show overlay immediately over source pane
-    updateGhostOverlay(state.chartLayout, chartId);
-  }
-
-  // ---Header drag: zone inference + ghost preview ---
-  if (!dragState) return;
-  const { ghost, chartId } = dragState;
-
-  // Move cursor follower
-  ghost.style.left = (e.clientX + 12) + "px";
-  ghost.style.top = (e.clientY - 10) + "px";
-
-  // Find target pane and zone (pass prevZone for hysteresis)
-  let foundTarget = null;
-  let foundZone = null;
-  for (const p of root.querySelectorAll(".chart-pane:not(.dragging)")) {
-    const zone = getDropZone(p, e.clientX, e.clientY, dragState.dropZone);
-    if (zone) { foundTarget = p.dataset.chartId; foundZone = zone; break; }
-  }
-
-  dragState.dropTarget = foundTarget;
-  dragState.dropZone = foundZone;
-
-  if (foundTarget && foundZone) {
-    const previewLayout = computeGridPreview(state.chartLayout, chartId, foundTarget, foundZone);
-    updateGhostOverlay(previewLayout, chartId);
-  } else {
-    // Back over source pane ---show current layout with source highlighted
-    updateGhostOverlay(state.chartLayout, chartId);
-  }
-});
-
-function endDrag() {
-  pendingDrag = null;
-  if (!dragState) return;
-  const { pane, ghost, chartId, dropTarget, dropZone } = dragState;
-  pane.classList.remove("dragging");
-  ghost.remove();
-  removeGhostOverlay();
-  document.body.style.userSelect = ""; // DRAG-007: restore text selection
-
-  if (dropTarget && dropZone && dropTarget !== chartId) {
-    state = insertChart(state, chartId, dropTarget, dropZone);
-    commitLayout(state);
-    saveLayout();
-  }
-  dragState = null;
-}
-
-function endDividerDrag() {
-  if (!dividerDrag) return;
-  root.querySelectorAll(".grid-divider-active").forEach(el => el.classList.remove("grid-divider-active"));
-  if (dividerDrag.pendingRatio !== undefined) {
-    if (dividerDrag.type === "col") {
-      state = setColWeight(state, dividerDrag.row, dividerDrag.col, dividerDrag.pendingRatio);
-    } else {
-      state = setRowWeight(state, dividerDrag.row, dividerDrag.pendingRatio);
-    }
-    saveLayout();
-    // Trigger ECharts resize on affected panes
-    const visibleIds = collectChartIds(state.chartLayout);
-    requestAnimationFrame(() => {
-      for (const id of visibleIds) { if (charts[id]) charts[id].update(buildChartData(id)); }
-    });
-  }
-  dividerDrag = null;
-}
-
-// DRAG-002: bind to document so release outside root is always caught
-document.addEventListener("pointerup", () => { endDividerDrag(); endDrag(); });
-document.addEventListener("pointercancel", () => { endDividerDrag(); endDrag(); });
-
-// Double-click divider to reset weights
-root.addEventListener("dblclick", (e) => {
-  const div = e.target.closest(".grid-divider");
-  if (!div) return;
-  if (div.classList.contains("grid-divider-col")) {
-    state = setColWeight(state, +div.dataset.row, +div.dataset.col, 0.5);
-  } else {
-    state = setRowWeight(state, +div.dataset.row, 0.5);
-  }
-  commitLayout(state);
-  saveLayout();
+setupDragInteractions({
+  root,
+  documentRef: document,
+  getState: () => state,
+  chartRuntime,
+  collectChartIds,
+  renderGhostRows,
+  computeGridPreview,
+  commitLayout,
+  saveLayout,
+  setColWeight,
+  setRowWeight,
+  buildChartData,
+  insertChart,
+  chartTypeLabels: CHART_TYPE_LABELS,
 });
 
 /* ===Pane titlebar right-click ---split/close context menu ===*/
@@ -1673,7 +705,7 @@ document.addEventListener("pointerdown", (e) => {
 }, true);
 
 root.addEventListener("contextmenu", (e) => {
-  // ---Pane titlebar right-click ---
+  // ---Pane titlebar right-click ---�?
   const titlebar = e.target.closest(".chart-pane-titlebar");
   if (titlebar) {
     e.preventDefault();
@@ -1682,17 +714,17 @@ root.addEventListener("contextmenu", (e) => {
     return;
   }
 
-  // ---Chart canvas right-click (existing behavior) ---
+  // ---Chart canvas right-click (existing behavior) ---�?
   if (e.defaultPrevented) return;
   const ch = e.target.closest(".chart-stage");
   if (!ch) return;
   e.preventDefault();
   const pane = ch.closest('.chart-pane[data-chart-id]');
-  if (pane && pane.dataset.chartId !== state.focusedChartId) {
-    state = focusChart(state, pane.dataset.chartId);
-  }
+  const next = pane && pane.dataset.chartId !== state.focusedChartId
+    ? focusChart(state, pane.dataset.chartId)
+    : state;
   const r = root.getBoundingClientRect();
-  commitContextMenu(openContextMenu(state, e.clientX - r.left, e.clientY - r.top, { target: 'canvas', role: state.focusedChartId }));
+  commitContextMenu(openContextMenu(next, e.clientX - r.left, e.clientY - r.top, { target: 'canvas', role: next.focusedChartId }));
 });
 
 /* ===Change handlers ===*/
@@ -1796,116 +828,24 @@ root.addEventListener("change", async (e) => {
     return;
   }
 
-  if (e.target.matches('[data-action="switch-dataset"]')) {
-    loadDatasetById(e.target.value);
-    return;
-  }
-
-
-  const action = e.target.dataset?.action;
-  if (!action || !state.activeDatasetId) return;
-  const dsId = state.activeDatasetId;
-  const cols = state.columnConfig.columns;
-
-  // Handle pending new chart chip edits
-  if (action.startsWith("_pending-") && state.ui.pendingNewChart) {
-    const pendingAction = action.slice("_pending-".length);
-    const p = { ...state.ui.pendingNewChart };
-    if (pendingAction === "set-metric-column") p.value_column = e.target.value || null;
-    else if (pendingAction === "set-subgroup-column") p.subgroup_column = e.target.value || null;
-    else if (pendingAction === "set-phase-column") p.phase_column = e.target.value || null;
-    else if (pendingAction === "set-chart-type") p.chart_type = e.target.value;
-    else if (pendingAction === "set-sigma-method") p.sigma_method = e.target.value;
-    else if (pendingAction === "set-k-sigma") { const k = parseFloat(e.target.value); if (k > 0 && k <= 6) p.k_sigma = k; }
-    else if (pendingAction === "toggle-nelson") {
-      const ruleId = Number(e.target.dataset.value);
-      const cur = p.nelson_tests || [];
-      p.nelson_tests = e.target.checked ? [...cur, ruleId] : cur.filter(r => r !== ruleId);
-    }
-    else if (pendingAction === "set-usl") { const v = e.target.value.trim(); p.usl = v !== '' ? parseFloat(v) : null; }
-    else if (pendingAction === "set-lsl") { const v = e.target.value.trim(); p.lsl = v !== '' ? parseFloat(v) : null; }
-    else if (pendingAction === "set-target") { const v = e.target.value.trim(); p.target = v !== '' ? parseFloat(v) : null; }
-    state = { ...state, ui: { ...state.ui, pendingNewChart: p } };
-    if (pendingAction !== "toggle-nelson" && pendingAction !== "set-k-sigma") state = setActiveChipEditor(state, null);
-    commitRecipeRail(state);
-    return;
-  }
-
-  // Determine which chart this action targets by prefix (e.g. "chart-1-set-chart-type")
-  let chartId = null;
-  let baseAction = action;
-  for (const id of state.chartOrder) {
-    if (action.startsWith(id + "-")) {
-      chartId = id;
-      baseAction = action.slice(id.length + 1);
-      break;
-    }
-  }
-
-  if (chartId && baseAction === "set-metric-column") {
-    state = setChartParams(state, chartId, { value_column: e.target.value || null });
-    state = setActiveChipEditor(state, null);
-    await reanalyze();
-    return;
-  }
-  if (chartId && baseAction === "set-subgroup-column") {
-    state = setChartParams(state, chartId, { subgroup_column: e.target.value || null });
-    state = setActiveChipEditor(state, null);
-    await reanalyze();
-    return;
-  }
-  if (chartId && baseAction === "set-phase-column") {
-    state = setChartParams(state, chartId, { phase_column: e.target.value || null });
-    state = setActiveChipEditor(state, null);
-    await reanalyze();
-    return;
-  }
-  if (chartId && baseAction === "set-chart-type") {
-    state = setChartParams(state, chartId, { chart_type: e.target.value });
-    state = setActiveChipEditor(state, null);
-    await reanalyze();
-    return;
-  }
-  if (chartId && baseAction === "set-sigma-method") {
-    state = setChartParams(state, chartId, { sigma_method: e.target.value });
-    state = setActiveChipEditor(state, null);
-    await reanalyze();
-    return;
-  }
-  if (chartId && baseAction === "toggle-nelson") {
-    const ruleId = Number(e.target.dataset.value);
-    const current = state.charts[chartId].params.nelson_tests || [];
-    const next = e.target.checked ? [...current, ruleId] : current.filter((r) => r !== ruleId);
-    state = setChartParams(state, chartId, { nelson_tests: next });
-    await reanalyze();
-    return;
-  }
-  if (chartId && baseAction === "set-k-sigma") {
-    const k = parseFloat(e.target.value);
-    if (k > 0 && k <= 6) {
-      state = setChartParams(state, chartId, { k_sigma: k });
-      await reanalyze();
-    }
-    return;
-  }
-  if (chartId && baseAction === "set-usl") {
-    const v = e.target.value.trim();
-    state = setChartParams(state, chartId, { usl: v !== '' ? parseFloat(v) : null });
-    await reanalyze();
-    return;
-  }
-  if (chartId && baseAction === "set-lsl") {
-    const v = e.target.value.trim();
-    state = setChartParams(state, chartId, { lsl: v !== '' ? parseFloat(v) : null });
-    await reanalyze();
-    return;
-  }
-  if (chartId && baseAction === "set-target") {
-    const v = e.target.value.trim();
-    state = setChartParams(state, chartId, { target: v !== '' ? parseFloat(v) : null });
-    await reanalyze();
-    return;
-  }
+  await handleAppChange(e, {
+    state,
+    root,
+    setState,
+    commit,
+    commitRecipeRail,
+    patchUi,
+    setActiveChipEditor,
+    setChartParams,
+    setDatasets,
+    setLoadingState,
+    setError,
+    createSlot,
+    loadDatasetById,
+    restoreLayout,
+    fetchDatasets,
+    reanalyze,
+  });
 });
 
 /* ===Retry handler ===*/
@@ -2005,12 +945,9 @@ async function main() {
 
     await loadDatasetById(id);
   } catch (err) {
-    state = setError(state, err.message);
+    setState(setError(state, err.message));
     render();
   }
 }
 
 main();
-
-
-

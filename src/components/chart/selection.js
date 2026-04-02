@@ -9,13 +9,13 @@ export function renderSelection(layer, scales, data, seriesKey = 'primaryValue',
   const sp = points[selectedIndex];
   if (!sp) return;
 
-  // Scale halo radius to point density
-  let haloR = 10;
+  // Keep the selection ring precise rather than theatrical as density increases.
+  let haloR = 8;
   if (config) {
     const plotWidth = config.width - config.padding.left - config.padding.right;
     const spacing = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
     const scale = Math.max(0.4, Math.min(1, spacing / 12));
-    haloR = Math.max(4, 10 * scale);
+    haloR = Math.max(4.5, 7 * scale);
   }
 
   const cx = x(selectedIndex);

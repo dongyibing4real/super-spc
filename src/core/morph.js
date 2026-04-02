@@ -6,17 +6,28 @@
  */
 import morphdom from "morphdom";
 
-const CHART_MOUNT_IDS = new Set(["chart-mount-primary", "chart-mount-challenger"]);
+function isChartMountId(id) {
+  return typeof id === "string" && id.startsWith("chart-mount-");
+}
+
+export function shouldPreserveDuringMorph(fromEl, activeElement = document.activeElement) {
+  // Preserve D3-managed chart containers — morphdom must not touch these
+  if (isChartMountId(fromEl?.id)) return true;
+
+  // Preserve the currently focused input/select so chip editors keep focus
+  if (
+    fromEl === activeElement &&
+    (fromEl?.tagName === "INPUT" || fromEl?.tagName === "SELECT")
+  ) {
+    return true;
+  }
+
+  return false;
+}
 
 const DEFAULT_OPTIONS = {
   onBeforeElUpdated(fromEl, toEl) {
-    // Preserve D3-managed chart containers — morphdom must not touch these
-    if (CHART_MOUNT_IDS.has(fromEl.id)) return false;
-
-    // Preserve the currently focused input/select so chip editors keep focus
-    if (fromEl === document.activeElement && (fromEl.tagName === "INPUT" || fromEl.tagName === "SELECT")) {
-      return false;
-    }
+    if (shouldPreserveDuringMorph(fromEl)) return false;
 
     return true;
   },

@@ -1355,7 +1355,7 @@ h1, h2, h3, h4, h5, h6 {
 .limit-line.center { stroke: rgba(35,133,81,0.85); }
 .limit-line.spec { stroke: rgba(139,92,246,0.35); stroke-dasharray: 4 6; stroke-width: 1; }
 .primary-path { fill: none; stroke: var(--blue); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.challenger-path { fill: none; stroke: var(--teal-bright); stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 6 4; opacity: 0.8; }
+.challenger-path { fill: none; stroke: var(--teal-bright); stroke-width: 0.9; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 5 5; opacity: 0.6; }
 .chart-point {
   fill: var(--blue); stroke: var(--chart-bg); stroke-width: 1.5;
   transition: fill var(--dur-short) var(--ease);
@@ -1364,11 +1364,10 @@ h1, h2, h3, h4, h5, h6 {
 
 .point-group:hover .chart-point { filter: brightness(1.15); }
 .chart-point.ooc { fill: var(--red); }
-.chart-point.challenger-point { fill: var(--teal-bright); }
+.chart-point.challenger-point { fill: var(--teal-bright); opacity: 0.78; }
 .chart-point.challenger-point.ooc { fill: var(--red); }
 .selection-halo {
-  fill: none; stroke: rgba(45,114,210,0.25); stroke-width: 3;
-  filter: drop-shadow(0 0 4px rgba(45,114,210,0.2));
+  fill: none; stroke: rgba(45,114,210,0.38); stroke-width: 1.5;
   transition: none;
 }
 .point-group.is-excluded .chart-point { opacity: 0.25; }

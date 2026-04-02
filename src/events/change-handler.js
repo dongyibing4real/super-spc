@@ -1,0 +1,163 @@
+export function parseActionTarget(action) {
+  const match = action.match(/^(chart-\d+)-(.+)$/);
+  if (!match) return { chartId: null, baseAction: action };
+  return { chartId: match[1], baseAction: match[2] };
+}
+
+function parseNullableNumber(value) {
+  const trimmed = value.trim();
+  return trimmed !== "" ? parseFloat(trimmed) : null;
+}
+
+export async function handleAppChange(event, ctx) {
+  const {
+    state,
+    root,
+    setState,
+    commit,
+    commitRecipeRail,
+    patchUi,
+    setActiveChipEditor,
+    setChartParams,
+    setDatasets,
+    setLoadingState,
+    setError,
+    createSlot,
+    loadDatasetById,
+    restoreLayout,
+    fetchDatasets,
+    reanalyze,
+  } = ctx;
+
+  if (event.target.matches('[data-action="switch-dataset"]')) {
+    setState(setLoadingState(state, true));
+    try {
+      const datasets = await fetchDatasets();
+      let next = setDatasets(state, datasets);
+      const saved = restoreLayout();
+      if (saved && saved.chartOrder.length > 0) {
+        const restoredCharts = {};
+        for (const cid of saved.chartOrder) {
+          restoredCharts[cid] = createSlot(saved.chartParams[cid] ? { params: saved.chartParams[cid] } : {});
+        }
+        next = {
+          ...next,
+          charts: restoredCharts,
+          chartOrder: saved.chartOrder,
+          nextChartId: saved.nextChartId || saved.chartOrder.length + 1,
+          focusedChartId: saved.focusedChartId || saved.chartOrder[0],
+          chartLayout: { rows: saved.rows, colWeights: saved.colWeights, rowWeights: saved.rowWeights },
+        };
+      }
+      commit(next);
+      await loadDatasetById(event.target.value);
+    } catch (err) {
+      commit(setError(state, err.message));
+    }
+    return true;
+  }
+
+  const action = event.target.dataset.action;
+  if (!action) return false;
+
+  if (action.startsWith("_pending-") && state.ui.pendingNewChart) {
+    const pendingAction = action.slice("_pending-".length);
+    const pending = { ...state.ui.pendingNewChart };
+
+    if (pendingAction === "set-metric-column") pending.value_column = event.target.value || null;
+    else if (pendingAction === "set-subgroup-column") pending.subgroup_column = event.target.value || null;
+    else if (pendingAction === "set-phase-column") pending.phase_column = event.target.value || null;
+    else if (pendingAction === "set-chart-type") pending.chart_type = event.target.value;
+    else if (pendingAction === "set-sigma-method") pending.sigma_method = event.target.value;
+    else if (pendingAction === "set-k-sigma") {
+      const k = parseFloat(event.target.value);
+      if (k > 0 && k <= 6) pending.k_sigma = k;
+    } else if (pendingAction === "toggle-nelson") {
+      const ruleId = Number(event.target.dataset.value);
+      const current = pending.nelson_tests || [];
+      pending.nelson_tests = event.target.checked ? [...current, ruleId] : current.filter((r) => r !== ruleId);
+    } else if (pendingAction === "set-usl") pending.usl = parseNullableNumber(event.target.value);
+    else if (pendingAction === "set-lsl") pending.lsl = parseNullableNumber(event.target.value);
+    else if (pendingAction === "set-target") pending.target = parseNullableNumber(event.target.value);
+    else return false;
+
+    let next = patchUi({ pendingNewChart: pending });
+    if (pendingAction !== "toggle-nelson" && pendingAction !== "set-k-sigma") {
+      next = setActiveChipEditor(next, null);
+    }
+    commitRecipeRail(next);
+    return true;
+  }
+
+  const { chartId, baseAction } = parseActionTarget(action);
+  if (!chartId) return false;
+
+  if (baseAction === "set-metric-column") {
+    let next = setChartParams(state, chartId, { value_column: event.target.value || null });
+    next = setActiveChipEditor(next, null);
+    commit(next);
+    await reanalyze();
+    return true;
+  }
+  if (baseAction === "set-subgroup-column") {
+    let next = setChartParams(state, chartId, { subgroup_column: event.target.value || null });
+    next = setActiveChipEditor(next, null);
+    commit(next);
+    await reanalyze();
+    return true;
+  }
+  if (baseAction === "set-phase-column") {
+    let next = setChartParams(state, chartId, { phase_column: event.target.value || null });
+    next = setActiveChipEditor(next, null);
+    commit(next);
+    await reanalyze();
+    return true;
+  }
+  if (baseAction === "set-chart-type") {
+    let next = setChartParams(state, chartId, { chart_type: event.target.value });
+    next = setActiveChipEditor(next, null);
+    commit(next);
+    await reanalyze();
+    return true;
+  }
+  if (baseAction === "set-sigma-method") {
+    let next = setChartParams(state, chartId, { sigma_method: event.target.value });
+    next = setActiveChipEditor(next, null);
+    commit(next);
+    await reanalyze();
+    return true;
+  }
+  if (baseAction === "toggle-nelson") {
+    const ruleId = Number(event.target.dataset.value);
+    const current = state.charts[chartId].params.nelson_tests || [];
+    const nextRules = event.target.checked ? [...current, ruleId] : current.filter((r) => r !== ruleId);
+    commit(setChartParams(state, chartId, { nelson_tests: nextRules }));
+    await reanalyze();
+    return true;
+  }
+  if (baseAction === "set-k-sigma") {
+    const k = parseFloat(event.target.value);
+    if (k > 0 && k <= 6) {
+      commit(setChartParams(state, chartId, { k_sigma: k }));
+      await reanalyze();
+    }
+    return true;
+  }
+  if (baseAction === "set-usl") {
+    commit(setChartParams(state, chartId, { usl: parseNullableNumber(event.target.value) }));
+    await reanalyze();
+    return true;
+  }
+  if (baseAction === "set-lsl") {
+    commit(setChartParams(state, chartId, { lsl: parseNullableNumber(event.target.value) }));
+    await reanalyze();
+    return true;
+  }
+  if (baseAction === "set-target") {
+    commit(setChartParams(state, chartId, { target: parseNullableNumber(event.target.value) }));
+    await reanalyze();
+    return true;
+  }
+
+  return false;
+}
