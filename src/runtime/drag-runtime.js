@@ -66,8 +66,14 @@ export function setupDragInteractions({
       ghostRafId = null;
     }
     if (ghostOverlay) {
-      ghostOverlay.remove();
+      const el = ghostOverlay;
       ghostOverlay = null;
+      // Soft fade-out before removal
+      el.style.transition = 'opacity 150ms cubic-bezier(0.25, 1, 0.5, 1)';
+      el.style.opacity = '0';
+      el.addEventListener('transitionend', () => el.remove(), { once: true });
+      // Safety timeout in case transitionend doesn't fire
+      setTimeout(() => { if (el.parentNode) el.remove(); }, 200);
     }
   }
 
@@ -78,7 +84,11 @@ export function setupDragInteractions({
     const state = getState();
     const { pane, ghost, chartId, dropTarget, dropZone } = dragState;
     pane.classList.remove("dragging");
-    ghost.remove();
+    // Soft fade-out for the floating drag label
+    ghost.style.transition = 'opacity 120ms ease, transform 120ms ease';
+    ghost.style.opacity = '0';
+    ghost.style.transform = 'scale(0.9)';
+    setTimeout(() => ghost.remove(), 150);
     removeGhostOverlay();
     documentRef.body.style.userSelect = "";
 
@@ -227,14 +237,18 @@ export function setupDragInteractions({
       }
     }
 
+    // Only re-render ghost when drop target or zone actually changes
+    const targetChanged = foundTarget !== dragState.dropTarget || foundZone !== dragState.dropZone;
     dragState.dropTarget = foundTarget;
     dragState.dropZone = foundZone;
 
-    if (foundTarget && foundZone) {
-      const previewLayout = computeGridPreview(state.chartLayout, chartId, foundTarget, foundZone);
-      updateGhostOverlay(previewLayout, chartId);
-    } else {
-      updateGhostOverlay(state.chartLayout, chartId);
+    if (targetChanged) {
+      if (foundTarget && foundZone) {
+        const previewLayout = computeGridPreview(state.chartLayout, chartId, foundTarget, foundZone);
+        updateGhostOverlay(previewLayout, chartId);
+      } else {
+        updateGhostOverlay(state.chartLayout, chartId);
+      }
     }
   });
 

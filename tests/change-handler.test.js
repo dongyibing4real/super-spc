@@ -6,6 +6,14 @@ import {
   parseActionTarget,
 } from "../src/events/change-handler.js";
 
+function mockStore(initialState) {
+  let state = initialState;
+  return {
+    getState() { return state; },
+    setState(next) { state = next; return state; },
+  };
+}
+
 test("parseActionTarget splits chart-prefixed actions", () => {
   assert.deepEqual(parseActionTarget("chart-2-set-chart-type"), {
     chartId: "chart-2",
@@ -18,7 +26,12 @@ test("parseActionTarget splits chart-prefixed actions", () => {
 });
 
 test("handleAppChange updates pending new chart metric and closes chip editor", async () => {
-  const commits = [];
+  const store = mockStore({
+    ui: {
+      pendingNewChart: { chart_type: "xbar-r", value_column: null },
+    },
+  });
+
   const event = {
     target: {
       value: "length_of_stay",
@@ -30,46 +43,32 @@ test("handleAppChange updates pending new chart metric and closes chip editor", 
   };
 
   const handled = await handleAppChange(event, {
-    state: {
-      ui: {
-        pendingNewChart: { chart_type: "xbar-r", value_column: null },
-      },
-    },
+    store,
     root: {},
-    setState() {},
-    commit() {},
-    commitRecipeRail(next) {
-      commits.push(next);
-    },
-    patchUi(nextUi) {
-      return {
-        ui: {
-          pendingNewChart: nextUi.pendingNewChart,
-        },
-      };
-    },
-    setActiveChipEditor(next, activeChipEditor) {
-      return { ...next, activeChipEditor };
-    },
-    setChartParams() {},
-    setDatasets() {},
-    setLoadingState() {},
-    setError() {},
-    createSlot() {},
+    render() {},
     loadDatasetById() {},
     restoreLayout() { return null; },
-    fetchDatasets() {},
     reanalyze() {},
   });
 
   assert.equal(handled, true);
-  assert.equal(commits.length, 1);
-  assert.equal(commits[0].ui.pendingNewChart.value_column, "length_of_stay");
-  assert.equal(commits[0].activeChipEditor, null);
+  const finalState = store.getState();
+  assert.equal(finalState.ui.pendingNewChart.value_column, "length_of_stay");
+  assert.equal(finalState.activeChipEditor, null);
 });
 
 test("handleAppChange updates chart params and reanalyzes for chart action", async () => {
   const calls = [];
+  const store = mockStore({
+    activeDatasetId: "ds-1",
+    chartOrder: ["chart-1"],
+    charts: {
+      "chart-1": {
+        params: { chart_type: "imr" },
+      },
+    },
+  });
+
   const event = {
     target: {
       value: "u-chart",
@@ -81,61 +80,32 @@ test("handleAppChange updates chart params and reanalyzes for chart action", asy
   };
 
   const handled = await handleAppChange(event, {
-    state: {
-      activeDatasetId: "ds-1",
-      chartOrder: ["chart-1"],
-      charts: {
-        "chart-1": {
-          params: { chart_type: "imr" },
-        },
-      },
-    },
+    store,
     root: {},
-    setState() {},
-    commit(next) {
-      calls.push(["commit", next]);
-    },
-    commitRecipeRail() {},
-    patchUi() {},
-    setActiveChipEditor(next, activeChipEditor) {
-      return { ...next, activeChipEditor };
-    },
-    setChartParams(state, chartId, params) {
-      calls.push(["setChartParams", chartId, params]);
-      return {
-        ...state,
-        charts: {
-          ...state.charts,
-          [chartId]: {
-            ...state.charts[chartId],
-            params: { ...state.charts[chartId].params, ...params },
-          },
-        },
-      };
-    },
-    setDatasets() {},
-    setLoadingState() {},
-    setError() {},
-    createSlot() {},
+    render() { calls.push(["render"]); },
     loadDatasetById() {},
     restoreLayout() { return null; },
-    fetchDatasets() {},
     async reanalyze() {
       calls.push(["reanalyze"]);
     },
   });
 
   assert.equal(handled, true);
-  assert.deepEqual(calls[0], ["setChartParams", "chart-1", { chart_type: "u-chart" }]);
-  assert.equal(calls[1][0], "commit");
-  assert.equal(calls[1][1].charts["chart-1"].params.chart_type, "u-chart");
-  assert.equal(calls[1][1].activeChipEditor, null);
-  assert.deepEqual(calls[2], ["reanalyze"]);
+  const finalState = store.getState();
+  assert.equal(finalState.charts["chart-1"].params.chart_type, "u-chart");
+  assert.equal(finalState.activeChipEditor, null);
+  assert.deepEqual(calls[0], ["render"]);
+  assert.deepEqual(calls[1], ["reanalyze"]);
 });
 
 test("handleAppChange delegates dataset switch to loadDatasetById after loading commit", async () => {
   const calls = [];
   const datasets = [{ id: "ds-1" }, { id: "ds-2" }];
+  const store = mockStore({
+    chartOrder: [],
+    charts: {},
+  });
+
   const event = {
     target: {
       value: "ds-2",
@@ -147,33 +117,9 @@ test("handleAppChange delegates dataset switch to loadDatasetById after loading 
   };
 
   const handled = await handleAppChange(event, {
-    state: {
-      chartOrder: [],
-      charts: {},
-    },
+    store,
     root: {},
-    setState(next) {
-      calls.push(["setState", next]);
-    },
-    commit(next) {
-      calls.push(["commit", next]);
-    },
-    commitRecipeRail() {},
-    patchUi() {},
-    setActiveChipEditor() {},
-    setChartParams() {},
-    setDatasets(state, nextDatasets) {
-      return { ...state, datasets: nextDatasets };
-    },
-    setLoadingState(state, loading) {
-      return { ...state, loading };
-    },
-    setError(state, message) {
-      return { ...state, error: message };
-    },
-    createSlot() {
-      return { params: {} };
-    },
+    render() { calls.push(["render"]); },
     async loadDatasetById(datasetId) {
       calls.push(["loadDatasetById", datasetId]);
     },
@@ -185,7 +131,8 @@ test("handleAppChange delegates dataset switch to loadDatasetById after loading 
   });
 
   assert.equal(handled, true);
-  assert.deepEqual(calls[0], ["setState", { chartOrder: [], charts: {}, loading: true }]);
-  assert.deepEqual(calls[1], ["commit", { chartOrder: [], charts: {}, datasets }]);
-  assert.deepEqual(calls[2], ["loadDatasetById", "ds-2"]);
+  const finalState = store.getState();
+  assert.deepEqual(finalState.datasets, datasets);
+  assert.deepEqual(calls[0], ["render"]);
+  assert.deepEqual(calls[1], ["loadDatasetById", "ds-2"]);
 });

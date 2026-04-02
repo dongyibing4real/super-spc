@@ -1,7 +1,83 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mock } from "node:test";
 
-import { handlePrepClick } from "../src/events/prep-click-handler.js";
+// Track calls to key functions
+const calls = [];
+
+// Mock state reducers
+const stateReducers = {
+  setPrepError(state, msg) { return { ...state, prepError: msg }; },
+  clearPrepTransforms(state) { return { ...state, dataPrep: { ...state.dataPrep, transforms: [] } }; },
+  setActivePanel(state, panel) { return { ...state, activePanel: panel }; },
+  closeActivePanel(state) { return { ...state, activePanel: null }; },
+  toggleRowExclusion(state, idx) { return { ...state, toggledRow: idx }; },
+  updateColumnMeta(state, col, updates) { return { ...state, updatedCol: col, colUpdates: updates }; },
+  addColumnMeta(state, cols) { return { ...state, addedCols: cols }; },
+  addPrepTransform(state, transform) {
+    calls.push(["addPrepTransform", transform]);
+    return { ...state, lastTransform: transform };
+  },
+  setPrepTable(state, table) {
+    calls.push(["setPrepTable", table]);
+    return { ...state, table };
+  },
+  setColumns(state, columns) { return { ...state, columns }; },
+  setProfileCache(state, cache) { return { ...state, cache }; },
+  markPrepSaved(state) { return { ...state, markedSaved: true }; },
+  undoPrepTransform(state) {
+    calls.push(["undoPrepTransform"]);
+    return { ...state, dataPrep: { ...state.dataPrep, transforms: [] } };
+  },
+  undoPrepTransformTo(state, idx) { return { ...state, dataPrep: { ...state.dataPrep, transforms: state.dataPrep.transforms.slice(0, idx) } }; },
+  setDatasets(state, datasets) { return { ...state, datasets }; },
+};
+
+const dataFunctions = {
+  filterRows(table, column, operator, filterVal) {
+    calls.push(["filterRows", column, operator, filterVal]);
+    return { table, filtered: true };
+  },
+  findReplace() {},
+  removeDuplicates() {},
+  handleMissing() {},
+  cleanText() {},
+  renameColumn() {},
+  changeColumnType() {},
+  addCalculatedColumn() {},
+  recodeValues() {},
+  binColumn() {},
+  splitColumn() {},
+  concatColumns() {},
+};
+
+const apiFunctions = {
+  createDataset() {},
+  fetchDatasets() {},
+};
+
+const runtimeFunctions = {
+  replayPrepTransforms() {
+    calls.push(["replayPrepTransforms"]);
+    return { table: { replayed: true }, columns: [{ name: "value" }] };
+  },
+};
+
+// Register mocks for all imported modules
+mock.module("../src/core/state.js", { namedExports: stateReducers });
+mock.module("../src/data/api.js", { namedExports: apiFunctions });
+mock.module("../src/data/data-prep-engine.js", { namedExports: dataFunctions });
+mock.module("../src/runtime/prep-runtime.js", { namedExports: runtimeFunctions });
+
+const { handlePrepClick } = await import("../src/events/prep-click-handler.js");
+
+function mockStore(initialState) {
+  let state = initialState;
+  return {
+    getState() { return state; },
+    setState(next) { state = next; return state; },
+  };
+}
 
 function createRoot(fieldValues = {}, checkedValues = {}, extra = {}) {
   return {
@@ -27,7 +103,9 @@ function createRoot(fieldValues = {}, checkedValues = {}, extra = {}) {
 }
 
 test("handlePrepClick opens filter panel", async () => {
-  let committed = null;
+  calls.length = 0;
+  const store = mockStore({});
+  const renderCalls = [];
   const event = {
     target: {
       closest(selector) {
@@ -37,51 +115,24 @@ test("handlePrepClick opens filter panel", async () => {
   };
 
   const handled = await handlePrepClick(event, {
-    state: {},
+    store,
     root: createRoot(),
     documentRef: {},
     windowRef: {},
-    setState() {},
-    render() {},
-    commit(next) { committed = next; },
-    createDataset() {},
-    fetchDatasets() {},
-    setDatasets() {},
-    setPrepError() {},
-    clearPrepTransforms() {},
-    setActivePanel(state, panel) { return { ...state, activePanel: panel }; },
-    closeActivePanel() {},
-    toggleRowExclusion() {},
-    updateColumnMeta() {},
-    addColumnMeta() {},
-    addPrepTransform() {},
-    setPrepTable() {},
-    setColumns() {},
-    setProfileCache() {},
-    markPrepSaved() {},
-    undoPrepTransform() {},
-    undoPrepTransformTo() {},
-    replayPrepTransforms() {},
-    cleanText() {},
-    filterRows() {},
-    findReplace() {},
-    removeDuplicates() {},
-    handleMissing() {},
-    renameColumn() {},
-    changeColumnType() {},
-    addCalculatedColumn() {},
-    recodeValues() {},
-    binColumn() {},
-    splitColumn() {},
-    concatColumns() {},
+    render() { renderCalls.push("render"); },
   });
 
   assert.equal(handled, true);
-  assert.deepEqual(committed, { activePanel: "filter" });
+  assert.deepEqual(store.getState(), { activePanel: "filter" });
+  assert.equal(renderCalls.length, 1);
 });
 
 test("handlePrepClick applies filter transform and closes active panel", async () => {
-  const calls = [];
+  calls.length = 0;
+  const initialState = { dataPrep: { arqueroTable: { kind: "table" } } };
+  const store = mockStore(initialState);
+  const renderCalls = [];
+
   const event = {
     target: {
       closest(selector) {
@@ -91,7 +142,7 @@ test("handlePrepClick applies filter transform and closes active panel", async (
   };
 
   const handled = await handlePrepClick(event, {
-    state: { dataPrep: { arqueroTable: { kind: "table" } } },
+    store,
     root: createRoot({
       "filter-col": "status",
       "filter-op": "eq",
@@ -100,60 +151,25 @@ test("handlePrepClick applies filter transform and closes active panel", async (
     }),
     documentRef: {},
     windowRef: {},
-    setState(next) { calls.push(["setState", next]); },
-    render() { calls.push(["render"]); },
-    commit() {},
-    createDataset() {},
-    fetchDatasets() {},
-    setDatasets() {},
-    setPrepError() {},
-    clearPrepTransforms() {},
-    setActivePanel() {},
-    closeActivePanel(state) { return { ...state, activePanel: null }; },
-    toggleRowExclusion() {},
-    updateColumnMeta() {},
-    addColumnMeta() {},
-    addPrepTransform(state, transform) {
-      calls.push(["addPrepTransform", transform]);
-      return { ...state, lastTransform: transform };
-    },
-    setPrepTable(state, table) {
-      calls.push(["setPrepTable", table]);
-      return { ...state, table };
-    },
-    setColumns() {},
-    setProfileCache() {},
-    markPrepSaved() {},
-    undoPrepTransform() {},
-    undoPrepTransformTo() {},
-    replayPrepTransforms() {},
-    cleanText() {},
-    filterRows(table, column, operator, filterVal) {
-      calls.push(["filterRows", column, operator, filterVal]);
-      return { table, filtered: true };
-    },
-    findReplace() {},
-    removeDuplicates() {},
-    handleMissing() {},
-    renameColumn() {},
-    changeColumnType() {},
-    addCalculatedColumn() {},
-    recodeValues() {},
-    binColumn() {},
-    splitColumn() {},
-    concatColumns() {},
+    render() { renderCalls.push("render"); },
   });
 
   assert.equal(handled, true);
   assert.deepEqual(calls[0], ["filterRows", "status", "eq", "open"]);
   assert.equal(calls[1][0], "addPrepTransform");
   assert.equal(calls[2][0], "setPrepTable");
-  assert.equal(calls[3][0], "setState");
-  assert.deepEqual(calls[4], ["render"]);
+  // Final state should have activePanel: null from closeActivePanel
+  const finalState = store.getState();
+  assert.equal(finalState.activePanel, null);
+  assert.equal(renderCalls.length, 1);
 });
 
 test("handlePrepClick replays transforms on prep undo", async () => {
-  const calls = [];
+  calls.length = 0;
+  const initialState = { dataPrep: { transforms: [{ type: "trim" }] } };
+  const store = mockStore(initialState);
+  const renderCalls = [];
+
   const event = {
     target: {
       closest(selector) {
@@ -163,55 +179,17 @@ test("handlePrepClick replays transforms on prep undo", async () => {
   };
 
   const handled = await handlePrepClick(event, {
-    state: { dataPrep: { transforms: [{ type: "trim" }] } },
+    store,
     root: createRoot(),
     documentRef: {},
     windowRef: {},
-    setState(next) { calls.push(["setState", next]); },
-    render() { calls.push(["render"]); },
-    commit() {},
-    createDataset() {},
-    fetchDatasets() {},
-    setDatasets() {},
-    setPrepError() {},
-    clearPrepTransforms() {},
-    setActivePanel() {},
-    closeActivePanel() {},
-    toggleRowExclusion() {},
-    updateColumnMeta() {},
-    addColumnMeta() {},
-    addPrepTransform() {},
-    setPrepTable(state, table) { return { ...state, table }; },
-    setColumns(state, columns) { return { ...state, columns }; },
-    setProfileCache(state, cache) { return { ...state, cache }; },
-    markPrepSaved(state) { return { ...state, markedSaved: true }; },
-    undoPrepTransform(state) {
-      calls.push(["undoPrepTransform"]);
-      return { ...state, dataPrep: { transforms: [] } };
-    },
-    undoPrepTransformTo() {},
-    replayPrepTransforms() {
-      calls.push(["replayPrepTransforms"]);
-      return { table: { replayed: true }, columns: [{ name: "value" }] };
-    },
-    cleanText() {},
-    filterRows() {},
-    findReplace() {},
-    removeDuplicates() {},
-    handleMissing() {},
-    renameColumn() {},
-    changeColumnType() {},
-    addCalculatedColumn() {},
-    recodeValues() {},
-    binColumn() {},
-    splitColumn() {},
-    concatColumns() {},
+    render() { renderCalls.push("render"); },
   });
 
   assert.equal(handled, true);
   assert.deepEqual(calls[0], ["undoPrepTransform"]);
   assert.deepEqual(calls[1], ["replayPrepTransforms"]);
-  assert.equal(calls[2][0], "setState");
-  assert.equal(calls[2][1].markedSaved, true);
-  assert.deepEqual(calls[3], ["render"]);
+  const finalState = store.getState();
+  assert.equal(finalState.markedSaved, true);
+  assert.equal(renderCalls.length, 1);
 });

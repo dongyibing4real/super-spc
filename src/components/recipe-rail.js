@@ -1,5 +1,5 @@
 import { getFocused, collectChartIds, DEFAULT_PARAMS } from "../core/state.js";
-import { applyParamsToContext } from "../helpers.js";
+import { applyParamsToContext, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED, getDisabledChartTypes } from "../helpers.js";
 
 function chipSelect(action, options, current) {
   return `<select class="chip-select" data-action="${action}" onclick="event.stopPropagation()">${options.map(([val, label]) =>
@@ -7,10 +7,10 @@ function chipSelect(action, options, current) {
   ).join("")}</select>`;
 }
 
-function chipGroupSelect(action, groups, current) {
+function chipGroupSelect(action, groups, current, disabledSet = new Set()) {
   return `<select class="chip-select" data-action="${action}" onclick="event.stopPropagation()">${groups.map(([group, items]) =>
     `<optgroup label="${group}">${items.map(([val, label]) =>
-      `<option value="${val}" ${val === current ? "selected" : ""}>${label}</option>`
+      `<option value="${val}" ${val === current ? "selected" : ""} ${disabledSet.has(val) ? "disabled" : ""}>${label}${disabledSet.has(val) ? " \u2014" : ""}</option>`
     ).join("")}</optgroup>`
   ).join("")}</select>`;
 }
@@ -64,22 +64,31 @@ function renderSigmaEditor(prefix, params) {
 function renderChartChips(state, prefix, params, context, ae, cols) {
   const numericCols = cols.filter((c) => c.dtype === "numeric");
   const allNonValue = cols.filter((c) => c.role !== "value");
-  const currentSg = cols.find((c) => c.role === "subgroup")?.name || "";
-  const currentPh = cols.find((c) => c.role === "phase")?.name || "";
+  const currentSg = params.subgroup_column || "";
+  const currentPh = params.phase_column || "";
   const activeTests = params.nelson_tests || [];
 
   const chips = [
     [`${prefix}-metric`, "Metric", ae === `${prefix}-metric`
       ? chipSelect(`${prefix}-set-metric-column`, numericCols.map((c) => [c.name, c.name]), numericCols.find((c) => c.role === "value")?.name || "")
       : context.metric.label, context.metric.unit],
-    [`${prefix}-subgroup`, "Subgroup", ae === `${prefix}-subgroup`
-      ? chipSelect(`${prefix}-set-subgroup-column`, [["", "Individual (n=1)"], ...allNonValue.map((c) => [c.name, c.name])], currentSg)
-      : context.subgroup.label, ae === `${prefix}-subgroup` ? "" : context.subgroup.detail],
+    [`${prefix}-subgroup`, "Subgroup",
+      INDIVIDUAL_ONLY.has(params.chart_type)
+        ? "Individual (n=1)"
+        : ae === `${prefix}-subgroup`
+          ? chipSelect(`${prefix}-set-subgroup-column`, [
+              ...(SUBGROUP_REQUIRED.has(params.chart_type) ? [] : [["", "Individual (n=1)"]]),
+              ...allNonValue.map((c) => [c.name, c.name]),
+            ], currentSg)
+          : context.subgroup.label,
+      INDIVIDUAL_ONLY.has(params.chart_type)
+        ? "Locked"
+        : ae === `${prefix}-subgroup` ? "" : context.subgroup.detail],
     [`${prefix}-phase`, "Phase", ae === `${prefix}-phase`
       ? chipSelect(`${prefix}-set-phase-column`, [["", "No phases"], ...allNonValue.map((c) => [c.name, c.name])], currentPh)
       : context.phase.label, ae === `${prefix}-phase` ? "" : context.phase.detail],
     [`${prefix}-chart`, "Chart", ae === `${prefix}-chart`
-      ? chipGroupSelect(`${prefix}-set-chart-type`, CHART_TYPES, params.chart_type)
+      ? chipGroupSelect(`${prefix}-set-chart-type`, CHART_TYPES, params.chart_type, getDisabledChartTypes(params, cols))
       : context.chartType.label, ae === `${prefix}-chart` ? "" : context.chartType.detail],
     ...(!NO_SIGMA_CHARTS.has(params.chart_type) ? [[`${prefix}-sigma`, "Sigma", ae === `${prefix}-sigma`
       ? renderSigmaEditor(prefix, params)
@@ -96,15 +105,24 @@ function renderChartChips(state, prefix, params, context, ae, cols) {
 
   return chips.map(([id, label, value, detail]) => {
     const isEditing = ae === id;
+    const isSubgroup = id.endsWith("-subgroup");
+    const isLocked = isSubgroup && INDIVIDUAL_ONLY.has(params.chart_type);
+    const needsSubgroup = isSubgroup && SUBGROUP_REQUIRED.has(params.chart_type) && !currentSg;
     const isSpecsUnset = id.endsWith("-specs") && value === "Not set";
-    const warnClass = isSpecsUnset ? "chip--warn" : "";
+    const warnClass = isSpecsUnset || needsSubgroup ? "chip--warn" : "";
+    const lockedClass = isLocked ? "chip--locked" : "";
     const titleAttr = isSpecsUnset
       ? 'title="Set LSL / USL to enable Cpk, Ppk capability analysis"'
-      : "";
+      : needsSubgroup
+        ? 'title="This chart type requires a subgroup column"'
+        : isLocked
+          ? 'title="This chart type uses individual measurements only"'
+          : "";
     const valueStr = typeof value === "string" ? value : "";
     return `
-    <button class="recipe-chip ${isEditing ? "chip-editing" : ""} ${warnClass}"
-      data-action="toggle-chip-editor" data-chip="${id}" type="button" ${titleAttr}>
+    <button class="recipe-chip ${isEditing ? "chip-editing" : ""} ${warnClass} ${lockedClass}"
+      ${isLocked ? "" : `data-action="toggle-chip-editor" data-chip="${id}"`} type="button" ${titleAttr}
+      ${isLocked ? "disabled" : ""}>
       <span class="chip-label">${label}</span>
       <strong>${valueStr}</strong>
       ${detail ? `<span class="chip-detail">${detail}</span>` : ""}

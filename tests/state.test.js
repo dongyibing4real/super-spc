@@ -39,7 +39,6 @@ function createPopulatedState() {
     subgroupLabel: `Hour ${i + 1}`,
     phaseId: i < 9 ? "P1" : i < 18 ? "P2" : "P3",
     primaryValue: 8.042 + i * 0.004,
-    challengerValue: 8.041 + i * 0.004,
     excluded: [13, 17, 20, 23].includes(i),
     annotation: i === 18 ? "M-204 chamber clean" : null,
     raw: {},
@@ -181,7 +180,7 @@ test("excluding a point keeps it visible and updates exclusion count", () => {
 
   assert.equal(next.points[10].excluded, true);
   assert.equal(workspace.excludedCount, 5);
-  assert.match(next.ui.notice.body, /remains visible/i);
+  // Notice is now set by middleware, not the reducer directly
 });
 
 test("failed transform keeps the prior chart result while marking pipeline partial", () => {
@@ -272,7 +271,8 @@ test("toggleTransform does not mutate original transforms", () => {
 
 test("clearNotice clears the notice", () => {
   let s = createPopulatedState();
-  s = togglePointExclusion(s, 5); // sets a notice
+  // Set a notice directly (middleware handles this in production)
+  s = { ...s, ui: { ...s.ui, notice: { tone: "info", title: "Test", body: "test notice" } } };
   assert.notEqual(s.ui.notice, null);
   const cleared = clearNotice(s);
   assert.equal(cleared.ui.notice, null);

@@ -2,125 +2,80 @@
 
 # Super SPC
 
-### Open-source SPC platform for process engineers, reliability engineer or anyone who is interested in process control and tired of paying tools like JMP/Minitab in full price for a single spc platform
+### A fully open-source modern statistical process control platform
 
-**24 chart types. 8 Nelson rules. Zero dashboard fluff. more functionalities keep coming**
-
-Built for process engineers who are tired of clicking through wizards.
-
-[Getting Started](#getting-started) &bull; [Features](#features) &bull; [Chart Types](#chart-types) &bull; [Why Super SPC](#why-super-spc) &bull; [Architecture](#architecture)
+[Getting Started](#getting-started) &bull; [Features](#features) &bull; [Chart Types](#chart-types) &bull; [Why Build This Project](#why-build-this-project) &bull; [Architecture](#architecture)
 
 ---
 
-![Super SPC Workspace — Dark command-center UI with zone-shaded control chart, recipe rail, and evidence panel](docs/assets/hero-workspace.png)
+![Super SPC Workspace - dark command-center UI with control charts, recipe rail, and evidence panel](docs/assets/multi-chart.png)
 
 </div>
 
-## What is Super SPC?
+## Why Build This Project
 
-Super SPC is an totally open-source statistical process control platform purpose-built for process control and quality engineering, anyone interested in developing this app is welcomed
+Many established products, such as **JMP** and **Minitab**, are still authoritative tools in the **Six Sigma** and quality engineering space, but they also come with familiar constraints:
 
-It's what you'd get if **JMP's control chart builder** is too old for you, or some other tools are more like toys and underdeveloped
+- they are difficult to customize for new workflows;
+- product iteration is slow and the interaction model is heavily wizard-driven;
+- the ecosystem is closed, with core algorithm code unavailable;
+- their adaptability to newer AI/ML workflows is limited.
 
-```
-No wizards. No "AI insights." No 47-click workflows.
-Better UI, More Functionalities and open to co-develop
-```
+More importantly, they are expensive. If your daily work is focused mainly on SPC, you often end up paying for a large surface area of functionality you may never use.
 
-## Getting Started
+And even then, the SPC experience itself is not especially fascinating. A large share of the classical methods and workflows can already be reproduced with Python, but the product experience around them is still poor.
 
-### Prerequisites
+Thanks to AI-assisted coding, it is now realistic for a small team, or even a single engineer, to build a serious product in this space. **Super SPC** was created from that shift. It draws inspiration from classic data visualization and quality engineering tools, but rebuilds the experience around modern interaction patterns and a modern application architecture.
 
-- **Node.js** 18+
-- **Python** 3.10+
-- A CSV file with process data
-
-### Quick Start
-
-```bash
-# Clone the repository
-git clone https://github.com/dongyibing4real/super-spc.git
-cd super-spc
-
-# Install frontend dependencies
-npm install
-
-# Install backend dependencies
-cd api && pip install -r requirements.txt && cd ..
-
-# Start the backend
-cd api && uvicorn main:app --reload --port 8000 &
-
-# Start the frontend
-npm run dev --port 4173
-```
-
-Open **http://localhost:4173** and drop a CSV.
-
-That's it. No account creation. No cloud sync. No telemetry.
+There is still plenty to improve. Many areas are unfinished, and there is still room to integrate more AI/ML capability from PHM and APC workflows. But the iteration speed is now much higher than before, and contributions, suggestions, and domain feedback from process engineers, reliability engineers, and anyone interested in this project are very welcome.
 
 ## Features
 
-### Control Charts That Actually Work
+### Chart Is the Hero
 
-> Zone shading, rule violation rings, capability indices, phase boundaries — all visible by default.
+- Maximize chart interactivity: `marquee selection`, axis `pan/zoom`, and selectable phase regions
+- A rich evidence rail on the right side for selected point details and method context
+- A configurable forecast area for projecting series behavior in place (in progress)
 
-![Rule violations highlighted with colored rings on an IMR chart](docs/assets/violations.png)
+![Rule violations highlighted with colored rings on an IMR chart](docs/assets/hero.gif)
+
+### Multi-Chart Workspace
+
+- Arrange multiple charts side by side
+- Drag to reorder
+- Adaptive scaling
+
+![Multi-chart workspace demo](docs/assets/multi-chart-arange.gif)
 
 <table>
 <tr>
 <td width="50%">
 
-**24 chart types** covering every SPC scenario:
-- Shewhart variables & attributes
-- CUSUM (tabular + V-mask)
-- EWMA with residuals & forecast
-- Hotelling T² & MEWMA
-- Short-run, rare event, Laney P'/U'
-- Run charts with runs test
-
-Every chart includes **zone shading**, **rule violation markers**, and **capability indices** — visible by default, not buried in a submenu.
+**24 chart types** covering common SPC scenarios:
+- Shewhart variables and attributes
+- CUSUM (`tabular` + `V-mask`)
+- EWMA with residuals and forecast
+- Hotelling `T²` and `MEWMA`
+- `short-run`, `rare event`, `Laney P'` / `Laney U'`
+- `run chart` with `runs test`
 
 </td>
 <td width="50%">
 
-**Multi-chart workspace** with drag-to-arrange grid:
-- Independent charts, no forced pairing
-- Per-chart accent colors (8-color cycle)
-- Adaptive layout — padding and fonts scale with pane size
-- Plot area guaranteed ≥60% of vertical space
-- Axis pan/scale by dragging directly on the axis (JMP-style)
+**Multi-chart workspace** supports drag-to-arrange layout:
+- charts stay independent, with no forced pairing
+- each chart gets its own accent color in an 8-color cycle
+- adaptive layout adjusts padding and type scale based on pane size
+- plot area remains usable under tighter layouts
+- axes can be dragged directly for `pan` / `scale`, similar to JMP
 
 </td>
 </tr>
 </table>
 
-### Recipe Rail — Configuration Without the Modal Hell
+### Data Prep With Fewer Round-Trips
 
-Every chart parameter is a **clickable chip** in the left rail. Metric, subgroup, phase, chart type, sigma method, Nelson tests, spec limits — all visible, all inline-editable. No wizards. No "next step." No modals.
-
-```
-┌──────────┬────────────────────┬───────────┐
-│ Recipe   │                    │ Evidence  │
-│ Rail     │   Chart Arena      │ Rail      │
-│          │                    │           │
-│ [Metric] │   ┌────┬────┐      │ Signal    │
-│ [Subgrp] │   │ IMR│XBar│      │ Violations│
-│ [Phase ] │   │    │  R │      │ Evidence  │
-│ [Chart ] │   └────┴────┘      │           │
-│ [Sigma ] │                    │           │
-│ [Tests ] │                    │           │
-│ [Specs ] │                    │           │
-└──────────┴────────────────────┴───────────┘
-```
-
-### Multi-Chart Workspace
-
-![Two charts side by side in the drag-to-arrange grid](docs/assets/multi-chart.png)
-
-### Data Prep — 14 Transforms, Zero Round-Trips
-
-Client-side data engine powered by [Arquero](https://uwdata.github.io/arquero/). Every transform is immutable and undoable.
+The client-side data engine is built on [Arquero](https://uwdata.github.io/arquero/).
 
 | Phase 1 (Row Ops) | Phase 2 (Column Ops) | Phase 3 (Validation) |
 |---|---|---|
@@ -129,38 +84,34 @@ Client-side data engine powered by [Arquero](https://uwdata.github.io/arquero/).
 | Remove duplicates | Calculated columns | Regex patterns |
 | Missing values (7 strategies) | Recode values | Column profiling |
 | Trim & clean | Bin / Split / Concat | Normality assessment |
-| Sort (multi-column) | | Outlier detection |
-| Column reorder & hide | | |
+| Sort (multi-column) |  | Outlier detection |
+| Column reorder & hide |  |  |
 
-Column headers show **inline histograms**, **completeness bars**, and **summary stats**. Click any column for a full statistical profile — quantiles, moments, outlier counts, normality assessment.
+Column headers surface **inline histogram**, **completeness bar**, and **summary stats**. Click any column to inspect a fuller statistical profile, including `quantiles`, `moments`, `outlier counts`, and `normality assessment`.
 
-![Data Prep — 3-column layout with dataset list, transform toolbar, and data table](docs/assets/data-prep.png)
+![Data Prep - three-column layout with dataset list, transform toolbar, and data table](docs/assets/data-prep.png)
 
-![Column profiling — distribution histogram, quantiles, normality assessment](docs/assets/column-profile.png)
+![Column profiling - distribution histogram, quantiles, and normality assessment](docs/assets/column-profile.png)
 
-### Forecast & Prediction
+### Findings
 
-6 algorithms, one click. Confidence cone renders inline with **ghost zone coloring** — blue within limits, red beyond.
+Drill into each chart's control-state information and expose structured insights.
 
-- Seasonal-harmonic
-- Kalman state-space
-- EWMA projection
-- Linear / Quadratic trend
-- Drift score with OOC estimate
+![Findings](docs/assets/findings.gif)
 
-### Auto-Generated Findings
+### Method Lab
 
-![Findings dashboard — categorized stability, capability, statistical, and pattern findings](docs/assets/findings.png)
+Compare detection behavior across different chart methods.
 
-After every analysis, the findings engine scans for **stability**, **capability**, **statistical**, and **pattern** issues. Each finding has a severity, a metric hero, and a context grid. No AI hallucinations — just deterministic rules applied to your data.
+![Method Lab](docs/assets/method-lab.gif)
 
 ### Keyboard-First
 
 | Key | Action |
-|-----|--------|
-| `←` `→` | Navigate points |
-| `n` / `p` | Jump to next/previous violation |
-| `?` | Show all shortcuts |
+|---|---|
+| `←` `→` | Navigate between points |
+| `n` / `p` | Jump to next / previous violation |
+| `?` | Show shortcuts |
 | `R` `T` `C` `F` `D` `Z` | Data prep operations |
 
 ## Chart Types
@@ -180,134 +131,88 @@ After every analysis, the findings engine scans for **stability**, **capability*
 ### Advanced Platforms (5)
 `CUSUM Tabular` &bull; `CUSUM V-Mask` &bull; `EWMA` &bull; `Hotelling T²` &bull; `MEWMA`
 
-**Total: 27 chart types** — all with zone shading, 8 Nelson rules, 6 Westgard rules, and per-phase limit support.
-
-## Why Super SPC
-
-### vs. JMP
-
-| | JMP | Super SPC |
-|---|---|---|
-| Price | ~$3,000/year per seat | Free |
-| Chart config | 4+ dialog boxes deep | Inline chips, zero modals |
-| Dark mode | No | Default |
-| Keyboard navigation | Limited | Full (←→ n/p shortcuts) |
-| Forecast overlay | No | 6 algorithms, inline |
-| Auto-generated findings | No | Deterministic engine |
-| Data transforms | Separate window | Inline, undoable, 14 ops |
-| Web-based | No (desktop only) | Yes |
-
-### vs. Minitab
-
-| | Minitab/JMP | Super SPC |
-|---|---|---|
-| Price | $$$$ | Free |
-| Multi-chart workspace | Separate windows | Drag-to-arrange grid |
-| Rule violation markers | Text output | Colored rings on points |
-| Column profiling | Separate analysis | Inline in table headers |
-| Open source/co-develop | No | Yes |
-| Self-hostable | No | Yes |
-
-### vs. InfinityQS / NWA
-
-| | Enterprise SPC | Super SPC |
-|---|---|---|
-| Deployment | 6-month IT project | `npm run dev` |
-| Configuration | Admin portal | Recipe chips |
-| Per-seat licensing | $$$$ | Free |
-| Customization | Vendor ticket | Fork and edit |
-| Data ownership | Their cloud | Your machine |
+**27 chart types in total**, all with `zone shading`, `Nelson rules`, `Westgard rules`, and `per-phase` limit support.
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────┐
-│              Frontend (Vite)            │
-│  Vanilla JS + D3.js + morphdom          │
-│  Arquero (client-side data transforms)  │
-│  PapaParse (CSV parsing)                │
-└──────────────────┬──────────────────────┘
-                   │ REST API
-┌──────────────────▼──────────────────────┐
-│            Backend (FastAPI)            │
-│  SQLite (WAL mode)                      │
-│  async SQLAlchemy                       │
-└──────────────────┬──────────────────────┘
-                   │ Python imports
-┌──────────────────▼──────────────────────┐
-│          algo/ (Pure Python)            │
-│  24 chart types · 8 Nelson rules        │
-│  6 Westgard rules · 7 sigma methods     │
-│  CUSUM ARL profiler · Capability        │
-│  numpy + scipy + attrs                  │
-│  1,076 tests (pytest + hypothesis)      │
-└─────────────────────────────────────────┘
+```text
+Frontend (Vite)
+- Vanilla JS + D3.js + morphdom
+- Arquero (client-side data transforms)
+- PapaParse (CSV parsing)
+
+REST API
+
+Backend (FastAPI)
+- SQLite (WAL mode)
+- async SQLAlchemy
+
+Python imports
+
+algo/ (Pure Python)
+- 24 chart types + 8 Nelson rules
+- 6 Westgard rules + 7 sigma methods
+- CUSUM ARL profiler + capability
+- numpy + scipy + attrs
+- pytest + hypothesis
 ```
 
+## Getting Started
 
-## Design System
+### Prerequisites
 
-Dark-first, command-center aesthetic derived from Palantir Blueprint tokens.
+- **Node.js** 18+
+- **Python** 3.10+
+- A CSV file with process data
 
-- **Typography:** Inter (UI) + IBM Plex Mono (data values)
-- **Color:** 6 background tiers, 8-accent cycle, SPC-specific chart colors
-- **Density:** 4px base unit, 8-12px panel padding, 3-8px border radius ceiling
-- **Motion:** Invisible-functional (60-250ms, Material easing)
-- **Chart island:** Light surface (`#F6F7F9`) embedded in dark workspace — not pure white
+### Quick Start
 
-## Project Structure
+```bash
+# Clone repository
+git clone https://github.com/dongyibing4real/super-spc.git
+cd super-spc
 
+# Install frontend dependencies
+npm install
+
+# Install backend dependencies
+cd api
+pip install -r requirements.txt
+cd ..
+
+# Start backend
+cd api
+uvicorn main:app --reload --port 8000
+
+# Open a second terminal and start frontend
+npm run dev -- --port 4173
 ```
-super-spc/
-├── src/                    # Frontend source
-│   ├── app.js              # App orchestrator + event delegation
-│   ├── styles.css          # Design tokens + all styles
-│   ├── core/               # State management + findings engine
-│   ├── components/         # Sidebar, recipe rail, chart arena
-│   │   └── chart/          # D3 chart modules (13 files)
-│   ├── views/              # Route views (workspace, dataprep, methodlab, findings)
-│   ├── data/               # CSV engine, API client, transforms
-│   └── prediction/         # 6 forecast algorithms
-├── api/                    # FastAPI backend
-│   ├── main.py             # App setup, CORS, lifespan
-│   ├── models.py           # SQLAlchemy models
-│   ├── routes/             # Dataset CRUD + analysis endpoints
-│   └── services/           # Analysis orchestration
-├── algo/                   # Pure Python SPC algorithms
-│   ├── variable_charts/    # IMR, XBar-R, XBar-S, etc.
-│   ├── attribute_charts/   # P, NP, C, U, Laney
-│   ├── cusum/              # CUSUM tabular + V-mask
-│   ├── ewma/               # EWMA with residuals
-│   ├── hotelling_t2/       # Multivariate T²
-│   ├── mewma/              # Multivariate EWMA
-│   ├── rules/              # Nelson + Westgard
-│   ├── capability/         # Cp/Cpk/Pp/Ppk
-│   └── constants/          # SPC constants tables (n=2..50)
-└── .claude/                # Design system + specs + plans
-```
+
+Open **http://localhost:4173** to launch the app.
+
+The project uses a `Vite + FastAPI` architecture that is straightforward for a small or medium-sized team to extend.
 
 ## Contributing
 
-Contributions are welcome. Please read the design system docs in `.claude/design/` before making UI changes.
+Contributions are welcome. Before making UI changes, please read the design system docs under `.claude/design/`.
 
 ```bash
 # Run the algo test suite
-cd algo && pytest -x --tb=short
+cd algo
+pytest -x --tb=short
 
-# Run with property-based tests
-cd algo && pytest --hypothesis-show-statistics
+# Run property-based tests
+pytest --hypothesis-show-statistics
 ```
 
 ## License
 
-MIT
+This project is licensed under **AGPL-3.0**. See [LICENSE](LICENSE).
 
 ---
 
 <div align="center">
 
-**Built for engineers who measure in sigmas, not story points.**
-
-[Report a Bug](https://github.com/dongyibing4real/super-spc/issues) &bull; [Request a Feature](https://github.com/dongyibing4real/super-spc/issues)
+[Report a Bug](https://github.com/dongyibing4real/super-spc/issues)
 
 </div>

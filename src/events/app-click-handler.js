@@ -1,45 +1,35 @@
-export async function handleAppClick(event, ctx) {
-  const {
-    state,
-    root,
-    setState,
-    render,
-    commit,
-    commitChart,
-    commitContextMenu,
-    commitRecipeRail,
-    patchUi,
-    navigate,
-    fetchPoints,
-    fetchColumns,
-    createTable,
-    setPrepParsedData,
-    loadPrepPoints,
-    setPrepError,
-    resetAxis,
-    closeContextMenu,
-    setActiveChipEditor,
-    selectPrepDataset,
-    setColumns,
-    deleteDataset,
-    fetchDatasets,
-    deletePrepDataset,
-    setDatasets,
-    loadDatasetById,
-    setExpandedProfileColumn,
-  } = ctx;
+import {
+  navigate,
+  setPrepParsedData,
+  loadPrepPoints,
+  setPrepError,
+  resetAxis,
+  closeContextMenu,
+  setActiveChipEditor,
+  selectPrepDataset,
+  setColumns,
+  deletePrepDataset,
+  setDatasets,
+  setExpandedProfileColumn,
+} from "../core/state.js";
+import { fetchPoints, fetchColumns, fetchDatasets, deleteDataset } from "../data/api.js";
+import { createTable } from "../data/data-prep-engine.js";
+
+export async function handleAppClick(event, { store, root, render, loadDatasetById }) {
+  const state = store.getState();
 
   const actionTarget = event.target.closest("[data-action]");
   if (!actionTarget) return false;
 
   switch (actionTarget.dataset.action) {
     case "close-shortcut-overlay":
-      setState(patchUi({ shortcutOverlay: false }));
+      store.setState({ ...state, ui: { ...state.ui, shortcutOverlay: false } });
       render();
       return true;
     case "navigate": {
       const navigatedState = navigate(state, actionTarget.dataset.route);
-      commit(navigatedState);
+      store.setState(navigatedState);
+      render();
       if (
         actionTarget.dataset.route === "dataprep" &&
         navigatedState.dataPrep.selectedDatasetId &&
@@ -60,41 +50,44 @@ export async function handleAppClick(event, ctx) {
             columns: fallbackColumns,
           });
           next = loadPrepPoints(next, pts);
-          setState(next);
+          store.setState(next);
           render();
         } catch (err) {
-          commit(setPrepError(navigatedState, err.message));
+          store.setState(setPrepError(navigatedState, err.message));
+          render();
         }
       }
       return true;
     }
     case "reset-axis": {
       const axisRole = state.ui.contextMenu?.role || state.focusedChartId;
-      commitChart(resetAxis(state, actionTarget.dataset.axis, axisRole));
-      commitContextMenu(closeContextMenu(state));
+      store.setState(resetAxis(state, actionTarget.dataset.axis, axisRole));
+      store.setState(closeContextMenu(store.getState()));
       return true;
     }
     case "toggle-chip-editor":
-      commitRecipeRail(setActiveChipEditor(state, actionTarget.dataset.chip));
+      store.setState(setActiveChipEditor(state, actionTarget.dataset.chip));
       return true;
     case "select-prep-dataset": {
       const dsId = actionTarget.dataset.datasetId;
-      commit(selectPrepDataset(state, dsId));
+      store.setState(selectPrepDataset(state, dsId));
+      render();
       try {
         const [pts, cols] = await Promise.all([
           fetchPoints(dsId),
           fetchColumns(dsId).catch(() => []),
         ]);
-        let next = setColumns(state, cols);
+        let next = setColumns(store.getState(), cols);
         next = loadPrepPoints(next, pts);
         const rawRows = pts.map((p) => p.raw_data || {});
         const arqueroTable = createTable(rawRows, cols);
         next = setPrepParsedData(next, { rawRows, arqueroTable, columns: cols });
         next = loadPrepPoints(next, pts);
-        setState(next);
+        store.setState(next);
         render();
       } catch (err) {
-        commit(setPrepError(state, err.message));
+        store.setState(setPrepError(store.getState(), err.message));
+        render();
       }
       return true;
     }
@@ -105,17 +98,21 @@ export async function handleAppClick(event, ctx) {
         try {
           await deleteDataset(dsId);
           const datasets = await fetchDatasets();
-          commit(deletePrepDataset(setDatasets(next, datasets), dsId));
+          store.setState(deletePrepDataset(setDatasets(next, datasets), dsId));
+          render();
         } catch (err) {
-          commit(setPrepError(next, err.message));
+          store.setState(setPrepError(next, err.message));
+          render();
         }
       } else {
-        commit({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: dsId } });
+        store.setState({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: dsId } });
+        render();
       }
       return true;
     }
     case "cancel-delete":
-      commit({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: null } });
+      store.setState({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: null } });
+      render();
       return true;
     case "load-prep-to-chart": {
       if (state.dataPrep.selectedDatasetId) {
@@ -128,12 +125,14 @@ export async function handleAppClick(event, ctx) {
             points: state.points.map((p, i) => (excludedSet.has(i) ? { ...p, excluded: true } : p)),
           };
         }
-        commit(navigate(next, "workspace"));
+        store.setState(navigate(next, "workspace"));
+        render();
       }
       return true;
     }
     case "select-column":
-      commit(setExpandedProfileColumn(state, actionTarget.dataset.column));
+      store.setState(setExpandedProfileColumn(state, actionTarget.dataset.column));
+      render();
       return true;
     default:
       return false;

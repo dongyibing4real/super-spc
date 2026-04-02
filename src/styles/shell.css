@@ -1,0 +1,227 @@
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+
+
+.main-shell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-1);
+}
+
+
+.header-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-2);
+  flex-shrink: 0;
+}
+
+.header-band h2 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--t-1);
+}
+
+.header-context {
+  display: flex;
+  gap: 4px;
+  margin-top: 1px;
+  color: var(--t-3);
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+}
+
+.header-context span + span::before {
+  content: "/";
+  margin-right: 4px;
+  opacity: 0.3;
+}
+
+.header-badges {
+  display: flex;
+  gap: 6px;
+}
+
+
+.status-chip,
+.pill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--r-xs);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--border-2);
+  background: var(--bg-3);
+  color: var(--t-2);
+  white-space: nowrap;
+}
+
+.info    { border-color: rgba(45,114,210,0.25); background: var(--blue-dim); color: var(--blue-bright); }
+.warning { border-color: rgba(200,118,25,0.25); background: var(--amber-dim); color: var(--amber); }
+.critical,
+.danger  { border-color: rgba(205,66,70,0.25); background: var(--red-dim); color: var(--red); }
+.positive,
+.success { border-color: rgba(35,133,81,0.25); background: var(--green-dim); color: var(--green); }
+.neutral { background: var(--bg-3); color: var(--t-3); }
+
+.sdot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+
+
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-2);
+  background: var(--bg-3);
+  color: var(--t-2);
+  font-size: 11px;
+  font-weight: 600;
+  transition: background var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease), border-color var(--dur-micro) var(--ease);
+}
+
+.btn:hover { border-color: var(--border-3); color: var(--t-1); background: var(--bg-4); }
+
+.btn-primary {
+  background: var(--blue);
+  border-color: rgba(45,114,210,0.5);
+  color: #fff;
+}
+.btn-primary:hover { background: #215DB0; }
+
+.ghost-action {
+  background: transparent;
+  border-color: transparent;
+  color: var(--t-3);
+  padding: 3px 6px;
+}
+.ghost-action:hover { color: var(--t-1); }
+
+
+.workspace-layout {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) 280px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.workspace-main {
+  padding: 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  background: var(--bg-1);
+}
+
+
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.dataset-picker {
+  background: var(--bg-3);
+  color: var(--t-1);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: "Inter", system-ui, sans-serif;
+  cursor: pointer;
+  max-width: 220px;
+}
+
+.dataset-picker:focus {
+  outline: 1px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.upload-btn:hover { opacity: 0.9; }
+
+.loading-state,
+.error-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--t-2);
+  min-height: 300px;
+}
+
+.loading-state p,
+.error-state p,
+.empty-state p {
+  font-size: 13px;
+  color: var(--t-3);
+  max-width: 400px;
+}
+
+.loading-state h3,
+.error-state h3,
+.empty-state h3 {
+  font-size: 16px;
+  color: var(--t-1);
+}
+
+.error-state h3 { color: var(--red); }
+
+.loading-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border-2);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

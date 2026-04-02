@@ -4,23 +4,21 @@ import { select as _d3Select } from 'd3-selection';
 /**
  * Render data point circles with rule violation markers and exclusion marks.
  * @param {string} [seriesKey='primaryValue'] - Which value key to plot
- * @param {string} [seriesType='primary'] - CSS class for point styling
  */
-export function renderPoints(layer, scales, data, config, seriesKey = 'primaryValue', seriesType = 'primary') {
+export function renderPoints(layer, scales, data, config, seriesKey = 'primaryValue') {
   const { x, y } = scales;
-  const { points, violations, toggles, selectedIndex } = data;
+  const { points, violations, toggles, selectedIndex, selectedIndices } = data;
 
   // Scale point radii to density: shrink when packed, but stay visible.
+  // Industry standard (JMP/Minitab): small points, color is the signal, not size.
   const plotWidth = config.width - config.padding.left - config.padding.right;
   const spacing = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
   const scale = Math.max(0.4, Math.min(1, spacing / 12));
-  const rNormal = Math.max(2.75, 3.75 * scale);
-  const rOOC = Math.max(3.25, 4.75 * scale);
-  const rSelected = Math.max(3.75, 5.5 * scale);
-  // Keep inspection and exception marks precise even in dense charts.
-  const rRing = Math.max(4.75, 6.5 * scale);
+  const rNormal = Math.max(2.5, 3.5 * scale);
+  const rOOC = Math.max(2.5, 3.5 * scale);        // same size as normal — color is the differentiator
+  const rSelected = Math.max(3.0, 4.0 * scale);   // slightly larger when selected
   const rHit = Math.max(8, 10 * scale);
-  const xSize = Math.max(2.5, 3 * scale);
+  const xSize = Math.max(2, 2.5 * scale);
 
   const groups = layer.selectAll('g.point-group')
     .data(points, (d, i) => d.id || i);
@@ -46,21 +44,14 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
     const ooc = val >= effectiveLimits.ucl || val <= effectiveLimits.lcl;
     const rules = violations.get(i);
     const hasViolation = rules && rules.length > 0;
+    // Rule ring only for non-limit rules (2+). Rule "1" (beyond limits) is already shown by red fill.
+    const hasRuleViolation = rules && rules.some(r => r !== '1');
 
     if (d.excluded && toggles.excludedMarkers) {
       g.append('line').attr('class', 'excluded-mark')
         .attr('x1', cx - xSize).attr('y1', cy - xSize).attr('x2', cx + xSize).attr('y2', cy + xSize);
       g.append('line').attr('class', 'excluded-mark')
         .attr('x1', cx + xSize).attr('y1', cy - xSize).attr('x2', cx - xSize).attr('y2', cy + xSize);
-    }
-
-    // Rule violation ring remains visible, but selected-state emphasis takes precedence.
-    if (hasViolation && !d.excluded && i !== selectedIndex) {
-      const ringStroke = Math.max(0.9, 1.2 * scale);
-      g.append('circle').attr('class', 'rule-violation-ring')
-        .attr('cx', cx).attr('cy', cy).attr('r', rRing)
-        .attr('stroke', ooc ? 'rgba(205,66,70,0.34)' : 'rgba(200,118,25,0.32)')
-        .attr('stroke-width', ringStroke);
     }
 
     // Larger invisible hit target keeps interaction easy without bloating the visual mark.
@@ -77,12 +68,31 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
         if (config.onSelectPoint) config.onSelectPoint(i);
       });
 
-    const pointClass = seriesType === 'challenger' ? 'chart-point challenger-point' : 'chart-point';
-    const r = i === selectedIndex ? rSelected : ooc ? rOOC : rNormal;
-    g.append('circle')
+    const pointClass = 'chart-point';
+    // Support both single and multi-point selection
+    const hasMultiSelection = selectedIndices && selectedIndices.length > 0;
+    const isMultiSelected = hasMultiSelection && selectedIndices.includes(i);
+    const isSelected = hasMultiSelection ? isMultiSelected : (i === selectedIndex);
+    const r = isSelected ? rSelected : ooc ? rOOC : rNormal;
+    const hasSelection = hasMultiSelection || (selectedIndex != null && selectedIndex >= 0 && selectedIndex < points.length);
+
+    // Rule violation ring — subtle ring behind the point (rules 2+ only)
+    if (hasRuleViolation) {
+      g.append('circle')
+        .attr('class', 'violation-ring')
+        .attr('cx', cx).attr('cy', cy).attr('r', r + 2.5)
+        .style('pointer-events', 'none');
+    }
+
+    const circle = g.append('circle')
       .attr('class', `${pointClass}${ooc ? ' ooc' : ''}`)
       .attr('cx', cx).attr('cy', cy).attr('r', r)
       .style('pointer-events', 'none');
+    // JMP-style selection: selected point(s) full opacity, others dim
+    if (hasSelection && !isSelected) {
+      circle.style('opacity', 0.35);
+      if (hasRuleViolation) g.select('.violation-ring').style('opacity', 0.35);
+    }
   });
 
   groups.exit().remove();

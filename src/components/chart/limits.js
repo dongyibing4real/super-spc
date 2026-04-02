@@ -38,14 +38,14 @@ function _renderSinglePhaseLimits(layer, labelLayer, y, sigma, data, config, L, 
   const yS1L = y(sigma.s1l);
   const yS2L = y(sigma.s2l);
 
-  // Main limit lines
+  // Main limit lines — thin and reference-grade, never heavier than the data series
   const mainLines = [
     { y: yUCL, cls: 'limit-line critical', dash: null },
     { y: yCL, cls: 'limit-line center', dash: null },
     { y: yLCL, cls: 'limit-line critical', dash: null },
-    { y: yUSL, cls: 'limit-line spec', dash: '4 6', color: 'rgba(139,92,246,0.35)' },
-    { y: yLSL, cls: 'limit-line spec', dash: '4 6', color: 'rgba(139,92,246,0.35)' },
-    ...(yTarget != null ? [{ y: yTarget, cls: 'limit-line spec target', dash: '2 4', color: 'rgba(139,92,246,0.5)' }] : []),
+    { y: yUSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
+    { y: yLSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
+    ...(yTarget != null ? [{ y: yTarget, cls: 'limit-line spec target', dash: '2 3', color: 'rgba(139,92,246,0.40)' }] : []),
   ];
 
   mainLines.forEach(d => {
@@ -54,15 +54,15 @@ function _renderSinglePhaseLimits(layer, labelLayer, y, sigma, data, config, L, 
       .attr('x1', L).attr('x2', R)
       .attr('y1', d.y).attr('y2', d.y);
     if (d.dash) line.attr('stroke-dasharray', d.dash);
-    if (d.color) line.attr('stroke', d.color).attr('stroke-width', 1);
+    if (d.color) line.attr('stroke', d.color).attr('stroke-width', 0.75);
   });
 
-  // Sigma reference lines (dashed, subtle)
+  // Sigma reference lines (±1σ, ±2σ)
   const sigmaLines = [
-    { y: yS1U, color: 'rgba(35,133,81,0.15)' },
-    { y: yS2U, color: 'rgba(200,118,25,0.15)' },
-    { y: yS1L, color: 'rgba(35,133,81,0.15)' },
-    { y: yS2L, color: 'rgba(200,118,25,0.15)' },
+    { y: yS1U, color: 'rgba(35,133,81,0.30)' },
+    { y: yS2U, color: 'rgba(200,118,25,0.30)' },
+    { y: yS1L, color: 'rgba(35,133,81,0.30)' },
+    { y: yS2L, color: 'rgba(200,118,25,0.30)' },
   ];
 
   sigmaLines.forEach(d => {
@@ -70,7 +70,7 @@ function _renderSinglePhaseLimits(layer, labelLayer, y, sigma, data, config, L, 
       .attr('x1', L).attr('x2', R)
       .attr('y1', d.y).attr('y2', d.y)
       .attr('stroke', d.color)
-      .attr('stroke-width', 0.5);
+      .attr('stroke-width', 0.75);
   });
 
   // Edge labels
@@ -85,22 +85,24 @@ function _renderPerPhaseLimits(layer, labelLayer, x, y, phases, data, config, L,
 
   // Spec limits span the full chart (not phase-specific)
   [
-    { y: yUSL, cls: 'limit-line spec', dash: '4 6', color: 'rgba(139,92,246,0.35)' },
-    { y: yLSL, cls: 'limit-line spec', dash: '4 6', color: 'rgba(139,92,246,0.35)' },
-    ...(yTarget != null ? [{ y: yTarget, cls: 'limit-line spec target', dash: '2 4', color: 'rgba(139,92,246,0.5)' }] : []),
+    { y: yUSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
+    { y: yLSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
+    ...(yTarget != null ? [{ y: yTarget, cls: 'limit-line spec target', dash: '2 3', color: 'rgba(139,92,246,0.40)' }] : []),
   ].forEach(d => {
     const line = layer.append('line')
       .attr('class', d.cls)
       .attr('x1', L).attr('x2', R)
       .attr('y1', d.y).attr('y2', d.y);
     if (d.dash) line.attr('stroke-dasharray', d.dash);
-    if (d.color) line.attr('stroke', d.color).attr('stroke-width', 1);
+    if (d.color) line.attr('stroke', d.color).attr('stroke-width', 0.75);
   });
 
   // Per-phase control limits and sigma lines
+  // Lines span the full phase width (boundary-to-boundary), not just point-to-point.
+  // This attaches the CL/UCL/LCL lines to the vertical phase boundary lines.
   phases.forEach(phase => {
-    const x1 = x(phase.start);
-    const x2 = x(phase.end - 1);
+    const x1 = Math.max(x(phase.start), L);
+    const x2 = Math.min(x(phase.end), R);
     const yUCL = y(phase.limits.ucl);
     const yCL = y(phase.limits.center);
     const yLCL = y(phase.limits.lcl);
@@ -120,31 +122,37 @@ function _renderPerPhaseLimits(layer, labelLayer, x, y, phases, data, config, L,
     // Sigma reference lines per phase
     const sigmaVal = (phase.limits.ucl - phase.limits.center) / 3;
     const sigmaRefs = [
-      { yVal: y(phase.limits.center + sigmaVal), color: 'rgba(35,133,81,0.15)' },
-      { yVal: y(phase.limits.center + 2 * sigmaVal), color: 'rgba(200,118,25,0.15)' },
-      { yVal: y(phase.limits.center - sigmaVal), color: 'rgba(35,133,81,0.15)' },
-      { yVal: y(phase.limits.center - 2 * sigmaVal), color: 'rgba(200,118,25,0.15)' },
+      { yVal: y(phase.limits.center + sigmaVal), color: 'rgba(35,133,81,0.30)' },
+      { yVal: y(phase.limits.center + 2 * sigmaVal), color: 'rgba(200,118,25,0.30)' },
+      { yVal: y(phase.limits.center - sigmaVal), color: 'rgba(35,133,81,0.30)' },
+      { yVal: y(phase.limits.center - 2 * sigmaVal), color: 'rgba(200,118,25,0.30)' },
     ];
     sigmaRefs.forEach(d => {
       layer.append('line')
         .attr('x1', x1).attr('x2', x2)
         .attr('y1', d.yVal).attr('y2', d.yVal)
         .attr('stroke', d.color)
-        .attr('stroke-width', 0.5);
+        .attr('stroke-width', 0.75);
     });
   });
 
-  // Edge labels use the last phase's limits (rightmost, closest to the label area)
-  const lastPhase = phases[phases.length - 1];
-  const sigmaVal = (lastPhase.limits.ucl - lastPhase.limits.center) / 3;
-  const fakeSigma = {
-    s1u: lastPhase.limits.center + sigmaVal,
-    s2u: lastPhase.limits.center + 2 * sigmaVal,
-    s1l: lastPhase.limits.center - sigmaVal,
-    s2l: lastPhase.limits.center - 2 * sigmaVal,
-  };
-  const fakeLimits = { ucl: lastPhase.limits.ucl, center: lastPhase.limits.center, lcl: lastPhase.limits.lcl };
-  _renderEdgeLabels(labelLayer, y, fakeSigma, { limits: fakeLimits }, config, R);
+  // Edge labels: show only for the selected phase (if any).
+  // When no phase is selected, hide per-phase edge labels — they would be misleading
+  // since different phases have different limits.
+  const selectedPhaseIndex = data.selectedPhaseIndex;
+  if (selectedPhaseIndex != null && phases[selectedPhaseIndex]) {
+    const selPhase = phases[selectedPhaseIndex];
+    const sigmaVal = (selPhase.limits.ucl - selPhase.limits.center) / 3;
+    const phaseSigma = {
+      s1u: selPhase.limits.center + sigmaVal,
+      s2u: selPhase.limits.center + 2 * sigmaVal,
+      s1l: selPhase.limits.center - sigmaVal,
+      s2l: selPhase.limits.center - 2 * sigmaVal,
+    };
+    const phaseLimits = { ucl: selPhase.limits.ucl, center: selPhase.limits.center, lcl: selPhase.limits.lcl };
+    _renderEdgeLabels(labelLayer, y, phaseSigma, { limits: phaseLimits }, config, R);
+  }
+  // When no phase is selected: no edge labels rendered (intentional — avoids ambiguity)
 }
 
 /** Render edge labels (UCL/CL/LCL + sigma markers) at the right side of the chart. */

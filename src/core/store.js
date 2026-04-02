@@ -1,4 +1,4 @@
-export function createStore(initialState) {
+export function createStore(initialState, middleware = []) {
   let state = initialState;
   const subscriptions = new Set();
 
@@ -18,8 +18,12 @@ export function createStore(initialState) {
 
   function setState(nextState) {
     const prevState = state;
-    state = nextState;
-    notify(nextState, prevState);
+    let finalState = nextState;
+    for (const mw of middleware) {
+      finalState = mw(prevState, finalState);
+    }
+    state = finalState;
+    notify(finalState, prevState);
     return state;
   }
 

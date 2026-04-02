@@ -78,7 +78,8 @@ test("applyColumnRolesToChartParams fills missing chart params but preserves exi
 
   assert.deepEqual(next.columnConfig.columns, columns);
   assert.equal(next.charts["chart-1"].params.value_column, "reading");
-  assert.equal(next.charts["chart-1"].params.subgroup_column, "lot");
+  // IMR is an individual chart type — subgroup_column is null for individual-only types
+  assert.equal(next.charts["chart-1"].params.subgroup_column, null);
   assert.equal(next.charts["chart-1"].params.phase_column, "phase");
   assert.equal(next.charts["chart-2"].params.value_column, "existing_metric");
 });
@@ -125,7 +126,7 @@ test("finalizeDatasetLoad preserves successful charts and sets warning notice on
   assert.equal(nextState.charts["chart-1"].limits.center, 14);
   assert.deepEqual(nextState.charts["chart-2"].chartValues, []);
   assert.equal(nextState.ui.notice.title, "Analysis failed");
-  assert.match(nextState.ui.notice.body, /1 chart\(s\)/);
+  assert.equal(nextState.ui.notice.body, "chart-2 failed");
 });
 
 test("finalizeReanalysis keeps previous slot data for rejected charts", () => {
@@ -141,7 +142,6 @@ test("finalizeReanalysis keeps previous slot data for rejected charts", () => {
       subgroupLabel: `pt-${index}`,
       phaseId: row.raw_data.phase,
       primaryValue: Number(row.raw_data.reading),
-      challengerValue: null,
       excluded: false,
       annotation: null,
       raw: row.raw_data,

@@ -1,52 +1,54 @@
-export function handleWorkspaceClick(event, ctx) {
-  const {
-    state,
-    root,
-    commit,
-    commitChart,
-    commitContextMenu,
-    commitRecipeRail,
-    commitEvidenceRail,
-    commitNotice,
-    patchUi,
-    setActiveChipEditor,
-    clearNotice,
-    closeContextMenu,
-    selectPoint,
-    toggleChartOption,
-    togglePointExclusion,
-    toggleTransform,
-    failTransformStep,
-    recoverTransformStep,
-    setChallengerStatus,
-    selectStructuralFinding,
-    setFindingsChart,
-    setStructuralFindings,
-    generateFindings,
-    togglePaneDataTable,
-    focusChart,
-    snapshotRailPositions,
-    playRailFlip,
-    isWorkspaceFull,
-    getFocused,
-    DEFAULT_PARAMS,
-    addChart,
-    removeChart,
-    saveLayout,
-    reanalyze,
-    chartRuntime,
-  } = ctx;
+import {
+  setActiveChipEditor,
+  clearNotice,
+  closeContextMenu,
+  selectPoint,
+  toggleChartOption,
+  togglePointExclusion,
+  toggleTransform,
+  failTransformStep,
+  recoverTransformStep,
+  selectStructuralFinding,
+  setFindingsChart,
+  setStructuralFindings,
+  toggleFindingsStandardsBar,
+  togglePaneDataTable,
+  focusChart,
+  addChart,
+  removeChart,
+  DEFAULT_PARAMS,
+  getFocused,
+  toggleMethodLabChart,
+} from "../core/state.js";
+import { generateFindings } from "../core/findings-engine.js";
+
+export function handleWorkspaceClick(event, { store, root, render, saveLayout, reanalyze, chartRuntime, snapshotRailPositions, playRailFlip, isWorkspaceFull }) {
+  const state = store.getState();
 
   const clickedPane = event.target.closest('.chart-pane[data-chart-id]');
   if (clickedPane) {
     const chartId = clickedPane.dataset.chartId;
     if (chartId && chartId !== state.focusedChartId && state.charts[chartId]) {
+      const snap = snapshotRailPositions();
       const next = focusChart(state, chartId);
       root.querySelectorAll(".chart-pane").forEach((pane) => {
         pane.classList.toggle("pane-focused", pane.dataset.chartId === next.focusedChartId);
       });
-      commitRecipeRail(next);
-      commitEvidenceRail(next);
+      const rail = root.querySelector(".recipe-rail");
+      if (rail) {
+        const cardMap = new Map();
+        rail.querySelectorAll(".rail-card[data-chart-id]").forEach((el) => cardMap.set(el.dataset.chartId, el));
+        const order = [next.focusedChartId, ...next.chartOrder.filter((id) => id !== next.focusedChartId)];
+        for (const id of order) {
+          const card = cardMap.get(id);
+          if (card) {
+            card.classList.toggle("rail-card-focused", id === next.focusedChartId);
+            rail.appendChild(card);
+          }
+        }
+      }
+      store.setState(next);
+      playRailFlip(snap, 250);
     }
   }
 
@@ -54,15 +56,15 @@ export function handleWorkspaceClick(event, ctx) {
   if (!actionTarget) {
     let handled = false;
     if (state.activeChipEditor) {
-      commitRecipeRail(setActiveChipEditor(state, state.activeChipEditor));
+      store.setState(setActiveChipEditor(state, state.activeChipEditor));
       handled = true;
     }
     if (state.ui.contextMenu) {
-      commitContextMenu(closeContextMenu(state));
+      store.setState(closeContextMenu(state));
       handled = true;
     }
     if (state.ui.pendingNewChart && !event.target.closest(".rail-card--pending")) {
-      commitRecipeRail(patchUi({ pendingNewChart: null }));
+      store.setState({ ...state, ui: { ...state.ui, pendingNewChart: null } });
       handled = true;
     }
     return handled;
@@ -72,46 +74,51 @@ export function handleWorkspaceClick(event, ctx) {
 
   switch (action) {
     case "select-point":
-      commitChart(selectPoint(state, Number(actionTarget.dataset.index)));
+      store.setState(selectPoint(state, Number(actionTarget.dataset.index)));
       return true;
     case "toggle-chart": {
       const next = toggleChartOption(state, actionTarget.dataset.option);
-      commitChart(next);
-      if (state.ui.contextMenu) commitContextMenu(next);
+      store.setState(next);
+      if (state.ui.contextMenu) store.setState(next);
       return true;
     }
     case "exclude-point":
-      commitChart(togglePointExclusion(state, Number(actionTarget.dataset.index)));
-      commitContextMenu(closeContextMenu(state));
+      store.setState(togglePointExclusion(state, Number(actionTarget.dataset.index)));
+      store.setState(closeContextMenu(store.getState()));
       return true;
     case "toggle-transform":
-      commitEvidenceRail(toggleTransform(state, actionTarget.dataset.stepId));
+      store.setState(toggleTransform(state, actionTarget.dataset.stepId));
       return true;
     case "fail-transform":
-      commitEvidenceRail(failTransformStep(state, actionTarget.dataset.stepId));
+      store.setState(failTransformStep(state, actionTarget.dataset.stepId));
       return true;
     case "recover-transform":
-      commitEvidenceRail(recoverTransformStep(state, actionTarget.dataset.stepId));
-      return true;
-    case "set-challenger-status":
-      commit(setChallengerStatus(state, actionTarget.dataset.status));
+      store.setState(recoverTransformStep(state, actionTarget.dataset.stepId));
       return true;
     case "select-structural-finding":
-      commit(selectStructuralFinding(state, actionTarget.dataset.findingId));
+      store.setState(selectStructuralFinding(state, actionTarget.dataset.findingId));
+      return true;
+    case "toggle-findings-standards":
+      store.setState(toggleFindingsStandardsBar(state));
       return true;
     case "switch-findings-chart": {
       const chartId = actionTarget.dataset.chartId;
       const withChart = setFindingsChart(state, chartId);
       const next = setStructuralFindings(withChart, generateFindings(withChart, chartId), chartId);
-      commit(next);
+      store.setState(next);
+      return true;
+    }
+    case "toggle-ml-chart": {
+      const chartId = actionTarget.dataset.chartId;
+      if (chartId) store.setState(toggleMethodLabChart(state, chartId));
       return true;
     }
     case "clear-notice":
-      commitNotice(clearNotice(state));
+      store.setState(clearNotice(state));
       return true;
     case "toggle-pane-table": {
       const chartId = actionTarget.dataset.chartId;
-      if (chartId) commit(togglePaneDataTable(state, chartId));
+      if (chartId) store.setState(togglePaneDataTable(state, chartId));
       return true;
     }
     case "focus-chart": {
@@ -135,37 +142,45 @@ export function handleWorkspaceClick(event, ctx) {
             }
           }
         }
-        commitEvidenceRail(next);
+        store.setState(next);
         playRailFlip(snap, 250);
       }
       return true;
     }
     case "open-add-chart": {
       if (isWorkspaceFull()) {
-        commit(patchUi({
-          notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." },
-        }));
+        store.setState({
+          ...state,
+          ui: {
+            ...state.ui,
+            notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." },
+          },
+        });
         return true;
       }
       const focused = getFocused(state);
-      commitRecipeRail(patchUi({
-        pendingNewChart: {
-          ...DEFAULT_PARAMS,
-          chart_type: focused.params.chart_type,
-          value_column: focused.params.value_column,
-          subgroup_column: focused.params.subgroup_column,
-          phase_column: focused.params.phase_column,
+      store.setState({
+        ...state,
+        ui: {
+          ...state.ui,
+          pendingNewChart: {
+            ...DEFAULT_PARAMS,
+            chart_type: focused.params.chart_type,
+            value_column: focused.params.value_column,
+            subgroup_column: focused.params.subgroup_column,
+            phase_column: focused.params.phase_column,
+          },
         },
-      }));
+      });
       return true;
     }
     case "cancel-add-chart":
-      commitRecipeRail(patchUi({ pendingNewChart: null }));
+      store.setState({ ...state, ui: { ...state.ui, pendingNewChart: null } });
       return true;
     case "confirm-add-chart": {
       const pending = state.ui.pendingNewChart;
       if (!pending) return true;
-      let next = patchUi({ pendingNewChart: null });
+      let next = { ...state, ui: { ...state.ui, pendingNewChart: null } };
       next = addChart(next, { chartType: pending.chart_type });
       const newId = `chart-${next.nextChartId - 1}`;
       if (next.charts[newId]) {
@@ -177,20 +192,26 @@ export function handleWorkspaceClick(event, ctx) {
           },
         };
       }
-      commit(next);
+      store.setState(next);
+      render();
       saveLayout();
       if (state.activeDatasetId) reanalyze();
       return true;
     }
     case "add-chart-from-rail": {
       if (isWorkspaceFull()) {
-        commit(patchUi({
-          notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." },
-        }));
+        store.setState({
+          ...state,
+          ui: {
+            ...state.ui,
+            notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." },
+          },
+        });
         return true;
       }
       const focusedType = getFocused(state).params.chart_type;
-      commit(addChart(state, { chartType: focusedType }));
+      store.setState(addChart(state, { chartType: focusedType }));
+      render();
       saveLayout();
       if (state.activeDatasetId) reanalyze();
       return true;
@@ -200,7 +221,8 @@ export function handleWorkspaceClick(event, ctx) {
       if (chartId) {
         const next = removeChart(state, chartId);
         chartRuntime.destroyChart(chartId);
-        commit(next);
+        store.setState(next);
+        render();
         saveLayout();
       }
       return true;

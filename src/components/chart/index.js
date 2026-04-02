@@ -152,7 +152,7 @@ export function createChart(container, options = {}) {
     phaseLabels: svg.append('g').attr('class', 'layer-phase-labels'), // outside clip — phase chips visible
     limits: plotClip.append('g').attr('class', 'layer-limits'),
     limitLabels: svg.append('g').attr('class', 'layer-limit-labels'), // outside clip — edge labels visible
-    challenger: plotClip.append('g').attr('class', 'layer-challenger'),
+    secondary: plotClip.append('g').attr('class', 'layer-secondary'),
     primary: plotClip.append('g').attr('class', 'layer-primary'),
     projection: plotClip.append('g').attr('class', 'layer-projection'),
     events: plotClip.append('g').attr('class', 'layer-events'),
@@ -163,6 +163,7 @@ export function createChart(container, options = {}) {
     yTitle: svg.append('g').attr('class', 'layer-y-title'),     // y-axis title
     forecastHandle: svg.append('g').attr('class', 'layer-forecast-handle'),
     selection: plotClip.append('g').attr('class', 'layer-selection'),
+    marquee: svg.append('g').attr('class', 'layer-marquee'),
   };
 
   function handleForecastActivity(event) {
@@ -219,7 +220,7 @@ export function createChart(container, options = {}) {
     const axis = hitTestAxis(localX, localY);
     const el = event.target;
     const pointGroup = el.closest?.('.point-group') || el.parentNode?.closest?.('.point-group');
-    const isLine = el.classList?.contains('primary-path') || el.classList?.contains('challenger-path');
+    const isLine = el.classList?.contains('primary-path') || el.classList?.contains('secondary-path');
     const target = axis ? 'axis' : pointGroup ? 'point' : isLine ? 'line' : 'canvas';
     config.onContextMenu(localX, localY, { axis, target });
   });
@@ -324,12 +325,151 @@ export function createChart(container, options = {}) {
   xAxisHit.on('dblclick', () => config.onAxisReset?.('x'));
   yAxisHit.on('dblclick', () => config.onAxisReset?.('y'));
 
+  // Track whether a marquee drag just finished to suppress the click
+  let marqueeJustFinished = false;
+
   svg.on('click', (event) => {
-    if (lastData?.forecast?.mode !== 'active') return;
+    // If marquee drag just finished, don't deselect
+    if (marqueeJustFinished) {
+      marqueeJustFinished = false;
+      return;
+    }
+
     const target = event.target;
-    if (target?.closest?.('.forecast-shell-hit') || target?.closest?.('.forecast-cancel')) return;
-    config.onSelectForecast?.(false);
+
+    // Click empty space to deselect points and phases (JMP convention)
+    config.onSelectPoint?.(null);
+    config.onSelectPhase?.(null);
+
+    // Forecast deselection
+    if (lastData?.forecast?.mode === 'active') {
+      if (target?.closest?.('.forecast-shell-hit') || target?.closest?.('.forecast-cancel')) return;
+      config.onSelectForecast?.(false);
+    }
   });
+
+  // ── Marquee (rubber-band) multi-point selection ─────────────────────
+  //   JMP-style: click-hold-drag draws a selection rectangle.
+  //   On mouseup, all points inside the rectangle are selected.
+  //   A short click (< 5px movement) falls through to normal point/click handling.
+  // ───────────────────────────────────────────────────────────────────
+  let marqueeState = null;
+  const MARQUEE_THRESHOLD = 5; // px — minimum drag to activate marquee
+
+  svg.on('mousedown.marquee', (event) => {
+    // Only left button, only in plot area
+    if (event.button !== 0) return;
+    if (!currentSizedConfig) return;
+    const p = currentSizedConfig.padding;
+    const rect = container.getBoundingClientRect();
+    const localX = event.clientX - rect.left;
+    const localY = event.clientY - rect.top;
+
+    // Only start marquee if click is in the plot area (not axes, not header)
+    if (localX < p.left || localX > currentWidth - p.right) return;
+    if (localY < p.top || localY > currentHeight - p.bottom) return;
+
+    // Don't start marquee if clicking on a point hit target or forecast elements
+    const target = event.target;
+    if (target.closest?.('.point-hit') || target.closest?.('.forecast-shell-hit') ||
+        target.closest?.('.forecast-prompt-hit') || target.closest?.('.forecast-cancel') ||
+        target.closest?.('.phase-header-hit')) return;
+
+    marqueeState = {
+      startX: localX,
+      startY: localY,
+      active: false,
+    };
+  });
+
+  function marqueeMove(event) {
+    if (!marqueeState) return;
+    const rect = container.getBoundingClientRect();
+    const localX = event.clientX - rect.left;
+    const localY = event.clientY - rect.top;
+    const dx = localX - marqueeState.startX;
+    const dy = localY - marqueeState.startY;
+
+    // Activate marquee only after threshold movement
+    if (!marqueeState.active && (Math.abs(dx) > MARQUEE_THRESHOLD || Math.abs(dy) > MARQUEE_THRESHOLD)) {
+      marqueeState.active = true;
+    }
+
+    if (!marqueeState.active) return;
+
+    // Clamp to plot area
+    const p = currentSizedConfig.padding;
+    const cx = clamp(localX, p.left, currentWidth - p.right);
+    const cy = clamp(localY, p.top, currentHeight - p.bottom);
+    const sx = marqueeState.startX;
+    const sy = marqueeState.startY;
+
+    const rx = Math.min(sx, cx);
+    const ry = Math.min(sy, cy);
+    const rw = Math.abs(cx - sx);
+    const rh = Math.abs(cy - sy);
+
+    // Draw marquee rectangle
+    layers.marquee.selectAll('*').remove();
+    layers.marquee.append('rect')
+      .attr('class', 'marquee-rect')
+      .attr('x', rx).attr('y', ry)
+      .attr('width', rw).attr('height', rh);
+  }
+
+  function marqueeUp(event) {
+    if (!marqueeState) return;
+    const wasActive = marqueeState.active;
+
+    if (wasActive && currentScales && lastData) {
+      const rect = container.getBoundingClientRect();
+      const localX = event.clientX - rect.left;
+      const localY = event.clientY - rect.top;
+      const p = currentSizedConfig.padding;
+      const cx = clamp(localX, p.left, currentWidth - p.right);
+      const cy = clamp(localY, p.top, currentHeight - p.bottom);
+      const sx = marqueeState.startX;
+      const sy = marqueeState.startY;
+
+      const minX = Math.min(sx, cx);
+      const maxX = Math.max(sx, cx);
+      const minY = Math.min(sy, cy);
+      const maxY = Math.max(sy, cy);
+
+      // Find all points inside the marquee rectangle
+      const { x, y } = currentScales;
+      const seriesKey = lastData.seriesKey || 'primaryValue';
+      const points = lastData.points;
+      const selected = [];
+
+      for (let i = 0; i < points.length; i++) {
+        const px = x(i);
+        const py = y(points[i][seriesKey]);
+        if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
+          selected.push(i);
+        }
+      }
+
+      if (selected.length > 0) {
+        config.onSelectPoints?.(selected);
+      } else {
+        // Empty marquee = deselect
+        config.onSelectPoints?.(null);
+      }
+    }
+
+    // Clear marquee visual
+    layers.marquee.selectAll('*').remove();
+    if (wasActive) {
+      marqueeJustFinished = true;
+      // Reset after a tick so the subsequent click event sees it
+      requestAnimationFrame(() => { marqueeJustFinished = false; });
+    }
+    marqueeState = null;
+  }
+
+  window.addEventListener('mousemove', marqueeMove);
+  window.addEventListener('mouseup', marqueeUp);
 
   // Track last data for re-rendering on resize and axis drag clamping
   let lastData = null;
@@ -369,6 +509,7 @@ export function createChart(container, options = {}) {
       yLabelFontSize: layout.yLabelFontSize,
       edgeLabelFontSize: layout.edgeLabelFontSize,
       showAxisTitles: layout.showAxisTitles,
+      phaseHeaderHeight: layout.phaseHeaderHeight,
       width: currentWidth,
       height: currentHeight,
       xDomainOverride: data.toggles.xDomainOverride ?? null,
@@ -400,12 +541,8 @@ export function createChart(container, options = {}) {
     if (data.toggles.specLimits) renderLimits(layers.limits, layers.limitLabels, scales, data, sizedConfig);
     else { layers.limits.selectAll('*').remove(); layers.limitLabels.selectAll('*').remove(); }
 
-    // Overlay line (only if overlay toggle is on AND this chart is primary)
-    if (data.toggles.overlay && seriesType === 'primary') {
-      renderSeries(layers.challenger, scales, data.points, 'challengerValue', 'challenger');
-    } else {
-      layers.challenger.selectAll('*').remove();
-    }
+    // Secondary overlay (reserved for future use — currently unused)
+    layers.secondary.selectAll('*').remove();
 
     // Main series line (uses configurable seriesKey)
     renderSeries(layers.primary, scales, data.points, seriesKey, seriesType);
@@ -462,7 +599,7 @@ export function createChart(container, options = {}) {
     else layers.events.selectAll('*').remove();
 
     // Data points (always rendered, using configurable seriesKey)
-    renderPoints(layers.points, scales, data, sizedConfig, seriesKey, seriesType);
+    renderPoints(layers.points, scales, data, sizedConfig, seriesKey);
 
     // X-axis labels
     renderAxes(layers.xAxis, scales, data, sizedConfig);
@@ -495,12 +632,14 @@ export function createChart(container, options = {}) {
       .attr('height', currentHeight - p.top - p.bottom);
 
     renderForecastHandle(data, scales, sizedConfig);
+    // Forecast prompt eligibility: measure the visible empty space between
+    // the last data point and the right edge of the plot area.
     const lastIdx = data.points.length - 1;
-    const gapPx = data.points?.length
-      ? scales.x(lastIdx + (data.forecast?.horizon || 0)) - scales.x(lastIdx)
-      : 0;
+    const plotRight = sizedConfig.width - sizedConfig.padding.right;
+    const lastPointX = data.points?.length ? scales.x(lastIdx) : plotRight;
+    const gapPx = Math.max(0, plotRight - lastPointX);
     const plotWidth = Math.max(0, sizedConfig.width - sizedConfig.padding.left - sizedConfig.padding.right);
-    const minPromptGap = Math.max(20, Math.min(56, plotWidth * 0.08));
+    const minPromptGap = Math.max(12, Math.min(40, plotWidth * 0.04));
     config.onForecastPromptEligibilityChange?.({
       eligible: gapPx >= minPromptGap,
     });
@@ -557,6 +696,8 @@ export function createChart(container, options = {}) {
   /** Remove the chart SVG from the DOM and disconnect observer */
   function destroy() {
     if (activeDragCleanup) { activeDragCleanup(); activeDragCleanup = null; }
+    window.removeEventListener('mousemove', marqueeMove);
+    window.removeEventListener('mouseup', marqueeUp);
     detachActivityListeners(container);
     resizeObserver.disconnect();
     svg.remove();

@@ -17,7 +17,7 @@
  *
  * @param {Array<{id: number, sequence_index: number, metadata: object, raw_data: object}>} rows
  * @param {Array<{name: string, ordinal: number, dtype: string, role: string|null}>} [columns]
- * @returns {Array<{id: string, label: string, subgroupLabel: string, phaseId: string|null, primaryValue: number, challengerValue: null, excluded: boolean, annotation: null, raw: object}>}
+ * @returns {Array<{id: string, label: string, subgroupLabel: string, phaseId: string|null, primaryValue: number, excluded: boolean, annotation: null, raw: object}>}
  */
 export function transformPoints(rows, columns) {
   if (!Array.isArray(rows)) return [];
@@ -40,7 +40,6 @@ export function transformPoints(rows, columns) {
       subgroupLabel: subgroup ?? `pt-${m.sequence_index}`,
       phaseId: phaseCol ? (raw[phaseCol] ?? null) : null,
       primaryValue: isNaN(value) ? 0 : value,
-      challengerValue: null,
       excluded: false,
       annotation: null,
       raw,
@@ -149,7 +148,7 @@ export function buildDefaultContext(datasetMeta, columns) {
     chartType: datasetMeta.chartType ?? { id: "imr", label: "IMR", detail: "Individual + Moving Range" },
     sigma: { label: "3 Sigma", detail: "Moving range" },
     tests: { label: "Nelson", detail: "Standard rule set" },
-    compare: { label: "None", detail: "No challenger" },
+    compare: { label: "None", detail: "Single method" },
     window: "All data",
     methodBadge: "IMR",
     status: "OK",

@@ -62,7 +62,7 @@ function renderChartPane(state, chartId) {
     </div>`;
 
   const showTable = slot.showDataTable;
-  const accentIdx = slot.accentIdx ?? 0;
+  const accentIdx = state.chartOrder.indexOf(chartId) % 8;
   return `
     <div class="chart-pane ${isFocused ? "pane-focused" : ""}" data-chart-id="${chartId}" data-accent="${accentIdx}">
       ${titlebar}

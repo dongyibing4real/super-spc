@@ -1,3 +1,14 @@
+import {
+  setActiveChipEditor,
+  setChartParams,
+  setDatasets,
+  setLoadingState,
+  setError,
+  createSlot,
+} from "../core/state.js";
+import { fetchDatasets as _fetchDatasets } from "../data/api.js";
+import { INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "../helpers.js";
+
 export function parseActionTarget(action) {
   const match = action.match(/^(chart-\d+)-(.+)$/);
   if (!match) return { chartId: null, baseAction: action };
@@ -11,34 +22,28 @@ function parseNullableNumber(value) {
 
 export async function handleAppChange(event, ctx) {
   const {
-    state,
+    store,
     root,
-    setState,
-    commit,
-    commitRecipeRail,
-    patchUi,
-    setActiveChipEditor,
-    setChartParams,
-    setDatasets,
-    setLoadingState,
-    setError,
-    createSlot,
+    render,
     loadDatasetById,
     restoreLayout,
-    fetchDatasets,
     reanalyze,
+    fetchDatasets = _fetchDatasets,
   } = ctx;
 
   if (event.target.matches('[data-action="switch-dataset"]')) {
-    setState(setLoadingState(state, true));
+    const state = store.getState();
+    store.setState(setLoadingState(state, true));
     try {
       const datasets = await fetchDatasets();
-      let next = setDatasets(state, datasets);
+      let next = setDatasets(store.getState(), datasets);
       const saved = restoreLayout();
       if (saved && saved.chartOrder.length > 0) {
         const restoredCharts = {};
         for (const cid of saved.chartOrder) {
-          restoredCharts[cid] = createSlot(saved.chartParams[cid] ? { params: saved.chartParams[cid] } : {});
+          const p = saved.chartParams[cid];
+          if (p && INDIVIDUAL_ONLY.has(p.chart_type)) p.subgroup_column = null;
+          restoredCharts[cid] = createSlot(p ? { params: p } : {});
         }
         next = {
           ...next,
@@ -49,10 +54,12 @@ export async function handleAppChange(event, ctx) {
           chartLayout: { rows: saved.rows, colWeights: saved.colWeights, rowWeights: saved.rowWeights },
         };
       }
-      commit(next);
+      store.setState(next);
+      render();
       await loadDatasetById(event.target.value);
     } catch (err) {
-      commit(setError(state, err.message));
+      store.setState(setError(store.getState(), err.message));
+      render();
     }
     return true;
   }
@@ -60,14 +67,23 @@ export async function handleAppChange(event, ctx) {
   const action = event.target.dataset.action;
   if (!action) return false;
 
-  if (action.startsWith("_pending-") && state.ui.pendingNewChart) {
+  if (action.startsWith("_pending-") && store.getState().ui.pendingNewChart) {
+    const state = store.getState();
     const pendingAction = action.slice("_pending-".length);
     const pending = { ...state.ui.pendingNewChart };
 
     if (pendingAction === "set-metric-column") pending.value_column = event.target.value || null;
-    else if (pendingAction === "set-subgroup-column") pending.subgroup_column = event.target.value || null;
+    else if (pendingAction === "set-subgroup-column") {
+      if (INDIVIDUAL_ONLY.has(pending.chart_type)) return true;
+      const newSg = event.target.value || null;
+      if (!newSg && SUBGROUP_REQUIRED.has(pending.chart_type)) return true;
+      pending.subgroup_column = newSg;
+    }
     else if (pendingAction === "set-phase-column") pending.phase_column = event.target.value || null;
-    else if (pendingAction === "set-chart-type") pending.chart_type = event.target.value;
+    else if (pendingAction === "set-chart-type") {
+      pending.chart_type = event.target.value;
+      if (INDIVIDUAL_ONLY.has(pending.chart_type)) pending.subgroup_column = null;
+    }
     else if (pendingAction === "set-sigma-method") pending.sigma_method = event.target.value;
     else if (pendingAction === "set-k-sigma") {
       const k = parseFloat(event.target.value);
@@ -81,11 +97,11 @@ export async function handleAppChange(event, ctx) {
     else if (pendingAction === "set-target") pending.target = parseNullableNumber(event.target.value);
     else return false;
 
-    let next = patchUi({ pendingNewChart: pending });
+    let next = { ...state, ui: { ...state.ui, pendingNewChart: pending } };
     if (pendingAction !== "toggle-nelson" && pendingAction !== "set-k-sigma") {
       next = setActiveChipEditor(next, null);
     }
-    commitRecipeRail(next);
+    store.setState(next);
     return true;
   }
 
@@ -93,68 +109,95 @@ export async function handleAppChange(event, ctx) {
   if (!chartId) return false;
 
   if (baseAction === "set-metric-column") {
+    const state = store.getState();
     let next = setChartParams(state, chartId, { value_column: event.target.value || null });
     next = setActiveChipEditor(next, null);
-    commit(next);
+    store.setState(next);
+    render();
     await reanalyze();
     return true;
   }
   if (baseAction === "set-subgroup-column") {
-    let next = setChartParams(state, chartId, { subgroup_column: event.target.value || null });
+    const state = store.getState();
+    const chartType = state.charts[chartId]?.params.chart_type;
+    if (INDIVIDUAL_ONLY.has(chartType)) return true;
+    const newSg = event.target.value || null;
+    if (!newSg && SUBGROUP_REQUIRED.has(chartType)) return true;
+    let next = setChartParams(state, chartId, { subgroup_column: newSg });
     next = setActiveChipEditor(next, null);
-    commit(next);
+    store.setState(next);
+    render();
     await reanalyze();
     return true;
   }
   if (baseAction === "set-phase-column") {
+    const state = store.getState();
     let next = setChartParams(state, chartId, { phase_column: event.target.value || null });
     next = setActiveChipEditor(next, null);
-    commit(next);
+    store.setState(next);
+    render();
     await reanalyze();
     return true;
   }
   if (baseAction === "set-chart-type") {
-    let next = setChartParams(state, chartId, { chart_type: event.target.value });
+    const state = store.getState();
+    const newType = event.target.value;
+    const updates = { chart_type: newType };
+    if (INDIVIDUAL_ONLY.has(newType)) updates.subgroup_column = null;
+    let next = setChartParams(state, chartId, updates);
     next = setActiveChipEditor(next, null);
-    commit(next);
+    store.setState(next);
+    render();
     await reanalyze();
     return true;
   }
   if (baseAction === "set-sigma-method") {
+    const state = store.getState();
     let next = setChartParams(state, chartId, { sigma_method: event.target.value });
     next = setActiveChipEditor(next, null);
-    commit(next);
+    store.setState(next);
+    render();
     await reanalyze();
     return true;
   }
   if (baseAction === "toggle-nelson") {
+    const state = store.getState();
     const ruleId = Number(event.target.dataset.value);
     const current = state.charts[chartId].params.nelson_tests || [];
     const nextRules = event.target.checked ? [...current, ruleId] : current.filter((r) => r !== ruleId);
-    commit(setChartParams(state, chartId, { nelson_tests: nextRules }));
+    store.setState(setChartParams(state, chartId, { nelson_tests: nextRules }));
+    render();
     await reanalyze();
     return true;
   }
   if (baseAction === "set-k-sigma") {
+    const state = store.getState();
     const k = parseFloat(event.target.value);
     if (k > 0 && k <= 6) {
-      commit(setChartParams(state, chartId, { k_sigma: k }));
+      store.setState(setChartParams(state, chartId, { k_sigma: k }));
+      render();
       await reanalyze();
     }
     return true;
   }
   if (baseAction === "set-usl") {
-    commit(setChartParams(state, chartId, { usl: parseNullableNumber(event.target.value) }));
+    const state = store.getState();
+    store.setState(setChartParams(state, chartId, { usl: parseNullableNumber(event.target.value) }));
+    render();
     await reanalyze();
     return true;
   }
   if (baseAction === "set-lsl") {
-    commit(setChartParams(state, chartId, { lsl: parseNullableNumber(event.target.value) }));
+    const state = store.getState();
+    store.setState(setChartParams(state, chartId, { lsl: parseNullableNumber(event.target.value) }));
+    render();
     await reanalyze();
     return true;
   }
   if (baseAction === "set-target") {
-    commit(setChartParams(state, chartId, { target: parseNullableNumber(event.target.value) }));
+    const state = store.getState();
+    store.setState(setChartParams(state, chartId, { target: parseNullableNumber(event.target.value) }));
+    render();
     await reanalyze();
     return true;
   }

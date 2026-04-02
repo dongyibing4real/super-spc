@@ -53,7 +53,7 @@ export function renderProjectionPrompt(layer, scales, data, config) {
   const x0 = clamp(scales.x(lastIdx), p.left, plotRight);
   const width = Math.max(0, plotRight - x0);
 
-  if (width < 8 || plotHeight < 16) return null;
+  if (width < 6 || plotHeight < 16) return null;
 
   // Ghost area — fills the actual gap, click target with subtle glow
   layer.append('rect')
@@ -80,22 +80,58 @@ export function renderProjectionPrompt(layer, scales, data, config) {
     .attr('stroke-opacity', 0.14)
     .attr('stroke-dasharray', '3 5');
 
-  // Inline label — centered inside the ghost area, glows with it
-  if (width >= 40 && plotHeight >= 28) {
-    const label = width >= 80 ? 'Forecast' : 'F';
-    layer.append('text')
-      .attr('class', 'ghost-hint-label')
-      .attr('x', x0 + width / 2)
-      .attr('y', plotTop + plotHeight / 2)
-      .attr('text-anchor', 'middle')
-      .attr('dominant-baseline', 'central')
-      .attr('fill', BLUE)
-      .attr('fill-opacity', 0.28)
-      .style('font-size', `${clamp(Math.min(width * 0.16, plotHeight * 0.1), 9, 13)}px`)
-      .style('font-weight', '500')
-      .style('letter-spacing', '0.06em')
-      .style('pointer-events', 'none')
-      .text(label);
+  // Inline label — centered inside the ghost area
+  // Wide (>=60px): horizontal "Forecast"
+  // Medium (>=20px): vertical stacked characters with auto-scaled font size
+  // Narrow (<20px): no label
+  if (plotHeight >= 28) {
+    const isWide = width >= 60;
+    const isMedium = width >= 20;
+    const cx = x0 + width / 2;
+    const cy = plotTop + plotHeight / 2;
+
+    if (isWide) {
+      const fontSize = clamp(Math.min(width * 0.18, plotHeight * 0.1), 9, 13);
+      layer.append('text')
+        .attr('class', 'ghost-hint-label')
+        .attr('x', cx)
+        .attr('y', cy)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
+        .attr('fill', BLUE)
+        .attr('fill-opacity', 0.28)
+        .style('font-size', `${fontSize}px`)
+        .style('font-weight', '500')
+        .style('letter-spacing', '0.06em')
+        .style('pointer-events', 'none')
+        .text('Forecast');
+    } else if (isMedium) {
+      // Vertical stacked characters — auto-scale font to fit available height
+      const word = 'Forecast';
+      const charCount = word.length;
+      // Each character needs ~1.4x its font-size in vertical space (line height)
+      const maxFontFromHeight = plotHeight * 0.85 / (charCount * 1.4);
+      const maxFontFromWidth = width * 0.6;
+      const fontSize = clamp(Math.min(maxFontFromHeight, maxFontFromWidth), 7, 12);
+      const lineHeight = fontSize * 1.4;
+      const totalHeight = charCount * lineHeight;
+      const startY = cy - totalHeight / 2 + lineHeight / 2;
+
+      word.split('').forEach((char, ci) => {
+        layer.append('text')
+          .attr('class', 'ghost-hint-label')
+          .attr('x', cx)
+          .attr('y', startY + ci * lineHeight)
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'central')
+          .attr('fill', BLUE)
+          .attr('fill-opacity', 0.28)
+          .style('font-size', `${fontSize}px`)
+          .style('font-weight', '500')
+          .style('pointer-events', 'none')
+          .text(char);
+      });
+    }
   }
 
   return { lastIdx, x0, x1: plotRight, width, top: plotTop, height: plotHeight };
@@ -104,8 +140,23 @@ export function renderProjectionPrompt(layer, scales, data, config) {
 export function renderProjectionShell(layer, scales, data, config) {
   layer.selectAll('*').remove();
 
-  const bounds = forecastBounds(scales, data, config);
-  if (!bounds || bounds.width < 12) return null;
+  // Shell fills the entire gap from the last data point to the right plot edge,
+  // not just the forecast horizon width. This ensures the interaction area is
+  // usable even when many data points make the per-index pixel width very small.
+  if (!data.points?.length) return null;
+  const lastIdx = data.points.length - 1;
+  const plotRight = config.width - config.padding.right;
+  const x0 = clamp(scales.x(lastIdx), config.padding.left, plotRight);
+  const x1 = plotRight;
+  const bounds = {
+    lastIdx,
+    x0,
+    x1,
+    width: Math.max(0, x1 - x0),
+    top: config.padding.top,
+    height: config.height - config.padding.top - config.padding.bottom,
+  };
+  if (bounds.width < 8) return null;
 
   const selected = !!config.forecastSelected;
   const shell = layer.append('g')
