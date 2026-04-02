@@ -25,23 +25,18 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
   const bandTop = T - headerH;
   const bandBot = T;
 
-  data.phases.forEach((ph, i) => {
+  // Full-width header background (single uniform fill — JMP convention, no alternating bands)
+  labelLayer.append('rect')
+    .attr('class', 'phase-header-bg')
+    .attr('x', L).attr('y', bandTop)
+    .attr('width', R - L).attr('height', headerH)
+    .attr('fill', 'rgba(147,153,163,0.06)');
+
+  data.phases.forEach((ph) => {
     const sx = Math.max(x(ph.start), L);
     const ex = Math.min(x(ph.end), R);
     const pw = ex - sx;
     if (pw < 2) return;
-
-    // Alternating background: odd phases get a slightly darker fill
-    const fill = i % 2 === 0
-      ? 'rgba(147,153,163,0.06)'   // even — lighter
-      : 'rgba(147,153,163,0.12)';  // odd — slightly darker
-
-    // Header band rect
-    labelLayer.append('rect')
-      .attr('class', 'phase-header-band')
-      .attr('x', sx).attr('y', bandTop)
-      .attr('width', pw).attr('height', headerH)
-      .attr('fill', fill);
 
     // Phase label text — centered in the header band
     const labelText = ph.label || ph.id;
