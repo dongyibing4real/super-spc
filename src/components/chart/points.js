@@ -15,9 +15,9 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
   const plotWidth = config.width - config.padding.left - config.padding.right;
   const spacing = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
   const scale = Math.max(0.4, Math.min(1, spacing / 12));
-  const rNormal = Math.max(1.75, 2.5 * scale);
-  const rOOC = Math.max(1.75, 2.5 * scale);      // same size as normal — color is the differentiator
-  const rSelected = Math.max(2.25, 3.0 * scale);  // only slightly larger
+  const rNormal = Math.max(2.5, 3.5 * scale);
+  const rOOC = Math.max(2.5, 3.5 * scale);        // same size as normal — color is the differentiator
+  const rSelected = Math.max(3.0, 4.0 * scale);   // slightly larger when selected
   const rHit = Math.max(8, 10 * scale);
   const xSize = Math.max(2, 2.5 * scale);
 
@@ -68,11 +68,17 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
       });
 
     const pointClass = seriesType === 'challenger' ? 'chart-point challenger-point' : 'chart-point';
-    const r = i === selectedIndex ? rSelected : ooc ? rOOC : rNormal;
-    g.append('circle')
+    const isSelected = i === selectedIndex;
+    const r = isSelected ? rSelected : ooc ? rOOC : rNormal;
+    const hasSelection = selectedIndex != null && selectedIndex >= 0 && selectedIndex < points.length;
+    const circle = g.append('circle')
       .attr('class', `${pointClass}${ooc ? ' ooc' : ''}`)
       .attr('cx', cx).attr('cy', cy).attr('r', r)
       .style('pointer-events', 'none');
+    // JMP-style selection: selected point full opacity, others dim
+    if (hasSelection && !isSelected) {
+      circle.style('opacity', 0.35);
+    }
   });
 
   groups.exit().remove();

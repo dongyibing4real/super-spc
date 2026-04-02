@@ -77,7 +77,7 @@
   --chart-w-hair: 0.5px;
   --chart-w-fine: 0.75px;
   --chart-w-mid: 1.0px;
-  --chart-w-data: 1.5px;
+  --chart-w-data: 2px;
 
   
   --dur-micro: 60ms;
@@ -1371,7 +1371,7 @@ h1, h2, h3, h4, h5, h6 {
 .limit-line.center { stroke: rgba(35,133,81,0.30); stroke-width: 1.0; }
 .limit-line.spec { stroke: rgba(139,92,246,0.30); stroke-dasharray: 3 4; stroke-width: 0.75; }
 /* Series lines — primary is data tier (loudest), challenger at medium tier */
-.primary-path { fill: none; stroke: var(--blue); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.primary-path { fill: none; stroke: var(--blue); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .challenger-path { fill: none; stroke: var(--teal-bright); stroke-width: 0.75; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
 /* Points — small and clean, color is the signal not size */
 .chart-point {
@@ -1383,10 +1383,7 @@ h1, h2, h3, h4, h5, h6 {
 .chart-point.ooc { fill: var(--red); }
 .chart-point.challenger-point { fill: var(--teal-bright); opacity: 0.7; }
 .chart-point.challenger-point.ooc { fill: var(--red); }
-/* Selection crosshair — precision instrument, not a halo ring */
-.selection-crosshair {
-  stroke: var(--blue); stroke-width: 0.75; opacity: 0.55;
-}
+/* Selection: JMP-style — selected point full opacity, others dim to 0.35. No crosshair arms. */
 /* SVG hit targets: suppress browser focus outlines — keyboard focus handled by crosshair */
 .point-hit { outline: none; }
 .point-hit:focus { outline: none; }

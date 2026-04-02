@@ -17,17 +17,17 @@ The control chart is the single most important element in the product. Everythin
 
 ## Point Styling (Industry-Grade — JMP/Minitab Standard)
 
-**Design principle:** Color is the signal, not size. Points are small and uniform. No rings, halos, or size inflation.
+**Design principle:** Color is the signal, not size. Points are uniform. Selection is communicated through opacity contrast (JMP convention).
 
 | State | Visual | Color | Radius |
 |-------|--------|-------|--------|
-| Normal | Filled circle, 0.75px white stroke | `--blue` (#2D72D2) | r=2.5 (density-scaled, min 1.75) |
-| Out-of-control (OOC) | Same size, red fill | `--red` (#CD4246) | r=2.5 (same as normal) |
-| Selected | Slightly larger + crosshair | `--blue` | r=3.0 + 4-arm crosshair |
-| Excluded | 25% opacity + X-mark | Primary color dimmed, amber X overlay | r=2.5 |
-| Challenger | Filled circle | `--teal-bright` (#32A467), opacity 0.7 | r=2.5 |
+| Normal | Filled circle, 0.75px white stroke | `--blue` (#2D72D2) | r=3.5 (density-scaled, min 2.5) |
+| Out-of-control (OOC) | Same size, red fill | `--red` (#CD4246) | r=3.5 (same as normal) |
+| Selected | Slightly larger, full opacity | `--blue` | r=4.0 (all others dim to 0.35) |
+| Excluded | 25% opacity + X-mark | Primary color dimmed, amber X overlay | r=3.5 |
+| Challenger | Filled circle | `--teal-bright` (#32A467), opacity 0.7 | r=3.5 |
 
-**Selection crosshair** (replaces halo ring): 4 short line segments (±6px arms with 3px gap from center), stroke 0.75px at 55% opacity. Precision instrument aesthetic, not a spotlight.
+**Selection model** (JMP-style): When a point is selected, it stays at full opacity while all other points dim to 0.35 opacity. No crosshair arms, no halos — opacity differentiation is the signal.
 
 **Rule violations:** Indicated by point color alone (red for OOC, amber tint via evidence rail). No concentric rings — ring-on-ring is visual clutter.
 
@@ -52,7 +52,7 @@ All chart visual elements use a principled token system instead of ad-hoc values
 | `--chart-w-hair` | 0.5px | Grid, sigma reference lines |
 | `--chart-w-fine` | 0.75px | UCL/LCL, specs, phases, crosshair, point stroke |
 | `--chart-w-mid` | 1.0px | CL only (structural anchor) |
-| `--chart-w-data` | 1.5px | Primary series line |
+| `--chart-w-data` | 2px | Primary series line |
 
 ### 3-Tier Visual Hierarchy
 - **TIER 1 — DATA** (dominant): Primary line 1.5px, points at full opacity. The hero.
@@ -63,7 +63,7 @@ All chart visual elements use a principled token system instead of ad-hoc values
 
 | Element | Stroke | Opacity | Dash | Token Tier | Notes |
 |---------|--------|---------|------|------------|-------|
-| Primary series | 1.5px | 1.0 | solid | DATA | Dominant visual element |
+| Primary series | 2px | 1.0 | solid | DATA | Dominant visual element |
 | Challenger series | 0.75px | 0.55 | solid | MEDIUM | Recedes via opacity, no dashes |
 | UCL/LCL | 0.75px | 0.30 | solid | STRUCTURE | Reference geometry, quiet |
 | CL (center) | 1.0px | 0.30 | solid | STRUCTURE (mid weight) | Structural anchor |
@@ -79,6 +79,8 @@ All chart visual elements use a principled token system instead of ad-hoc values
 | Zone A | 2σ–3σ | `rgba(205,66,70)` | 0.05 | Red is perceptually dominant, needs less |
 | Zone B | 1σ–2σ | `rgba(200,118,25)` | 0.03 | Amber, middle |
 | Zone C | 0–1σ | `rgba(35,133,81)` | 0.025 | Green, barely there |
+
+**Per-phase zones:** When a chart has multiple phases, zone bands are rendered per-phase using each phase's own limits (JMP convention). Each phase segment gets its own set of 6 zone rectangles with independently computed sigma values. Single-phase charts use full-width global zones.
 
 ## SVG Rendering Layers (Z-order back to front)
 1. `zones` — color-coded sigma bands (clipped)
