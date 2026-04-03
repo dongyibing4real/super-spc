@@ -1,11 +1,11 @@
 /**
- * app.js -- Application orchestrator (thin shell).
+ * legacy-boot.js -- Application orchestrator (thin shell).
  *
- * Creates the store, registers event handlers and subscribers, bootstraps.
+ * Registers event handlers and subscribers, bootstraps.
  * All state changes go through store.setState(). Subscribers handle rendering.
+ * Called by React's App.jsx via bootLegacyApp(rootElement).
  */
 import {
-  createInitialState,
   createSlot,
   cancelForecast,
   closeActivePanel,
@@ -25,11 +25,12 @@ import {
   setForecastHorizon,
   setLoadingState,
   setPrepParsedData,
+  loadPrepPoints,
+  setPrepError,
   setXDomainOverride,
   setYDomainOverride,
   resetAxis,
 } from "./core/state.js";
-import { renderSidebar } from "./components/sidebar.js";
 import { capClass, CHART_TYPE_LABELS, detectRuleViolations, getCapability, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "./helpers.js";
 import {
   createDataset,
@@ -41,7 +42,7 @@ import {
 import { parseCSV } from "./data/csv-engine.js";
 import { createTable, previewTypeConversion } from "./data/data-prep-engine.js";
 import { createChart } from "./components/chart/index.js";
-import { renderNotice, renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
+import { renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
 import { renderGhostRows } from "./components/chart-arena.js";
 import { renderWorkspace } from "./views/workspace.js";
 import { renderDataPrep } from "./views/dataprep.js";
@@ -50,9 +51,8 @@ import { renderFindings } from "./views/findings.js";
 import { morphInner } from "./core/morph.js";
 import { buildForecastView } from "./prediction/build-forecast-view.js";
 import { DEFAULT_FORECAST_HORIZON } from "./prediction/constants.js";
-import { createStore } from "./core/store.js";
-import { auditMiddleware } from "./core/middleware/audit.js";
-import { noticeMiddleware } from "./core/middleware/notice.js";
+import { spcStore } from "./store/spc-store.js";
+import { createBridge } from "./store/bridge.js";
 import { finalizeDatasetLoad, finalizeReanalysis } from "./runtime/analysis-runtime.js";
 import { setupUiSubscribers } from "./runtime/ui-subscribers.js";
 import { createChartRuntimeManager } from "./runtime/chart-runtime-manager.js";
@@ -67,9 +67,10 @@ import { handlePrepClick } from "./events/prep-click-handler.js";
 import { computeGridPreview, insertChart, setColWeight, setRowWeight, setFindingsStandard, setStructuralFindings, setChartParams } from "./core/state.js";
 import { generateFindings } from "./core/findings-engine.js";
 
+export function bootLegacyApp(root) {
+
 /* ===Store ===*/
-const root = document.getElementById("app");
-const store = createStore(createInitialState(), [auditMiddleware, noticeMiddleware]);
+const store = createBridge(spcStore);
 const forecastPromptTimers = new Map();
 const forecastPromptEligibility = new Map();
 
@@ -162,6 +163,36 @@ setupChartSubscribers(store, root, {
 });
 
 setupFindingsSubscribers(store, root);
+
+/* ===Route change subscriber (React Sidebar dispatches navigate to Zustand) ===*/
+store.subscribe(
+  (s) => s.route,
+  (nextRoute) => {
+    render();
+    // Lazy-load data prep points when navigating to dataprep
+    if (nextRoute === "dataprep") {
+      const state = store.getState();
+      if (state.dataPrep.selectedDatasetId && state.dataPrep.datasetPoints.length === 0) {
+        const dsId = state.dataPrep.selectedDatasetId;
+        Promise.all([
+          fetchPoints(dsId),
+          fetchColumns(dsId).catch(() => []),
+        ]).then(([pts, cols]) => {
+          const rawRows = pts.map((p) => p.raw_data || {});
+          const fallbackColumns = cols.length > 0 ? cols : store.getState().columnConfig.columns;
+          const arqueroTable = createTable(rawRows, fallbackColumns);
+          let next = setPrepParsedData(store.getState(), { rawRows, arqueroTable, columns: fallbackColumns });
+          next = loadPrepPoints(next, pts);
+          store.setState(next);
+          render();
+        }).catch((err) => {
+          store.setState(setPrepError(store.getState(), err.message));
+          render();
+        });
+      }
+    }
+  }
+);
 
 /* ===Unsaved changes guard ===*/
 window.addEventListener("beforeunload", (e) => {
@@ -359,13 +390,7 @@ function renderShortcutOverlay() {
 function render() {
   const state = store.getState();
   morphInner(root, `
-    <div class="app-shell">
-      ${renderSidebar(state)}
-      <main class="main-shell">
-        ${renderNotice(state)}
-        ${renderRoute()}
-      </main>
-    </div>
+    ${renderRoute()}
     ${state.ui?.shortcutOverlay ? renderShortcutOverlay() : ""}
   `);
 
@@ -816,3 +841,5 @@ async function main() {
 }
 
 main();
+
+} // end bootLegacyApp
