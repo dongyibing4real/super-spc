@@ -42,13 +42,9 @@ import {
 import { parseCSV } from "./data/csv-engine.js";
 import { createTable, previewTypeConversion } from "./data/data-prep-engine.js";
 import { createChart } from "./components/chart/index.js";
-import { renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
 import { renderGhostRows } from "./components/chart-arena.js";
 
-import { renderDataPrep } from "./views/dataprep.js";
-import { renderMethodLab } from "./views/methodlab.js";
-import { renderFindings } from "./views/findings.js";
-import { morphInner } from "./core/morph.js";
+
 import { buildForecastView } from "./prediction/build-forecast-view.js";
 import { DEFAULT_FORECAST_HORIZON } from "./prediction/constants.js";
 import { spcStore } from "./store/spc-store.js";
@@ -208,20 +204,6 @@ window.addEventListener("beforeunload", (e) => {
   }
 });
 
-/* ===Router ===*/
-function renderRoute() {
-  const state = store.getState();
-  if (state.loading) return renderLoadingState();
-  if (state.error) return renderErrorState(state);
-  if (state.points.length === 0 && !state.activeDatasetId) return renderEmptyState();
-
-  switch (state.route) {
-    case "dataprep": return renderDataPrep(state);
-    case "methodlab": return renderMethodLab(state);
-    case "findings": return renderFindings(state);
-    default: return ""; // Workspace rendered by React (WorkspaceView.jsx)
-  }
-}
 
 function getChartPoints(slot) {
   const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
@@ -363,48 +345,11 @@ function buildChartData(id) {
   };
 }
 
-/* ===Main render ===*/
-function renderShortcutOverlay() {
-  return `
-    <div class="shortcut-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
-      <div class="shortcut-overlay-backdrop" data-action="close-shortcut-overlay"></div>
-      <div class="shortcut-overlay-panel">
-        <div class="shortcut-overlay-header">
-          <h2 class="shortcut-overlay-title">Keyboard Shortcuts</h2>
-          <button class="shortcut-overlay-close" data-action="close-shortcut-overlay" type="button" aria-label="Close">&times;</button>
-        </div>
-        <dl class="shortcut-list">
-          <div class="shortcut-group-label">Violations</div>
-          <div class="shortcut-row"><dt><kbd>n</kbd></dt><dd>Next violation point</dd></div>
-          <div class="shortcut-row"><dt><kbd>p</kbd></dt><dd>Previous violation point</dd></div>
-          <div class="shortcut-group-label">Data Prep</div>
-          <div class="shortcut-row"><dt><kbd>r</kbd></dt><dd>Rename column</dd></div>
-          <div class="shortcut-row"><dt><kbd>t</kbd></dt><dd>Change column type</dd></div>
-          <div class="shortcut-row"><dt><kbd>c</kbd></dt><dd>Calculated column</dd></div>
-          <div class="shortcut-row"><dt><kbd>f</kbd></dt><dd>Filter rows</dd></div>
-          <div class="shortcut-row"><dt><kbd>d</kbd></dt><dd>Find &amp; replace</dd></div>
-          <div class="shortcut-row"><dt><kbd>z</kbd></dt><dd>Undo last transform</dd></div>
-          <div class="shortcut-group-label">Navigation</div>
-          <div class="shortcut-row"><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Move selected point</dd></div>
-          <div class="shortcut-row"><dt><kbd>?</kbd></dt><dd>Toggle this help overlay</dd></div>
-          <div class="shortcut-row"><dt><kbd>Esc</kbd></dt><dd>Close overlays / cancel</dd></div>
-        </dl>
-      </div>
-    </div>
-  `;
-}
-
 function render() {
+  // All views now rendered by React (Router.jsx).
+  // Legacy render() only needs to handle side effects (chart cleanup).
   const state = store.getState();
-
-  if (state.route === "workspace") {
-    // Workspace + charts rendered by React (WorkspaceView.jsx + Chart.jsx).
-    morphInner(morphRoot, state.ui?.shortcutOverlay ? renderShortcutOverlay() : "");
-  } else {
-    morphInner(morphRoot, `
-      ${renderRoute()}
-      ${state.ui?.shortcutOverlay ? renderShortcutOverlay() : ""}
-    `);
+  if (state.route !== "workspace") {
     chartRuntime.destroyInactive(state);
   }
 }
