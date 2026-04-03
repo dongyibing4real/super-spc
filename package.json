@@ -8,13 +8,14 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js",
-    "test": "node tests/state.test.js && node tests/forecast-view.test.js && node tests/forecast-prediction.test.js && node tests/app.workflows.test.js && node tests/app.render-contract.test.js && node tests/app.store.test.js && node tests/ui-subscribers.test.js && node tests/chart-runtime-manager.test.js && node tests/chart-subscribers.test.js && node tests/keydown-handler.test.js && node tests/change-handler.test.js && node tests/click-handler.test.js && node --experimental-test-module-mocks tests/app-click-handler.test.js && node tests/prep-runtime.test.js && node --experimental-test-module-mocks tests/prep-click-handler.test.js && node tests/drag-runtime.test.js && node tests/methodlab-view.test.js && node tests/state/chart.test.js && node tests/state/layout.test.js && node tests/state/data-prep.test.js && node tests/state/findings.test.js && node tests/state/ui.test.js && node tests/state/columns.test.js && node tests/state/selectors.test.js && node tests/middleware/audit.test.js && node tests/middleware/notice.test.js"
+    "test": "node tests/state.test.js && node tests/forecast-view.test.js && node tests/forecast-prediction.test.js && node tests/app.workflows.test.js && node tests/chart-runtime-manager.test.js && node tests/keydown-handler.test.js && node tests/change-handler.test.js && node tests/click-handler.test.js && node --experimental-test-module-mocks tests/app-click-handler.test.js && node tests/prep-runtime.test.js && node --experimental-test-module-mocks tests/prep-click-handler.test.js && node tests/drag-runtime.test.js && node tests/state/chart.test.js && node tests/state/layout.test.js && node tests/state/data-prep.test.js && node tests/state/findings.test.js && node tests/state/ui.test.js && node tests/state/columns.test.js && node tests/state/selectors.test.js && node tests/middleware/audit.test.js && node tests/middleware/notice.test.js"
   },
   "devDependencies": {
     "playwright": "^1.58.2",
     "vite": "^8.0.3"
   },
   "dependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
     "arquero": "^8.0.3",
     "d3-array": "^3.2.4",
     "d3-axis": "^3.0.0",
@@ -23,8 +24,9 @@
     "d3-selection": "^3.0.0",
     "d3-shape": "^3.2.0",
     "d3-transition": "^3.0.1",
-    "morphdom": "^2.7.8",
-    "papaparse": "^5.5.3"
+    "papaparse": "^5.5.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zustand": "^5.0.12"
   }
 }
-

@@ -1,11 +1,11 @@
 /**
- * app.js -- Application orchestrator (thin shell).
+ * legacy-boot.js -- Application orchestrator (thin shell).
  *
- * Creates the store, registers event handlers and subscribers, bootstraps.
+ * Registers event handlers and subscribers, bootstraps.
  * All state changes go through store.setState(). Subscribers handle rendering.
+ * Called by React's App.jsx via bootLegacyApp(rootElement).
  */
 import {
-  createInitialState,
   createSlot,
   cancelForecast,
   closeActivePanel,
@@ -25,12 +25,13 @@ import {
   setForecastHorizon,
   setLoadingState,
   setPrepParsedData,
+  loadPrepPoints,
+  setPrepError,
   setXDomainOverride,
   setYDomainOverride,
   resetAxis,
 } from "./core/state.js";
-import { renderSidebar } from "./components/sidebar.js";
-import { capClass, CHART_TYPE_LABELS, detectRuleViolations, getCapability, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "./helpers.js";
+import { CHART_TYPE_LABELS, detectRuleViolations, getCapability, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "./helpers.js";
 import {
   createDataset,
   fetchColumns,
@@ -41,23 +42,15 @@ import {
 import { parseCSV } from "./data/csv-engine.js";
 import { createTable, previewTypeConversion } from "./data/data-prep-engine.js";
 import { createChart } from "./components/chart/index.js";
-import { renderNotice, renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
-import { renderGhostRows } from "./components/chart-arena.js";
-import { renderWorkspace } from "./views/workspace.js";
-import { renderDataPrep } from "./views/dataprep.js";
-import { renderMethodLab } from "./views/methodlab.js";
-import { renderFindings } from "./views/findings.js";
-import { morphInner } from "./core/morph.js";
+import { renderGhostRows } from "./components/ChartArena.jsx";
+
+
 import { buildForecastView } from "./prediction/build-forecast-view.js";
 import { DEFAULT_FORECAST_HORIZON } from "./prediction/constants.js";
-import { createStore } from "./core/store.js";
-import { auditMiddleware } from "./core/middleware/audit.js";
-import { noticeMiddleware } from "./core/middleware/notice.js";
+import { spcStore } from "./store/spc-store.js";
+import { createBridge } from "./store/bridge.js";
 import { finalizeDatasetLoad, finalizeReanalysis } from "./runtime/analysis-runtime.js";
-import { setupUiSubscribers } from "./runtime/ui-subscribers.js";
 import { createChartRuntimeManager } from "./runtime/chart-runtime-manager.js";
-import { setupChartSubscribers } from "./runtime/chart-subscribers.js";
-import { setupFindingsSubscribers } from "./runtime/findings-subscribers.js";
 import { setupDragInteractions } from "./runtime/drag-runtime.js";
 import { handleAppKeydown } from "./events/keydown-handler.js";
 import { handleAppChange } from "./events/change-handler.js";
@@ -67,13 +60,20 @@ import { handlePrepClick } from "./events/prep-click-handler.js";
 import { computeGridPreview, insertChart, setColWeight, setRowWeight, setFindingsStandard, setStructuralFindings, setChartParams } from "./core/state.js";
 import { generateFindings } from "./core/findings-engine.js";
 
+export function bootLegacyApp(morphRoot) {
+
+/**
+ * morphRoot: the inner div managed by morphdom (non-workspace route content).
+ * root: .main-shell — used for event delegation, DOM queries, and subscribers.
+ *       This covers both React-rendered workspace and legacy-rendered routes.
+ */
+const root = morphRoot.parentElement;
+
 /* ===Store ===*/
-const root = document.getElementById("app");
-const store = createStore(createInitialState(), [auditMiddleware, noticeMiddleware]);
+const store = createBridge(spcStore);
 const forecastPromptTimers = new Map();
 const forecastPromptEligibility = new Map();
 
-setupUiSubscribers(store, root);
 
 /* ===Chart runtime ===*/
 const chartRuntime = createChartRuntimeManager({
@@ -155,13 +155,35 @@ const chartRuntime = createChartRuntimeManager({
   },
 });
 
-setupChartSubscribers(store, root, {
-  chartRuntime,
-  getCapability,
-  capClass,
-});
-
-setupFindingsSubscribers(store, root);
+/* ===Route change subscriber (React Sidebar dispatches navigate to Zustand) ===*/
+store.subscribe(
+  (s) => s.route,
+  (nextRoute) => {
+    render();
+    // Lazy-load data prep points when navigating to dataprep
+    if (nextRoute === "dataprep") {
+      const state = store.getState();
+      if (state.dataPrep.selectedDatasetId && state.dataPrep.datasetPoints.length === 0) {
+        const dsId = state.dataPrep.selectedDatasetId;
+        Promise.all([
+          fetchPoints(dsId),
+          fetchColumns(dsId).catch(() => []),
+        ]).then(([pts, cols]) => {
+          const rawRows = pts.map((p) => p.raw_data || {});
+          const fallbackColumns = cols.length > 0 ? cols : store.getState().columnConfig.columns;
+          const arqueroTable = createTable(rawRows, fallbackColumns);
+          let next = setPrepParsedData(store.getState(), { rawRows, arqueroTable, columns: fallbackColumns });
+          next = loadPrepPoints(next, pts);
+          store.setState(next);
+          render();
+        }).catch((err) => {
+          store.setState(setPrepError(store.getState(), err.message));
+          render();
+        });
+      }
+    }
+  }
+);
 
 /* ===Unsaved changes guard ===*/
 window.addEventListener("beforeunload", (e) => {
@@ -170,20 +192,6 @@ window.addEventListener("beforeunload", (e) => {
   }
 });
 
-/* ===Router ===*/
-function renderRoute() {
-  const state = store.getState();
-  if (state.loading) return renderLoadingState();
-  if (state.error) return renderErrorState(state);
-  if (state.points.length === 0 && !state.activeDatasetId) return renderEmptyState();
-
-  switch (state.route) {
-    case "dataprep": return renderDataPrep(state);
-    case "methodlab": return renderMethodLab(state);
-    case "findings": return renderFindings(state);
-    default: return renderWorkspace(state);
-  }
-}
 
 function getChartPoints(slot) {
   const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
@@ -325,53 +333,11 @@ function buildChartData(id) {
   };
 }
 
-/* ===Main render ===*/
-function renderShortcutOverlay() {
-  return `
-    <div class="shortcut-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
-      <div class="shortcut-overlay-backdrop" data-action="close-shortcut-overlay"></div>
-      <div class="shortcut-overlay-panel">
-        <div class="shortcut-overlay-header">
-          <h2 class="shortcut-overlay-title">Keyboard Shortcuts</h2>
-          <button class="shortcut-overlay-close" data-action="close-shortcut-overlay" type="button" aria-label="Close">&times;</button>
-        </div>
-        <dl class="shortcut-list">
-          <div class="shortcut-group-label">Violations</div>
-          <div class="shortcut-row"><dt><kbd>n</kbd></dt><dd>Next violation point</dd></div>
-          <div class="shortcut-row"><dt><kbd>p</kbd></dt><dd>Previous violation point</dd></div>
-          <div class="shortcut-group-label">Data Prep</div>
-          <div class="shortcut-row"><dt><kbd>r</kbd></dt><dd>Rename column</dd></div>
-          <div class="shortcut-row"><dt><kbd>t</kbd></dt><dd>Change column type</dd></div>
-          <div class="shortcut-row"><dt><kbd>c</kbd></dt><dd>Calculated column</dd></div>
-          <div class="shortcut-row"><dt><kbd>f</kbd></dt><dd>Filter rows</dd></div>
-          <div class="shortcut-row"><dt><kbd>d</kbd></dt><dd>Find &amp; replace</dd></div>
-          <div class="shortcut-row"><dt><kbd>z</kbd></dt><dd>Undo last transform</dd></div>
-          <div class="shortcut-group-label">Navigation</div>
-          <div class="shortcut-row"><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Move selected point</dd></div>
-          <div class="shortcut-row"><dt><kbd>?</kbd></dt><dd>Toggle this help overlay</dd></div>
-          <div class="shortcut-row"><dt><kbd>Esc</kbd></dt><dd>Close overlays / cancel</dd></div>
-        </dl>
-      </div>
-    </div>
-  `;
-}
-
 function render() {
+  // All views now rendered by React (Router.jsx).
+  // Legacy render() only needs to handle side effects (chart cleanup).
   const state = store.getState();
-  morphInner(root, `
-    <div class="app-shell">
-      ${renderSidebar(state)}
-      <main class="main-shell">
-        ${renderNotice(state)}
-        ${renderRoute()}
-      </main>
-    </div>
-    ${state.ui?.shortcutOverlay ? renderShortcutOverlay() : ""}
-  `);
-
-  if (state.route === "workspace") {
-    chartRuntime.syncWorkspace(state);
-  } else {
+  if (state.route !== "workspace") {
     chartRuntime.destroyInactive(state);
   }
 }
@@ -816,3 +782,5 @@ async function main() {
 }
 
 main();
+
+} // end bootLegacyApp
