@@ -57,9 +57,8 @@ export default function EvidenceRail() {
   const charts = useStore(spcStore, (s) => s.charts);
   const chartOrder = useStore(spcStore, (s) => s.chartOrder);
 
-  const state = spcStore.getState();
   const workspace = useMemo(
-    () => deriveWorkspace(state),
+    () => deriveWorkspace(spcStore.getState()),
     [focusedChartId, selectedPointIndex, selectedPointIndices, points, transforms, pipeline, charts, chartOrder]
   );
 
@@ -77,7 +76,7 @@ export default function EvidenceRail() {
 
   const tone = toneClass(signal.statusTone);
   const chartEvidence = evidence.filter((e) => e.category === "chart");
-  const focusedSlot = getFocused(state);
+  const focusedSlot = getFocused(spcStore.getState());
   const chartLabel = focusedSlot?.context?.chartType?.label || "-";
 
   return (

@@ -112,6 +112,8 @@ export default function Chart({ chartId }) {
     });
 
     return () => {
+      clearForecastPromptTimer(chartId);
+      forecastPromptEligibility.delete(chartId);
       if (chartRef.current) {
         chartRef.current.destroy();
         chartRef.current = null;
