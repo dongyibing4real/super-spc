@@ -55,11 +55,7 @@ export function createChartRuntimeManager({
       chart.update(buildChartData(id));
     }
 
-    requestAnimationFrame(() => {
-      for (const id of visibleIds) {
-        if (charts[id]) charts[id].update(buildChartData(id));
-      }
-    });
+    // ResizeObserver in each chart handles deferred re-render if CSS Grid settles at a different size.
 
     for (const id of Object.keys(charts)) {
       if (!visibleIds.includes(id) && charts[id]) {

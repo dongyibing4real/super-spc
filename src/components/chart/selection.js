@@ -1,16 +1,19 @@
 /**
  * Render selection state (JMP-style).
  *
- * When a point is selected:
- *   - Selected point stays at full opacity
- *   - All other points dim to 0.35 opacity
- *   - No crosshair arms — opacity differentiation is the signal
+ * This is currently a no-op stub. Selection is handled entirely in
+ * renderPoints via opacity modulation — selected points stay at full
+ * opacity, unselected dim to 0.35. No additional geometry (crosshairs,
+ * halos) is rendered.
  *
- * This matches JMP/Minitab convention where selection is communicated
- * through contrast, not added geometry.
+ * The stub is retained so the layer contract is consistent and a future
+ * implementation (e.g., crosshair overlay, tooltip anchor) can be added
+ * without changing the call site in index.js renderAll().
+ *
+ * JMP/Minitab convention: selection is communicated through contrast,
+ * not added geometry.
  */
 export function renderSelection(layer, scales, data, seriesKey = 'primaryValue', config) {
-  // Selection layer is no longer used for crosshair rendering.
-  // Instead, selection state is applied via CSS class on the points layer.
+  // No-op: selection visuals are applied directly in renderPoints.
   layer.selectAll('*').remove();
 }

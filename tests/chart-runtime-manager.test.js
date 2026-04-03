@@ -57,7 +57,7 @@ test("chart runtime manager creates charts for visible ids and updates them", ()
   }
 
   assert.equal(created.length, 2);
-  assert.deepEqual(updates.map((item) => item.id), ["chart-1", "chart-2", "chart-1", "chart-2"]);
+  assert.deepEqual(updates.map((item) => item.id), ["chart-1", "chart-2"]);
 });
 
 test("chart runtime manager destroys charts that are no longer visible", () => {

@@ -3,6 +3,21 @@ import { select as _d3Select } from 'd3-selection';
 
 /**
  * Render data point circles with rule violation markers and exclusion marks.
+ *
+ * Point sizing: radii scale with data density (points per pixel) so packed
+ * charts stay readable. JMP/Minitab convention — small points, color is the
+ * primary signal, not size.
+ *
+ * Exclusion marks: X-shaped cross rendered on excluded points when the
+ * excludedMarkers toggle is active. Excluded points are still plotted but
+ * do not participate in control limit calculations.
+ *
+ * Multi-selection: supports both single (selectedIndex) and marquee
+ * (selectedIndices) selection. Unselected points dim to 0.35 opacity.
+ *
+ * Hit targets: each point has an invisible circle (rHit) larger than the
+ * visible dot, ensuring touch/pointer interaction works even on dense charts.
+ *
  * @param {string} [seriesKey='primaryValue'] - Which value key to plot
  */
 export function renderPoints(layer, scales, data, config, seriesKey = 'primaryValue') {

@@ -1,11 +1,22 @@
 /**
- * Render phase boundaries and labels (JMP-style).
+ * Render SPC phase boundaries and labels (JMP-style).
+ *
+ * SPC phases represent distinct process states (e.g., before/after a
+ * tooling change). Each phase computes its own control limits, so the
+ * chart must visually delineate where one phase ends and another begins.
  *
  * JMP convention: a horizontal header band sits above the plot area,
  * spanning each phase's width. Each phase gets a labeled strip with
- * alternating subtle backgrounds so users instantly see the chart has
+ * a uniform subtle background so users instantly see the chart has
  * phases and which region belongs to which phase. Vertical divider
  * lines extend from the header through the chart plot area.
+ *
+ * Header clicks: clicking a phase header selects that phase, which
+ * highlights its region and shows phase-specific edge labels. Clicking
+ * the selected header again or empty space deselects.
+ *
+ * Edge labels: only shown for the selected phase to avoid ambiguity
+ * when different phases have different limit values.
  */
 export function renderPhases(layer, labelLayer, scales, data, config) {
   const { x } = scales;

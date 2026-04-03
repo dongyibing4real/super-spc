@@ -2,7 +2,11 @@ import { fmt } from './utils.js';
 
 /**
  * Render Y-axis grid lines (clipped) and value labels (unclipped).
- * yTicks now come from scales (computed dynamically).
+ *
+ * Grid lines are aligned to the dynamically computed yTicks from scales.js,
+ * ensuring grid and labels always agree. Lines render in the clipped plot
+ * area; labels render outside the clip so they remain visible in the
+ * y-axis gutter.
  */
 export function renderGrid(layer, labelLayer, scales, config) {
   const { y, yTicks } = scales;
@@ -35,8 +39,11 @@ export function renderGrid(layer, labelLayer, scales, config) {
 }
 
 /**
- * Render confidence band (light blue shading around the center line ±1σ).
- * Computed from limits data rather than hardcoded config.
+ * Render confidence band (light blue shading around the center line ±2σ).
+ *
+ * The band visualizes the expected process variation — points within this
+ * region are statistically expected under normal operation. It is
+ * computed from sigma values in the scales object, not hardcoded.
  */
 export function renderConfidenceBand(layer, scales, config, data) {
   const { y, sigma } = scales;
