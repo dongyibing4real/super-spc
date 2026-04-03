@@ -20,7 +20,7 @@ export default function App() {
       <Sidebar />
       <main className="main-shell">
         <Notice />
-        <div ref={legacyRef} />
+        <div ref={legacyRef} style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }} />
       </main>
       <ContextMenu />
     </div>
