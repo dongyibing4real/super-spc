@@ -31,7 +31,7 @@ import {
   setYDomainOverride,
   resetAxis,
 } from "./core/state.js";
-import { capClass, CHART_TYPE_LABELS, detectRuleViolations, getCapability, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "./helpers.js";
+import { CHART_TYPE_LABELS, detectRuleViolations, getCapability, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "./helpers.js";
 import {
   createDataset,
   fetchColumns,
@@ -42,7 +42,7 @@ import {
 import { parseCSV } from "./data/csv-engine.js";
 import { createTable, previewTypeConversion } from "./data/data-prep-engine.js";
 import { createChart } from "./components/chart/index.js";
-import { renderGhostRows } from "./components/chart-arena.js";
+import { renderGhostRows } from "./components/ChartArena.jsx";
 
 
 import { buildForecastView } from "./prediction/build-forecast-view.js";
@@ -50,10 +50,7 @@ import { DEFAULT_FORECAST_HORIZON } from "./prediction/constants.js";
 import { spcStore } from "./store/spc-store.js";
 import { createBridge } from "./store/bridge.js";
 import { finalizeDatasetLoad, finalizeReanalysis } from "./runtime/analysis-runtime.js";
-import { setupUiSubscribers } from "./runtime/ui-subscribers.js";
 import { createChartRuntimeManager } from "./runtime/chart-runtime-manager.js";
-import { setupChartSubscribers } from "./runtime/chart-subscribers.js";
-import { setupFindingsSubscribers } from "./runtime/findings-subscribers.js";
 import { setupDragInteractions } from "./runtime/drag-runtime.js";
 import { handleAppKeydown } from "./events/keydown-handler.js";
 import { handleAppChange } from "./events/change-handler.js";
@@ -77,7 +74,6 @@ const store = createBridge(spcStore);
 const forecastPromptTimers = new Map();
 const forecastPromptEligibility = new Map();
 
-setupUiSubscribers(store, root);
 
 /* ===Chart runtime ===*/
 const chartRuntime = createChartRuntimeManager({
@@ -158,14 +154,6 @@ const chartRuntime = createChartRuntimeManager({
     store.setState(resetAxis(store.getState(), axis, id));
   },
 });
-
-setupChartSubscribers(store, root, {
-  chartRuntime,
-  getCapability,
-  capClass,
-});
-
-setupFindingsSubscribers(store, root);
 
 /* ===Route change subscriber (React Sidebar dispatches navigate to Zustand) ===*/
 store.subscribe(
