@@ -1,3 +1,4 @@
+import { useRef, useLayoutEffect } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
 import { getFocused, collectChartIds, DEFAULT_PARAMS } from "../core/state.js";
@@ -382,6 +383,43 @@ export default function RecipeRail() {
   const columnConfig = useStore(spcStore, (s) => s.columnConfig);
   const pendingNewChart = useStore(spcStore, (s) => s.ui.pendingNewChart);
 
+  // --- FLIP animation for card reordering ---
+  const railRef = useRef(null);
+  const positionsRef = useRef(null);
+
+  // Capture card positions BEFORE React re-renders (runs synchronously before DOM paint)
+  useLayoutEffect(() => {
+    // Snapshot current positions for the NEXT render's FLIP
+    return () => {
+      if (railRef.current && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        const map = new Map();
+        railRef.current.querySelectorAll(".rail-card[data-chart-id]").forEach((el) => {
+          map.set(el.dataset.chartId, el.getBoundingClientRect());
+        });
+        if (map.size > 0) positionsRef.current = map;
+      }
+    };
+  });
+
+  // After React paints the new order, animate from old positions
+  useLayoutEffect(() => {
+    const firstMap = positionsRef.current;
+    positionsRef.current = null;
+    if (!firstMap || !railRef.current || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    railRef.current.querySelectorAll(".rail-card[data-chart-id]").forEach((el) => {
+      const first = firstMap.get(el.dataset.chartId);
+      if (!first) return;
+      const last = el.getBoundingClientRect();
+      const deltaY = first.top - last.top;
+      if (Math.abs(deltaY) < 2) return;
+      el.animate(
+        [{ transform: `translateY(${deltaY}px)` }, { transform: "translateY(0)" }],
+        { duration: 250, easing: "cubic-bezier(0.25, 1, 0.5, 1)", composite: "replace" }
+      );
+    });
+  });
+
   const cols = columnConfig.columns || [];
   const activeDs = datasets.find((ds) => ds.id === activeDatasetId);
   const datasetVal = activeDs ? activeDs.name : "No dataset";
@@ -393,7 +431,7 @@ export default function RecipeRail() {
   const otherIds = chartOrder.filter((id) => id !== focusedChartId);
 
   return (
-    <div className="recipe-rail">
+    <div className="recipe-rail" ref={railRef}>
       {/* Dataset card */}
       <div className="rail-card rail-card--dataset">
         <div className="rail-card-header rail-card-header--dataset">
