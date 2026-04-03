@@ -398,11 +398,8 @@ function render() {
   const state = store.getState();
 
   if (state.route === "workspace") {
-    // Workspace is rendered by React (WorkspaceView.jsx).
-    // Only render the shortcut overlay in morphRoot.
+    // Workspace + charts rendered by React (WorkspaceView.jsx + Chart.jsx).
     morphInner(morphRoot, state.ui?.shortcutOverlay ? renderShortcutOverlay() : "");
-    // Wait for React to paint chart-mount divs before syncing D3.
-    requestAnimationFrame(() => chartRuntime.syncWorkspace(store.getState()));
   } else {
     morphInner(morphRoot, `
       ${renderRoute()}

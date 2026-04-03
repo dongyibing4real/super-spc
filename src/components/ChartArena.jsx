@@ -2,8 +2,8 @@ import React from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
 import { getCapability, capClass, CHART_TYPE_LABELS } from "../helpers.js";
-
 import { buildForecastView } from "../prediction/build-forecast-view.js";
+import Chart from "./Chart.jsx";
 
 const FOCUSED_TAIL_WINDOW = 60;
 
@@ -102,13 +102,7 @@ function ChartPane({ state, chartId }) {
           dangerouslySetInnerHTML={{ __html: renderDataTable(state, chartId) }}
         />
       ) : (
-        <div
-          className="chart-stage"
-          id={`chart-mount-${chartId}`}
-          tabIndex={0}
-          data-chart-focus="true"
-          aria-label={`${chartId} control chart`}
-        />
+        <Chart key={chartId} chartId={chartId} />
       )}
     </div>
   );
