@@ -1,17 +1,21 @@
 /**
- * Render zone shading (1σ/2σ/3σ bands).
+ * Render Western Electric zone shading (1σ/2σ/3σ bands).
  *
- * Zone A (2σ–3σ): red tint — danger zone, most visible.
- * Zone B (1σ–2σ): amber tint — warning zone.
- * Zone C (0–1σ): green tint — healthy zone, most subtle.
+ * Western Electric zones divide the control chart into three regions
+ * on each side of the center line, used by run-rule tests:
+ *   Zone A (2σ–3σ): red tint — danger zone, most visible.
+ *   Zone B (1σ–2σ): amber tint — warning zone.
+ *   Zone C (0–1σ): green tint — healthy zone, most subtle.
  *
- * Opacities calibrated for #F6F7F9 light background (ambient tier):
+ * Opacity rationale: calibrated for #F6F7F9 light background (ambient tier).
  *   Zone A 0.05, Zone B 0.03, Zone C 0.025
- * Red is perceptually dominant so needs less opacity than green.
+ *   Red is perceptually dominant so needs less opacity than green to
+ *   achieve balanced visual weight. Values chosen by eye on both light
+ *   and dark themes.
  *
  * When multiple phases exist, zones are rendered PER-PHASE using each
  * phase's own limits (JMP convention). Each phase segment gets its own
- * set of 6 zone rectangles.
+ * set of 6 zone rectangles, computed from that phase's sigma.
  */
 export function renderZones(layer, scales, data, config) {
   const { x, y } = scales;

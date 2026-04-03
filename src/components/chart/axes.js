@@ -1,4 +1,105 @@
 /**
+ * Set up JMP-style axis drag interaction on a hit element.
+ *
+ * Both axes use identical interaction logic:
+ *   drag ALONG the axis    -> PAN  (translate visible range)
+ *   drag PERPENDICULAR     -> SCALE (zoom in/out)
+ * Only differs in: which mouse axis is "along" vs "perpendicular",
+ * data bounds for clamping, and the output event shape.
+ *
+ *   X-axis: horizontal = along (pan), vertical = perpendicular (scale)
+ *   Y-axis: vertical = along (pan), horizontal = perpendicular (scale)
+ *
+ * @param {Selection} hitElement - D3 selection for the invisible drag target rect
+ * @param {'x'|'y'} axisType - which axis this controls
+ * @param {Function} getContext - returns { scales, sizedConfig, width, height }
+ * @param {object} callbacks - { onAxisDrag, onForecastActivity }
+ * @returns {Function} cleanup function to remove active drag listeners
+ */
+export function setupAxisDrag(hitElement, axisType, getContext, callbacks) {
+  let activeDragCleanup = null;
+
+  hitElement.on('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const { scales, sizedConfig, width, height } = getContext();
+    if (!scales) return;
+    callbacks.onForecastActivity?.();
+
+    const startClientX = event.clientX;
+    const startClientY = event.clientY;
+
+    // Read current domain bounds for this axis
+    const startMin = axisType === 'x' ? scales.xMin : scales.yMin;
+    const startMax = axisType === 'x' ? scales.xMax : scales.yMax;
+    const range = startMax - startMin;
+
+    // Pixel range for this axis direction
+    const activePadding = sizedConfig?.padding;
+    const pixelRange = axisType === 'x'
+      ? width - activePadding.left - activePadding.right
+      : height - activePadding.top - activePadding.bottom;
+
+    // Clamping — identical for both axes: generous range, no position walls
+    const minRange = range * 0.05;   // can zoom to 5% of original range
+    const maxRange = range * 5;      // can zoom out to 5x original range
+
+    document.body.style.cursor = 'grabbing';
+    hitElement.style('cursor', 'grabbing');
+
+    const onMove = (e) => {
+      callbacks.onForecastActivity?.();
+      const dx = e.clientX - startClientX;
+      const dy = e.clientY - startClientY;
+
+      // Along-axis -> PAN, perpendicular -> SCALE
+      const panDelta = axisType === 'x'
+        ? -dx * (range / pixelRange)    // drag right -> see later data
+        :  dy * (range / pixelRange);   // drag up -> see higher values (SVG y inverted)
+      const scaleFactor = Math.max(0.1, axisType === 'x'
+        ? 1 + dy * 0.005               // drag down -> zoom out
+        : 1 - dx * 0.005);             // drag right -> zoom in
+
+      const center = (startMin + startMax) / 2 + panDelta;
+      let halfRange = range / 2 * scaleFactor;
+
+      // Clamp range only — no position walls, free pan like y-axis
+      halfRange = Math.max(minRange / 2, Math.min(maxRange / 2, halfRange));
+      const lo = center - halfRange;
+      const hi = center + halfRange;
+
+      // Emit unified event
+      if (axisType === 'x') {
+        callbacks.onAxisDrag?.({ axis: 'x', min: lo, max: hi });
+      } else {
+        callbacks.onAxisDrag?.({ axis: 'y', yMin: lo, yMax: hi });
+      }
+    };
+
+    const onUp = () => {
+      document.body.style.cursor = '';
+      hitElement.style('cursor', 'grab');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      activeDragCleanup = null;
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    activeDragCleanup = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = '';
+    };
+  });
+
+  // Return cleanup function
+  return () => {
+    if (activeDragCleanup) { activeDragCleanup(); activeDragCleanup = null; }
+  };
+}
+
+/**
  * Compute a "nice stride" for categorical axis labels.
  * This is the categorical equivalent of the y-axis "nice numbers" algorithm:
  *   y-axis: snap to 1, 2, 5 × 10^n  (value steps)

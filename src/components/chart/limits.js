@@ -3,9 +3,23 @@ import { fmt } from './utils.js';
 /**
  * Render limit lines (UCL/CL/LCL/USL/LSL), sigma reference lines, and edge labels.
  *
- * When data.phases has multiple phases, control limit lines (UCL/CL/LCL) and
- * sigma reference lines are drawn as per-phase segments with independently
- * computed y-positions (JMP convention: each phase has its own limits).
+ * Two render paths:
+ *   _renderSinglePhaseLimits — full-width horizontal lines for single-phase data.
+ *   _renderPerPhaseLimits — per-phase segments with independently computed
+ *     y-positions (JMP convention: each phase has its own limits).
+ *
+ * Visual hierarchy:
+ *   Control limits (UCL/LCL): solid red, 0.75px — critical boundaries.
+ *   Center line (CL): solid green, 0.75px — process average.
+ *   Spec limits (USL/LSL): dashed purple, 0.75px — customer tolerance.
+ *   Target: dashed purple, slightly more opaque — desired aim point.
+ *   Sigma refs (+-1s, +-2s): 0.75px colored lines — zone boundaries only.
+ *
+ * Spec limits (USL/LSL) vs control limits (UCL/LCL):
+ *   Spec limits come from customer requirements (external).
+ *   Control limits come from process variation (internal).
+ *   They may be null independently — a process can have control limits
+ *   without spec limits, or vice versa.
  */
 export function renderLimits(layer, labelLayer, scales, data, config) {
   const { x, y, sigma } = scales;
@@ -30,8 +44,8 @@ function _renderSinglePhaseLimits(layer, labelLayer, y, sigma, data, config, L, 
   const yUCL = y(data.limits.ucl);
   const yCL = y(data.limits.center);
   const yLCL = y(data.limits.lcl);
-  const yUSL = y(data.limits.usl);
-  const yLSL = y(data.limits.lsl);
+  const yUSL = data.limits.usl != null ? y(data.limits.usl) : null;
+  const yLSL = data.limits.lsl != null ? y(data.limits.lsl) : null;
   const yTarget = data.limits.target != null ? y(data.limits.target) : null;
   const yS1U = y(sigma.s1u);
   const yS2U = y(sigma.s2u);
@@ -43,8 +57,8 @@ function _renderSinglePhaseLimits(layer, labelLayer, y, sigma, data, config, L, 
     { y: yUCL, cls: 'limit-line critical', dash: null },
     { y: yCL, cls: 'limit-line center', dash: null },
     { y: yLCL, cls: 'limit-line critical', dash: null },
-    { y: yUSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
-    { y: yLSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
+    ...(yUSL != null ? [{ y: yUSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' }] : []),
+    ...(yLSL != null ? [{ y: yLSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' }] : []),
     ...(yTarget != null ? [{ y: yTarget, cls: 'limit-line spec target', dash: '2 3', color: 'rgba(139,92,246,0.40)' }] : []),
   ];
 
@@ -79,14 +93,14 @@ function _renderSinglePhaseLimits(layer, labelLayer, y, sigma, data, config, L, 
 
 /** Per-phase rendering — each phase gets its own limit line segments. */
 function _renderPerPhaseLimits(layer, labelLayer, x, y, phases, data, config, L, R) {
-  const yUSL = y(data.limits.usl);
-  const yLSL = y(data.limits.lsl);
+  const yUSL = data.limits.usl != null ? y(data.limits.usl) : null;
+  const yLSL = data.limits.lsl != null ? y(data.limits.lsl) : null;
   const yTarget = data.limits.target != null ? y(data.limits.target) : null;
 
   // Spec limits span the full chart (not phase-specific)
   [
-    { y: yUSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
-    { y: yLSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' },
+    ...(yUSL != null ? [{ y: yUSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' }] : []),
+    ...(yLSL != null ? [{ y: yLSL, cls: 'limit-line spec', dash: '3 4', color: 'rgba(139,92,246,0.30)' }] : []),
     ...(yTarget != null ? [{ y: yTarget, cls: 'limit-line spec target', dash: '2 3', color: 'rgba(139,92,246,0.40)' }] : []),
   ].forEach(d => {
     const line = layer.append('line')

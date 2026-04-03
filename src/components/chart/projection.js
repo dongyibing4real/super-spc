@@ -1,8 +1,23 @@
 import { line as d3Line } from 'd3-shape';
+import { clamp } from './utils.js';
 
 /**
- * Ghost zone renderer — renders prediction cone, line, and points
- * with SVG clipPath-based color split at control limit boundaries.
+ * Ghost zone renderer — the "ghost" metaphor: predicted future points
+ * appear as translucent echoes of real data, fading into uncertainty.
+ *
+ * Three states drive the projection UI:
+ *   1. Prompt — empty gap to the right of data shows a "Forecast" hint
+ *      area. Clicking it activates forecasting (renderProjectionPrompt).
+ *   2. Active (shell) — forecast is enabled but no result yet. A
+ *      clickable shell fills the gap (renderProjectionShell).
+ *   3. Result — algorithm has produced projected points + confidence
+ *      bands. The full ghost zone renders (renderProjection).
+ *
+ * Dual-clip color split: two SVG clipPaths divide the plot area at
+ * the UCL and LCL boundaries. All ghost elements (cone, line, points)
+ * are rendered twice — once clipped to "within limits" (blue) and once
+ * clipped to "beyond limits" (red). This avoids per-point color logic
+ * and produces clean color transitions at the limit boundaries.
  *
  * Visual spec:
  *   Within limits: Blue #2D72D2 at reduced opacity
@@ -13,32 +28,6 @@ import { line as d3Line } from 'd3-shape';
 
 const BLUE = '#2D72D2';
 const RED = '#CD4246';
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function visibleForecastHorizon(config) {
-  return Math.max(0, config.visibleForecastHorizon || 0);
-}
-
-function forecastBounds(scales, data, config) {
-  const horizon = visibleForecastHorizon(config);
-  if (horizon <= 0 || !data.points?.length) return null;
-  const lastIdx = data.points.length - 1;
-  const plotLeft = config.padding.left;
-  const plotRight = config.width - config.padding.right;
-  const x0 = clamp(scales.x(lastIdx), plotLeft, plotRight);
-  const x1 = clamp(scales.x(lastIdx + horizon), plotLeft, plotRight);
-  return {
-    lastIdx,
-    x0,
-    x1,
-    width: Math.max(0, x1 - x0),
-    top: config.padding.top,
-    height: config.height - config.padding.top - config.padding.bottom,
-  };
-}
 
 export function renderProjectionPrompt(layer, scales, data, config) {
   layer.selectAll('*').remove();

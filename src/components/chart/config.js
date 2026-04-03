@@ -1,6 +1,13 @@
 import { fmt } from './utils.js';
 
-/** Monospace character width as a fraction of font size (IBM Plex Mono). */
+/**
+ * Monospace character width as a fraction of font size (IBM Plex Mono).
+ * Used throughout the adaptive padding algorithm to estimate pixel widths
+ * of formatted numbers without measuring DOM text nodes. The value 0.6
+ * is empirically calibrated for IBM Plex Mono at typical chart font sizes
+ * (7–10px). This ratio is also used in axes.js for x-axis label width
+ * estimation — keep them in sync.
+ */
 const MONO_RATIO = 0.6;
 
 /**
@@ -22,17 +29,27 @@ function fitFontSize(text, budget, max = 10, min = 7) {
 }
 
 /**
- * Compute dynamic padding + font sizes from actual data values.
- * Called at the start of every render so the chart adapts to any dataset.
+ * Adaptive padding algorithm: compute dynamic padding + font sizes from
+ * actual data values and container dimensions.
  *
- * Height-aware: when the container is small, padding scales down proportionally
- * to preserve at least 60% of height for the plot area. Font sizes reduce and
- * axis title space is dropped at very small sizes.
+ * Called at the start of every render so the chart adapts to any dataset.
+ * The algorithm balances four competing constraints:
+ *   1. Y-axis labels must fit (left padding ≥ formatted number width)
+ *   2. Edge labels must fit (right padding ≥ "UCL 1234.567" width)
+ *   3. X-axis labels must fit (bottom padding ≥ label height at rotation)
+ *   4. Plot area must be ≥ 60% of total height (clamped at end)
+ *
+ * Height-aware: when the container is small, padding scales down via vScale
+ * (linear from 1.0 at 300px to 0.4 floor). Font sizes reduce and axis
+ * title space is dropped below 180px.
+ *
+ * Width-aware: hScale (linear from 1.0 at 400px to 0.5 floor) compresses
+ * horizontal padding proportionally.
  *
  * @param {object} data - chart data (points, limits, metric)
  * @param {number} width - container width in px
  * @param {number} height - container height in px
- * @returns {{ padding, yLabelFontSize, edgeLabelFontSize, showAxisTitles }}
+ * @returns {{ padding, yLabelFontSize, edgeLabelFontSize, showAxisTitles, phaseHeaderHeight }}
  */
 export function computeLayout(data, width, height) {
   // ── Height pressure: scale factor for vertical padding ────────

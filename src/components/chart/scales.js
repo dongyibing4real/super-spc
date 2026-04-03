@@ -21,7 +21,8 @@ function computeYRange(data, seriesKey) {
     });
   }
 
-  const allValues = [...values, ...limitsArr];
+  const allValues = [...values, ...limitsArr].filter(v => Number.isFinite(v));
+  if (allValues.length === 0) return { yMin: 0, yMax: 1 };
   const dataMin = Math.min(...allValues);
   const dataMax = Math.max(...allValues);
   const range = dataMax - dataMin;

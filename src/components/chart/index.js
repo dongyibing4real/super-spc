@@ -11,6 +11,8 @@ import { renderAxes } from './axes.js';
 import { renderEvents } from './events.js';
 import { renderProjection, renderProjectionPrompt, renderProjectionShell } from './projection.js';
 import { DEFAULT_CONFIG, computeLayout } from './config.js';
+import { clamp } from './utils.js';
+import { setupAxisDrag } from './axes.js';
 
 /**
  * JMP-style y-axis label: function(measurement) depending on chart type.
@@ -46,10 +48,6 @@ const CHART_Y_LABELS = {
 function getYAxisLabel(chartTypeId, metricLabel) {
   const fn = CHART_Y_LABELS[chartTypeId];
   return fn ? fn(metricLabel) : metricLabel;
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
 }
 
 /**
@@ -103,6 +101,18 @@ function renderAxisTitles(xTitleLayer, yTitleLayer, data, config) {
 /**
  * Create a D3-powered SPC control chart that auto-sizes to its container.
  *
+ * Closure state groups (future React migration targets):
+ *   1. Geometry — currentWidth, currentHeight: measured container size, updated by
+ *      syncSize() and ResizeObserver. Maps to a useResizeObserver hook.
+ *   2. Scales — currentScales, currentSizedConfig: derived from data + geometry on
+ *      every render. Maps to useMemo over data and geometry.
+ *   3. Interaction — marqueeState, marqueeJustFinished: transient pointer-tracking
+ *      state. Maps to useRef (not rendered).
+ *   4. Data — lastData, currentData: most recent data passed to update(). Maps to
+ *      the prop/state that drives re-renders.
+ *   5. Lifecycle — resizeObserver, cleanupXDrag, cleanupYDrag, activity listeners:
+ *      side effects created once and torn down on destroy. Maps to useEffect cleanup.
+ *
  * @param {HTMLElement} container - DOM element to mount the SVG into
  * @param {object} options - Config overrides + callbacks (onSelectPoint, onContextMenu, onAxisDrag, onAxisReset, onForecastDrag, onForecastActivity, onForecastPromptEligibilityChange, onActivateForecast, onSelectForecast, onCancelForecast)
  * @returns {{ update: Function, destroy: Function, svg: Selection }}
@@ -121,9 +131,6 @@ export function createChart(container, options = {}) {
   // Track current scales and config for axis drag computations
   let currentScales = null;
   let currentSizedConfig = null;
-
-  // Track active drag session for cleanup on destroy/remount
-  let activeDragCleanup = null;
 
   const svg = select(container)
     .append('svg')
@@ -225,101 +232,11 @@ export function createChart(container, options = {}) {
     config.onContextMenu(localX, localY, { axis, target });
   });
 
-  // ── Unified axis drag: JMP-style ────────────────────────────────────
-  //   Both axes use identical interaction logic:
-  //     drag ALONG the axis    → PAN  (translate visible range)
-  //     drag PERPENDICULAR     → SCALE (zoom in/out)
-  //   Only differs in: which mouse axis is "along" vs "perpendicular",
-  //   data bounds for clamping, and the output event shape.
-  //
-  //   X-axis: horizontal = along (pan), vertical = perpendicular (scale)
-  //   Y-axis: vertical = along (pan), horizontal = perpendicular (scale)
-  // ───────────────────────────────────────────────────────────────────
-  function setupAxisDrag(hitElement, axisType) {
-    hitElement.on('pointerdown', (event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (!currentScales) return;
-      config.onForecastActivity?.();
-
-      const startClientX = event.clientX;
-      const startClientY = event.clientY;
-
-      // Read current domain bounds for this axis
-      const startMin = axisType === 'x' ? currentScales.xMin : currentScales.yMin;
-      const startMax = axisType === 'x' ? currentScales.xMax : currentScales.yMax;
-      const range = startMax - startMin;
-
-      // Pixel range for this axis direction
-      const activePadding = currentSizedConfig?.padding || config.padding;
-      const pixelRange = axisType === 'x'
-        ? currentWidth - activePadding.left - activePadding.right
-        : currentHeight - activePadding.top - activePadding.bottom;
-
-      // Clamping — identical for both axes: generous range, no position walls
-      const minRange = range * 0.05;   // can zoom to 5% of original range
-      const maxRange = range * 5;      // can zoom out to 5x original range
-
-      document.body.style.cursor = 'grabbing';
-      hitElement.style('cursor', 'grabbing');
-
-      const onMove = (e) => {
-        config.onForecastActivity?.();
-        const dx = e.clientX - startClientX;
-        const dy = e.clientY - startClientY;
-
-        // Along-axis → PAN, perpendicular → SCALE
-        // X-axis: dx = pan (inverted), dy = scale
-        // Y-axis: dy = pan, dx = scale (inverted)
-        const panDelta = axisType === 'x'
-          ? -dx * (range / pixelRange)    // drag right → see later data
-          :  dy * (range / pixelRange);   // drag up → see higher values (SVG y inverted)
-        const scaleFactor = Math.max(0.1, axisType === 'x'
-          ? 1 + dy * 0.005               // drag down → zoom out
-          : 1 - dx * 0.005);             // drag right → zoom in
-
-        const center = (startMin + startMax) / 2 + panDelta;
-        let halfRange = range / 2 * scaleFactor;
-
-        // Clamp range only — no position walls, free pan like y-axis
-        halfRange = Math.max(minRange / 2, Math.min(maxRange / 2, halfRange));
-        const lo = center - halfRange;
-        const hi = center + halfRange;
-
-        // Emit unified event
-        if (axisType === 'x') {
-          config.onAxisDrag?.({ axis: 'x', min: lo, max: hi });
-        } else {
-          config.onAxisDrag?.({ axis: 'y', yMin: lo, yMax: hi });
-        }
-      };
-
-      const onUp = () => {
-        document.body.style.cursor = '';
-        hitElement.style('cursor', 'grab');
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-        activeDragCleanup = null;
-      };
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-      activeDragCleanup = () => {
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-        document.body.style.cursor = '';
-      };
-    });
-  }
-
-  setupAxisDrag(xAxisHit, 'x');
-  setupAxisDrag(yAxisHit, 'y');
-
-  function renderForecastHandle(data, scales, sizedConfig) {
-    const layer = layers.forecastHandle;
-    layer.selectAll('*').remove();
-    // Forecast handle chrome removed — prediction renders without visible drag handle
-  }
+  // ── Axis drag: JMP-style pan/scale (extracted to axes.js) ───────────
+  const axisCallbacks = { onAxisDrag: config.onAxisDrag, onForecastActivity: config.onForecastActivity };
+  const getAxisContext = () => ({ scales: currentScales, sizedConfig: currentSizedConfig, width: currentWidth, height: currentHeight });
+  const cleanupXDrag = setupAxisDrag(xAxisHit, 'x', getAxisContext, axisCallbacks);
+  const cleanupYDrag = setupAxisDrag(yAxisHit, 'y', getAxisContext, axisCallbacks);
 
   // ── Double-click to reset ──────────────────────────────────────────
   xAxisHit.on('dblclick', () => config.onAxisReset?.('x'));
@@ -356,7 +273,7 @@ export function createChart(container, options = {}) {
   let marqueeState = null;
   const MARQUEE_THRESHOLD = 5; // px — minimum drag to activate marquee
 
-  svg.on('mousedown.marquee', (event) => {
+  svg.on('pointerdown.marquee', (event) => {
     // Only left button, only in plot area
     if (event.button !== 0) return;
     if (!currentSizedConfig) return;
@@ -468,8 +385,8 @@ export function createChart(container, options = {}) {
     marqueeState = null;
   }
 
-  window.addEventListener('mousemove', marqueeMove);
-  window.addEventListener('mouseup', marqueeUp);
+  window.addEventListener('pointermove', marqueeMove);
+  window.addEventListener('pointerup', marqueeUp);
 
   // Track last data for re-rendering on resize and axis drag clamping
   let lastData = null;
@@ -631,7 +548,6 @@ export function createChart(container, options = {}) {
       .attr('width', p.left)
       .attr('height', currentHeight - p.top - p.bottom);
 
-    renderForecastHandle(data, scales, sizedConfig);
     // Forecast prompt eligibility: measure the visible empty space between
     // the last data point and the right edge of the plot area.
     const lastIdx = data.points.length - 1;
@@ -660,32 +576,19 @@ export function createChart(container, options = {}) {
   /**
    * Update the chart with new data.
    * Re-measures container size before each render to handle layout changes.
-   * Also schedules a deferred re-render for when CSS Grid settles.
+   * ResizeObserver handles deferred re-render when CSS Grid settles.
    * @param {object} data
    */
   function update(data) {
     lastData = data;
     syncSize();
     renderAll(data);
-
-    // Deferred re-render: CSS Grid may not have settled yet after layout changes.
-    // requestAnimationFrame runs after the browser paints the new layout.
-    requestAnimationFrame(() => {
-      const cs = getComputedStyle(container);
-      const w = (container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) || 400;
-      const h = (container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) || 300;
-      if (w !== currentWidth || h !== currentHeight) {
-        currentWidth = w;
-        currentHeight = h;
-        svg.attr('width', w).attr('height', h);
-        renderAll(data);
-      }
-    });
   }
 
   /** Update container reference after SVG is reattached to a new DOM element */
   function remount(newContainer) {
-    if (activeDragCleanup) { activeDragCleanup(); activeDragCleanup = null; }
+    cleanupXDrag();
+    cleanupYDrag();
     detachActivityListeners(container);
     container = newContainer;
     resizeObserver.disconnect();
@@ -695,9 +598,10 @@ export function createChart(container, options = {}) {
 
   /** Remove the chart SVG from the DOM and disconnect observer */
   function destroy() {
-    if (activeDragCleanup) { activeDragCleanup(); activeDragCleanup = null; }
-    window.removeEventListener('mousemove', marqueeMove);
-    window.removeEventListener('mouseup', marqueeUp);
+    cleanupXDrag();
+    cleanupYDrag();
+    window.removeEventListener('pointermove', marqueeMove);
+    window.removeEventListener('pointerup', marqueeUp);
     detachActivityListeners(container);
     resizeObserver.disconnect();
     svg.remove();

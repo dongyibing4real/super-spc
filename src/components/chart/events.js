@@ -1,5 +1,14 @@
 /**
  * Render event annotation lines and chips.
+ *
+ * Event markers represent external occurrences (tool changes, lot boundaries,
+ * recipe updates) that may explain process shifts visible in the SPC chart.
+ * Each marker is a vertical line from the header area to the x-axis, with
+ * a small chip label describing the event.
+ *
+ * In SPC context, event annotations help engineers correlate assignable
+ * causes with statistical signals (e.g., a rule violation coinciding with
+ * a known equipment change).
  */
 export function renderEvents(layer, scales, data, config) {
   const { x } = scales;
