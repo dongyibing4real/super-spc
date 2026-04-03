@@ -44,7 +44,7 @@ import { createTable, previewTypeConversion } from "./data/data-prep-engine.js";
 import { createChart } from "./components/chart/index.js";
 import { renderLoadingState, renderErrorState, renderEmptyState } from "./components/notice.js";
 import { renderGhostRows } from "./components/chart-arena.js";
-import { renderWorkspace } from "./views/workspace.js";
+
 import { renderDataPrep } from "./views/dataprep.js";
 import { renderMethodLab } from "./views/methodlab.js";
 import { renderFindings } from "./views/findings.js";
@@ -67,7 +67,14 @@ import { handlePrepClick } from "./events/prep-click-handler.js";
 import { computeGridPreview, insertChart, setColWeight, setRowWeight, setFindingsStandard, setStructuralFindings, setChartParams } from "./core/state.js";
 import { generateFindings } from "./core/findings-engine.js";
 
-export function bootLegacyApp(root) {
+export function bootLegacyApp(morphRoot) {
+
+/**
+ * morphRoot: the inner div managed by morphdom (non-workspace route content).
+ * root: .main-shell — used for event delegation, DOM queries, and subscribers.
+ *       This covers both React-rendered workspace and legacy-rendered routes.
+ */
+const root = morphRoot.parentElement;
 
 /* ===Store ===*/
 const store = createBridge(spcStore);
@@ -212,7 +219,7 @@ function renderRoute() {
     case "dataprep": return renderDataPrep(state);
     case "methodlab": return renderMethodLab(state);
     case "findings": return renderFindings(state);
-    default: return renderWorkspace(state);
+    default: return ""; // Workspace rendered by React (WorkspaceView.jsx)
   }
 }
 
@@ -389,14 +396,18 @@ function renderShortcutOverlay() {
 
 function render() {
   const state = store.getState();
-  morphInner(root, `
-    ${renderRoute()}
-    ${state.ui?.shortcutOverlay ? renderShortcutOverlay() : ""}
-  `);
 
   if (state.route === "workspace") {
-    chartRuntime.syncWorkspace(state);
+    // Workspace is rendered by React (WorkspaceView.jsx).
+    // Only render the shortcut overlay in morphRoot.
+    morphInner(morphRoot, state.ui?.shortcutOverlay ? renderShortcutOverlay() : "");
+    // Wait for React to paint chart-mount divs before syncing D3.
+    requestAnimationFrame(() => chartRuntime.syncWorkspace(store.getState()));
   } else {
+    morphInner(morphRoot, `
+      ${renderRoute()}
+      ${state.ui?.shortcutOverlay ? renderShortcutOverlay() : ""}
+    `);
     chartRuntime.destroyInactive(state);
   }
 }
