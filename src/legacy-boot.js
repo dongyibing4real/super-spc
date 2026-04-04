@@ -69,9 +69,16 @@ const root = morphRoot.parentElement;
 
 /* ===Store ===*/
 const store = createBridge(spcStore);
+// Forecast timers are now managed by Chart.jsx. These are no-op stubs
+// kept for the chartRuntimeManager constructor which still references them.
 const forecastPromptTimers = new Map();
 const forecastPromptEligibility = new Map();
-
+function clearForecastPromptTimer(id) {
+  const timer = forecastPromptTimers.get(id);
+  if (timer) { clearTimeout(timer); forecastPromptTimers.delete(id); }
+}
+function handleForecastActivity() { /* Chart.jsx owns forecast timers now */ }
+function handleForecastPromptEligibility() { /* Chart.jsx owns forecast timers now */ }
 
 /* ===Chart runtime ===*/
 const chartRuntime = createChartRuntimeManager({
@@ -130,7 +137,7 @@ const chartRuntime = createChartRuntimeManager({
     // entire space the user opened by panning, not just the default 6.
     const slot = next.charts[id];
     if (slot?.overrides?.x) {
-      const pts = getChartPoints(slot);
+      const pts = getChartPoints(slot, next.points);
       const lastPtIdx = Math.max(0, pts.length - 1);
       const gapIndices = Math.max(1, Math.ceil(slot.overrides.x.max - lastPtIdx));
       if (gapIndices > (slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON)) {
