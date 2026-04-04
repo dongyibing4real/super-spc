@@ -6,8 +6,10 @@
 import { spcStore } from "./spc-store.js";
 import { buildForecastView } from "../prediction/build-forecast-view.js";
 import { detectRuleViolations, getCapability } from "../helpers.js";
+import { setXDomainOverride, setForecastHorizon } from "../core/state.js";
+import { DEFAULT_FORECAST_HORIZON } from "../prediction/constants.js";
 
-function getChartPoints(slot, globalPoints) {
+export function getChartPoints(slot, globalPoints) {
   const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
   return hasChartValues
     ? slot.chartValues.map((v, i) => ({
@@ -19,6 +21,31 @@ function getChartPoints(slot, globalPoints) {
         raw: {},
       }))
     : globalPoints;
+}
+
+export function ensureForecastVisible(nextState, id) {
+  const slot = nextState.charts[id];
+  if (!slot) return nextState;
+  const points = getChartPoints(slot, nextState.points);
+  const lastIdx = Math.max(0, points.length - 1);
+  const horizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
+  const requiredMax = lastIdx + horizon;
+  const currentOverride = slot.overrides?.x;
+  if (!currentOverride || currentOverride.max >= requiredMax) {
+    return nextState;
+  }
+  return setXDomainOverride(nextState, currentOverride.min, requiredMax, id);
+}
+
+export function extendForecastToViewport(nextState, id, nextXMax) {
+  const slot = nextState.charts[id];
+  if (!slot || slot.forecast?.mode !== "active") return nextState;
+  const points = getChartPoints(slot, nextState.points);
+  const lastIdx = Math.max(0, points.length - 1);
+  const requiredHorizon = Math.max(1, Math.ceil(Math.max(0, nextXMax - lastIdx)));
+  const currentHorizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
+  if (requiredHorizon <= currentHorizon) return nextState;
+  return setForecastHorizon(nextState, requiredHorizon, id);
 }
 
 /**

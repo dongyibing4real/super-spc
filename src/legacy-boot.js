@@ -31,7 +31,7 @@ import {
   setYDomainOverride,
   resetAxis,
 } from "./core/state.js";
-import { CHART_TYPE_LABELS, detectRuleViolations, getCapability, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "./helpers.js";
+import { CHART_TYPE_LABELS, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "./helpers.js";
 import {
   createDataset,
   fetchColumns,
@@ -43,9 +43,7 @@ import { parseCSV } from "./data/csv-engine.js";
 import { createTable, previewTypeConversion } from "./data/data-prep-engine.js";
 import { createChart } from "./components/chart/index.js";
 import { renderGhostRows } from "./components/ChartArena.jsx";
-
-
-import { buildForecastView } from "./prediction/build-forecast-view.js";
+import { getChartPoints, ensureForecastVisible, extendForecastToViewport, buildChartData } from "./store/chart-data-builder.js";
 import { DEFAULT_FORECAST_HORIZON } from "./prediction/constants.js";
 import { spcStore } from "./store/spc-store.js";
 import { createBridge } from "./store/bridge.js";
@@ -193,145 +191,6 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 
-function getChartPoints(slot) {
-  const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
-  return hasChartValues
-    ? slot.chartValues.map((v, i) => ({
-        primaryValue: v,
-        label: slot.chartLabels[i] || `pt-${i}`,
-        subgroupLabel: slot.chartLabels[i] || `pt-${i}`,
-        excluded: false,
-        annotation: null,
-        raw: {},
-      }))
-    : store.getState().points;
-}
-
-/* ===Forecast lifecycle ===*/
-function clearForecastPromptTimer(id) {
-  const timer = forecastPromptTimers.get(id);
-  if (timer) {
-    clearTimeout(timer);
-    forecastPromptTimers.delete(id);
-  }
-}
-
-function scheduleForecastPrompt(id, { force = false } = {}) {
-  const state = store.getState();
-  const slot = state.charts[id];
-  if (!slot || slot.forecast?.mode !== "hidden" || !forecastPromptEligibility.get(id)) {
-    clearForecastPromptTimer(id);
-    return;
-  }
-  if (forecastPromptTimers.has(id) && !force) return;
-  clearForecastPromptTimer(id);
-  forecastPromptTimers.set(id, window.setTimeout(() => {
-    forecastPromptTimers.delete(id);
-    const current = store.getState().charts[id];
-    if (!current || current.forecast?.mode !== "hidden" || !forecastPromptEligibility.get(id)) return;
-    store.setState(setForecastPrompt(store.getState(), true, id));
-  }, 900));
-}
-
-function handleForecastPromptEligibility(id, eligible) {
-  forecastPromptEligibility.set(id, eligible);
-  const state = store.getState();
-  const slot = state.charts[id];
-  if (!slot) return;
-  if (!eligible) {
-    clearForecastPromptTimer(id);
-    if (slot.forecast?.mode === "prompt") {
-      store.setState(setForecastPrompt(state, false, id));
-    }
-    return;
-  }
-  if (slot.forecast?.mode === "hidden") {
-    scheduleForecastPrompt(id);
-  }
-}
-
-function handleForecastActivity(id) {
-  const state = store.getState();
-  const slot = state.charts[id];
-  if (!slot || slot.forecast?.mode === "active") return;
-  clearForecastPromptTimer(id);
-  if (slot.forecast?.mode === "prompt") {
-    store.setState(setForecastPrompt(state, false, id));
-  }
-  if (forecastPromptEligibility.get(id)) {
-    scheduleForecastPrompt(id, { force: true });
-  }
-}
-
-function ensureForecastVisible(nextState, id) {
-  const slot = nextState.charts[id];
-  if (!slot) return nextState;
-  const points = getChartPoints(slot);
-  const lastIdx = Math.max(0, points.length - 1);
-  const horizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
-  const requiredMax = lastIdx + horizon;
-  const currentOverride = slot.overrides?.x;
-  if (!currentOverride || currentOverride.max >= requiredMax) {
-    return nextState;
-  }
-  return setXDomainOverride(nextState, currentOverride.min, requiredMax, id);
-}
-
-function extendForecastToViewport(nextState, id, nextXMax) {
-  const slot = nextState.charts[id];
-  if (!slot || slot.forecast?.mode !== "active") return nextState;
-  const points = getChartPoints(slot);
-  const lastIdx = Math.max(0, points.length - 1);
-  const requiredHorizon = Math.max(1, Math.ceil(Math.max(0, nextXMax - lastIdx)));
-  const currentHorizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
-  if (requiredHorizon <= currentHorizon) return nextState;
-  return setForecastHorizon(nextState, requiredHorizon, id);
-}
-
-/* ===Chart data builder ===*/
-function buildChartData(id) {
-  const state = store.getState();
-  const slot = state.charts[id];
-  const points = getChartPoints(slot);
-  const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
-  const lastIdx = Math.max(0, points.length - 1);
-  // No built-in right padding — the chart fits data exactly on initial load.
-  // The forecast prompt appears only when the user pans/zooms to create a gap.
-  const xDefaultDomain = { min: 0, max: lastIdx };
-  const forecast = buildForecastView({
-    points,
-    limits: slot.limits,
-    forecast: slot.forecast,
-    xDomainOverride: slot.overrides.x,
-    xDefaultDomain,
-    chartTypeId: slot.context.chartType?.id,
-  });
-
-  return {
-    points,
-    limits: slot.limits,
-    phases: slot.phases || [],
-    forecast,
-    toggles: {
-      ...state.chartToggles,
-      overlay: false,
-      xDomainOverride: slot.overrides.x,
-      xDefaultDomain,
-      yDomainOverride: slot.overrides.y,
-    },
-    selectedIndex: hasChartValues ? (slot.selectedPointIndex ?? -1) : state.selectedPointIndex,
-    selectedIndices: hasChartValues ? (slot.selectedPointIndices || null) : (state.selectedPointIndices || null),
-    selectedPhaseIndex: slot.selectedPhaseIndex ?? null,
-    violations: detectRuleViolations(state, id),
-    capability: getCapability(state, id),
-    metric: slot.context.metric,
-    subgroup: slot.context.subgroup,
-    phase: slot.context.phase,
-    chartType: slot.context.chartType,
-    seriesKey: "primaryValue",
-    seriesType: id,
-  };
-}
 
 function render() {
   // All views now rendered by React (Router.jsx).

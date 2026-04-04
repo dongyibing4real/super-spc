@@ -1,7 +1,7 @@
 import { useRef, useEffect } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import { buildChartData } from "../store/chart-data-builder.js";
+import { buildChartData, getChartPoints, ensureForecastVisible, extendForecastToViewport } from "../store/chart-data-builder.js";
 import { createChart } from "./chart/index.js";
 import {
   focusChart,
@@ -19,7 +19,6 @@ import {
   resetAxis,
 } from "../core/state.js";
 import { DEFAULT_FORECAST_HORIZON } from "../prediction/constants.js";
-import { buildForecastView } from "../prediction/build-forecast-view.js";
 
 /**
  * React wrapper around the D3 createChart factory.
@@ -138,47 +137,6 @@ export default function Chart({ chartId }) {
       aria-label={`${chartId} control chart`}
     />
   );
-}
-
-// --- Helper functions (extracted from legacy-boot.js) ---
-
-function getChartPoints(slot, globalPoints) {
-  const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
-  return hasChartValues
-    ? slot.chartValues.map((v, i) => ({
-        primaryValue: v,
-        label: slot.chartLabels[i] || `pt-${i}`,
-        subgroupLabel: slot.chartLabels[i] || `pt-${i}`,
-        excluded: false,
-        annotation: null,
-        raw: {},
-      }))
-    : globalPoints;
-}
-
-function ensureForecastVisible(nextState, id) {
-  const slot = nextState.charts[id];
-  if (!slot) return nextState;
-  const points = getChartPoints(slot, nextState.points);
-  const lastIdx = Math.max(0, points.length - 1);
-  const horizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
-  const requiredMax = lastIdx + horizon;
-  const currentOverride = slot.overrides?.x;
-  if (!currentOverride || currentOverride.max >= requiredMax) {
-    return nextState;
-  }
-  return setXDomainOverride(nextState, currentOverride.min, requiredMax, id);
-}
-
-function extendForecastToViewport(nextState, id, nextXMax) {
-  const slot = nextState.charts[id];
-  if (!slot || slot.forecast?.mode !== "active") return nextState;
-  const points = getChartPoints(slot, nextState.points);
-  const lastIdx = Math.max(0, points.length - 1);
-  const requiredHorizon = Math.max(1, Math.ceil(Math.max(0, nextXMax - lastIdx)));
-  const currentHorizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
-  if (requiredHorizon <= currentHorizon) return nextState;
-  return setForecastHorizon(nextState, requiredHorizon, id);
 }
 
 // --- Forecast prompt timers (per-chart, module-level) ---

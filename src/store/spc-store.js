@@ -29,8 +29,14 @@ function withSpcMiddleware(initializer) {
 
       // Run SPC middleware pipeline: each mw(prev, next) → transformed next
       let finalState = nextState;
-      for (const mw of spcMiddleware) {
-        finalState = mw(prevState, finalState);
+      try {
+        for (const mw of spcMiddleware) {
+          finalState = mw(prevState, finalState);
+        }
+      } catch (err) {
+        console.error("[spc-store] middleware error, applying state without middleware:", err);
+        // Fall through with nextState (pre-middleware) to keep the store consistent
+        finalState = nextState;
       }
 
       // Always full-replace to match legacy store semantics (no shallow merge)

@@ -3,23 +3,10 @@ import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
 import { getCapability, capClass, CHART_TYPE_LABELS } from "../helpers.js";
 import { buildForecastView } from "../prediction/build-forecast-view.js";
+import { getChartPoints } from "../store/chart-data-builder.js";
 import Chart from "./Chart.jsx";
 
 const FOCUSED_TAIL_WINDOW = 60;
-
-function getChartPoints(state, slot) {
-  const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
-  return hasChartValues
-    ? slot.chartValues.map((v, i) => ({
-        primaryValue: v,
-        label: slot.chartLabels[i] || `pt-${i}`,
-        subgroupLabel: slot.chartLabels[i] || `pt-${i}`,
-        excluded: false,
-        annotation: null,
-        raw: {},
-      }))
-    : state.points;
-}
 
 /* --- Chart pane (React) --- */
 
@@ -32,7 +19,7 @@ function ChartPane({ state, chartId }) {
   const caps = getCapability(state, chartId);
   const method = slot.context.chartType?.label || "";
   const metric = slot.context.metric?.label || "";
-  const points = getChartPoints(state, slot);
+  const points = getChartPoints(slot, state.points);
   const lastIdx = Math.max(0, points.length - 1);
   const xDefaultDomain = {
     min: Math.max(0, lastIdx - (FOCUSED_TAIL_WINDOW - 1)),
