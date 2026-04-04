@@ -23,11 +23,11 @@ export default function App() {
       <main className="main-shell">
         <Notice />
         <Router />
-        {/* Legacy morphRoot — hidden, used for shortcut overlay + event listener scope */}
+        {/* Legacy morphRoot — hidden, used for event listener scope */}
         <div ref={legacyRef} style={{ display: "none" }} />
+        <ShortcutOverlay />
       </main>
       <ContextMenu />
-      <ShortcutOverlay />
     </div>
   );
 }

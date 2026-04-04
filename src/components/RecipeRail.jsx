@@ -465,7 +465,7 @@ export default function RecipeRail() {
 
       {/* Focused chart card (expanded) */}
       {focusedSlot && (
-        <ExpandedChartCard state={state} chartId={focusedChartId} slot={focusedSlot} ae={ae} cols={cols} />
+        <ExpandedChartCard key={focusedChartId} state={state} chartId={focusedChartId} slot={focusedSlot} ae={ae} cols={cols} />
       )}
 
       {/* Collapsed count badge */}

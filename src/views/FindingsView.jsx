@@ -810,6 +810,7 @@ export default function FindingsView() {
           {/* Content */}
           <div className="findings-content">
             <HeaderBar
+              key={activeChartId}
               health={derived.health}
               slot={slot}
               stats={stats}

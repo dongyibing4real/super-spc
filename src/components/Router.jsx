@@ -14,17 +14,7 @@ export default function Router() {
   const activeDatasetId = useStore(spcStore, (s) => s.activeDatasetId);
 
   if (loading) return <LoadingState />;
-  if (error) {
-    return (
-      <ErrorState
-        error={error}
-        onRetry={() => {
-          // Dispatch retry — the legacy boot's main() handles this
-          // via the retry-load data-action on the parent
-        }}
-      />
-    );
-  }
+  if (error) return <ErrorState error={error} />;
   if (pointsLen === 0 && !activeDatasetId) return <EmptyState />;
 
   switch (route) {
