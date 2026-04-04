@@ -1,25 +1,20 @@
 import React from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
+import {
+  focusChart,
+  removeChart,
+  togglePaneDataTable,
+  selectPoint,
+  openContextMenu,
+} from "../core/state.js";
+import { saveLayout } from "../store/actions.js";
 import { getCapability, capClass, CHART_TYPE_LABELS } from "../helpers.js";
 import { buildForecastView } from "../prediction/build-forecast-view.js";
+import { getChartPoints } from "../store/chart-data-builder.js";
 import Chart from "./Chart.jsx";
 
 const FOCUSED_TAIL_WINDOW = 60;
-
-function getChartPoints(state, slot) {
-  const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
-  return hasChartValues
-    ? slot.chartValues.map((v, i) => ({
-        primaryValue: v,
-        label: slot.chartLabels[i] || `pt-${i}`,
-        subgroupLabel: slot.chartLabels[i] || `pt-${i}`,
-        excluded: false,
-        annotation: null,
-        raw: {},
-      }))
-    : state.points;
-}
 
 /* --- Chart pane (React) --- */
 
@@ -32,7 +27,7 @@ function ChartPane({ state, chartId }) {
   const caps = getCapability(state, chartId);
   const method = slot.context.chartType?.label || "";
   const metric = slot.context.metric?.label || "";
-  const points = getChartPoints(state, slot);
+  const points = getChartPoints(slot, state.points);
   const lastIdx = Math.max(0, points.length - 1);
   const xDefaultDomain = {
     min: Math.max(0, lastIdx - (FOCUSED_TAIL_WINDOW - 1)),
@@ -51,14 +46,55 @@ function ChartPane({ state, chartId }) {
   const showTable = slot.showDataTable;
   const accentIdx = state.chartOrder.indexOf(chartId) % 8;
 
+  const handlePaneClick = () => {
+    if (!isFocused) {
+      spcStore.setState((s) => focusChart(s, chartId));
+    }
+  };
+
+  const handleRemoveChart = (e) => {
+    e.stopPropagation();
+    spcStore.setState((s) => removeChart(s, chartId));
+    saveLayout();
+  };
+
+  const handleToggleTable = (e) => {
+    e.stopPropagation();
+    spcStore.setState((s) => togglePaneDataTable(s, chartId));
+  };
+
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    const root = document.getElementById("app") || document.documentElement;
+    const rootRect = root.getBoundingClientRect();
+    const x = e.clientX - rootRect.left;
+    const y = e.clientY - rootRect.top;
+    spcStore.setState((s) => openContextMenu(s, x, y, { target: "canvas" }));
+  };
+
+  const handleTitlebarContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const root = document.getElementById("app") || document.documentElement;
+    const rootRect = root.getBoundingClientRect();
+    const x = e.clientX - rootRect.left;
+    const y = e.clientY - rootRect.top;
+    spcStore.setState((s) => openContextMenu(s, x, y, { target: "canvas" }));
+  };
+
   return (
     <div
       className={`chart-pane ${isFocused ? "pane-focused" : ""}`}
       data-chart-id={chartId}
       data-accent={accentIdx}
+      onClick={handlePaneClick}
     >
       {!isOnly && (
-        <div className="chart-pane-titlebar" data-drag-handle={chartId}>
+        <div
+          className="chart-pane-titlebar"
+          data-drag-handle={chartId}
+          onContextMenu={handleTitlebarContextMenu}
+        >
           <span className="grip-icon">⠗</span>
           <span className="method-dot"></span>
           <strong className="pane-method">{method}</strong>
@@ -78,7 +114,7 @@ function ChartPane({ state, chartId }) {
           <div className="pane-actions">
             <button
               className={`pane-table-btn ${slot.showDataTable ? "active" : ""}`}
-              data-action="toggle-pane-table"
+              onClick={handleToggleTable}
               data-chart-id={chartId}
               title="Data table"
             >
@@ -86,7 +122,7 @@ function ChartPane({ state, chartId }) {
             </button>
             <button
               className="pane-close"
-              data-action="remove-chart"
+              onClick={handleRemoveChart}
               data-chart-id={chartId}
               title="Close chart"
             >
@@ -97,13 +133,95 @@ function ChartPane({ state, chartId }) {
       )}
 
       {showTable ? (
-        <div
-          className="pane-data-table"
-          dangerouslySetInnerHTML={{ __html: renderDataTable(state, chartId) }}
-        />
+        <DataTable state={state} chartId={chartId} />
       ) : (
-        <Chart key={chartId} chartId={chartId} />
+        <Chart key={chartId} chartId={chartId} onContextMenu={handleContextMenu} />
       )}
+    </div>
+  );
+}
+
+/* --- Data table (React) --- */
+
+function DataTable({ state, chartId }) {
+  const focusedSlot = state.charts[chartId || state.focusedChartId];
+  const violations = focusedSlot?.violations || [];
+  const violatedIndices = new Set();
+  violations.forEach((v) => v.indices.forEach((i) => violatedIndices.add(i)));
+
+  const cols = state.columnConfig.columns || [];
+  const hasRawData = state.points[0]?.raw && Object.keys(state.points[0].raw).length > 0;
+  const rawColumns = hasRawData
+    ? cols.filter((c) => c.role !== "value").map((c) => c.name)
+    : [];
+
+  const valueCol = cols.find((c) => c.role === "value");
+  const valueName = valueCol?.name || "Value";
+  const subgroupCol = cols.find((c) => c.role === "subgroup");
+  const subgroupName = subgroupCol?.name || "Subgroup";
+
+  if (state.points.length === 0) {
+    return <div className="pane-data-table"><div className="empty-table">No data loaded.</div></div>;
+  }
+
+  const handleRowClick = (index) => {
+    spcStore.setState((s) => selectPoint(s, index));
+  };
+
+  return (
+    <div className="pane-data-table">
+      <div className="data-table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>{valueName}</th>
+              <th>{subgroupName}</th>
+              {rawColumns.map((col) => (
+                <th key={col}>{col}</th>
+              ))}
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.points.map((p, i) => {
+              const isViolated = violatedIndices.has(i);
+              const isExcluded = p.excluded;
+              const isSelected = i === state.selectedPointIndex;
+              const cls = [
+                isViolated ? "row-violated" : "",
+                isExcluded ? "row-excluded" : "",
+                isSelected ? "row-selected" : "",
+              ].filter(Boolean).join(" ");
+
+              return (
+                <tr
+                  key={i}
+                  className={cls}
+                  onClick={() => handleRowClick(i)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <td className="mono">{i + 1}</td>
+                  <td className="mono">{p.primaryValue.toFixed(4)}</td>
+                  <td className="mono">{p.subgroupLabel}</td>
+                  {rawColumns.map((col) => (
+                    <td key={col} className="mono">{p.raw?.[col] ?? ""}</td>
+                  ))}
+                  <td>
+                    {isExcluded ? (
+                      <span className="status-chip warning">Excl</span>
+                    ) : isViolated ? (
+                      <span className="status-chip danger">OOC</span>
+                    ) : (
+                      <span className="status-chip info">OK</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -200,7 +318,7 @@ export function renderDataTable(state, chartId) {
 
     const rawCells = rawColumns.map(col => `<td class="mono">${p.raw?.[col] ?? ""}</td>`).join("");
 
-    return `<tr class="${cls}" data-action="select-point" data-index="${i}">
+    return `<tr class="${cls}" data-index="${i}">
       <td class="mono">${i + 1}</td>
       <td class="mono">${p.primaryValue.toFixed(4)}</td>
       <td class="mono">${p.subgroupLabel}</td>

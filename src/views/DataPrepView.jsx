@@ -1,3 +1,4 @@
+import React, { useState, useCallback, useRef } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
 import { formatDate } from "../helpers.js";
@@ -6,7 +7,54 @@ import {
   previewTypeConversion,
   validateAllColumns,
   profileColumn,
+  filterRows,
+  findReplace,
+  removeDuplicates,
+  handleMissing,
+  cleanText,
+  renameColumn,
+  changeColumnType,
+  addCalculatedColumn,
+  recodeValues,
+  binColumn,
+  splitColumn,
+  concatColumns,
+  createTable,
 } from "../data/data-prep-engine.js";
+import {
+  selectPrepDataset,
+  setPrepError,
+  clearPrepTransforms,
+  setActivePanel,
+  closeActivePanel,
+  toggleRowExclusion,
+  updateColumnMeta,
+  addColumnMeta,
+  addPrepTransform,
+  setPrepTable,
+  setColumns,
+  setProfileCache,
+  markPrepSaved,
+  undoPrepTransform,
+  setDatasets,
+  setExpandedProfileColumn,
+  navigate,
+  setLoadingState,
+  setError,
+  setPrepParsedData,
+  deletePrepDataset,
+  loadPrepPoints,
+} from "../core/state.js";
+import {
+  createDataset,
+  fetchDatasets,
+  fetchPoints,
+  fetchColumns,
+  deleteDataset,
+} from "../data/api.js";
+import { parseCSV } from "../data/csv-engine.js";
+import { replayPrepTransforms } from "../runtime/prep-runtime.js";
+import { loadDatasetById } from "../store/actions.js";
 
 const ROW_OPS = [
   { action: "prep-filter", label: "Filter", short: "Flt", panel: "filter", key: "F" },
@@ -96,10 +144,26 @@ function transformSummary(tr) {
       return `${p.column} by "${p.delimiter}"`;
     case "concat":
       return p.newColName || "";
-    case "validate":
-      return `${p.column}: ${p.type}`;
     default:
       return "";
+  }
+}
+
+/* ─�� helpers for store dispatch ─────────────────────────────────────── */
+
+function applyTransform(transformFn) {
+  const state = spcStore.getState();
+  if (!state.dataPrep.arqueroTable) return;
+  try {
+    const { table, transform, meta } = transformFn(state);
+    let next = addPrepTransform(state, transform);
+    next = setPrepTable(next, table);
+    if (meta?.updateCol) next = updateColumnMeta(next, meta.updateCol.name, meta.updateCol.updates);
+    if (meta?.addCols) next = addColumnMeta(next, meta.addCols);
+    next = closeActivePanel(next);
+    spcStore.setState(next);
+  } catch (err) {
+    spcStore.setState(setPrepError(state, err.message));
   }
 }
 
@@ -188,7 +252,7 @@ function ThProfile({ profile, dtype }) {
   );
 }
 
-function DetailedProfile({ col, profile }) {
+function DetailedProfile({ col, profile, onBack }) {
   const roleLabel = col.role ? ROLE_LABELS[col.role] || col.role : null;
   const completePct =
     profile.count > 0 ? ((profile.count - profile.missing) / profile.count) * 100 : 0;
@@ -398,8 +462,7 @@ function DetailedProfile({ col, profile }) {
       <div className="col-detail-header">
         <button
           className="col-detail-back"
-          data-action="select-column"
-          data-column={col.name}
+          onClick={onBack}
           type="button"
         >
           &larr; Back
@@ -437,6 +500,86 @@ function DetailedProfile({ col, profile }) {
 /* ── DatasetList ─────────────────────────────────────────────────────── */
 
 function DatasetList({ datasets, dataPrep }) {
+  const handleSelectDataset = useCallback(async (dsId) => {
+    const state = spcStore.getState();
+    spcStore.setState(selectPrepDataset(state, dsId));
+    try {
+      const [pts, cols] = await Promise.all([
+        fetchPoints(dsId),
+        fetchColumns(dsId).catch(() => []),
+      ]);
+      let next = setColumns(spcStore.getState(), cols);
+      next = loadPrepPoints(next, pts);
+      const rawRows = pts.map((p) => p.raw_data || {});
+      const arqueroTable = createTable(rawRows, cols);
+      next = setPrepParsedData(next, { rawRows, arqueroTable, columns: cols });
+      next = loadPrepPoints(next, pts);
+      spcStore.setState(next);
+    } catch (err) {
+      spcStore.setState(setPrepError(spcStore.getState(), err.message));
+    }
+  }, []);
+
+  const handleDeleteDataset = useCallback(async (dsId) => {
+    const state = spcStore.getState();
+    if (state.dataPrep.confirmingDeleteId === dsId) {
+      const next = { ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: null } };
+      try {
+        await deleteDataset(dsId);
+        const dsList = await fetchDatasets();
+        spcStore.setState(deletePrepDataset(setDatasets(next, dsList), dsId));
+      } catch (err) {
+        spcStore.setState(setPrepError(next, err.message));
+      }
+    } else {
+      spcStore.setState({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: dsId } });
+    }
+  }, []);
+
+  const handleCancelDelete = useCallback(() => {
+    const state = spcStore.getState();
+    spcStore.setState({ ...state, dataPrep: { ...state.dataPrep, confirmingDeleteId: null } });
+  }, []);
+
+  const handleLoadToChart = useCallback(async () => {
+    const state = spcStore.getState();
+    if (state.dataPrep.selectedDatasetId) {
+      await loadDatasetById(state.dataPrep.selectedDatasetId);
+      const excludedSet = new Set(state.dataPrep.excludedRows || []);
+      let next = spcStore.getState();
+      if (excludedSet.size > 0 && next.points.length > 0) {
+        next = {
+          ...next,
+          points: next.points.map((p, i) => (excludedSet.has(i) ? { ...p, excluded: true } : p)),
+        };
+      }
+      spcStore.setState(navigate(next, "workspace"));
+    }
+  }, []);
+
+  const handleUploadCSV = useCallback(async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    spcStore.setState(setLoadingState(spcStore.getState(), true));
+    try {
+      const parsed = await parseCSV(file);
+      const arqueroTable = createTable(parsed.rows, parsed.columns);
+      const name = file.name.replace(/\.csv$/i, "");
+      const newDs = await createDataset({ name, columns: parsed.columns, rows: parsed.rows });
+      const dsList = await fetchDatasets();
+      spcStore.setState(setDatasets(spcStore.getState(), dsList));
+      spcStore.setState(setPrepParsedData(spcStore.getState(), {
+        rawRows: parsed.rows,
+        arqueroTable,
+        columns: parsed.columns,
+      }));
+      await loadDatasetById(newDs.id);
+    } catch (err) {
+      spcStore.setState(setError(spcStore.getState(), err.message));
+    }
+  }, []);
+
   return (
     <div className="panel-card" style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <h4>Datasets</h4>
@@ -454,8 +597,7 @@ function DatasetList({ datasets, dataPrep }) {
               <div
                 key={ds.id}
                 className={`ds-card${active ? " active" : ""}`}
-                data-action="select-prep-dataset"
-                data-dataset-id={ds.id}
+                onClick={() => handleSelectDataset(ds.id)}
               >
                 <div className="ds-card-name">{ds.name}</div>
                 <div className="ds-card-meta">
@@ -465,8 +607,8 @@ function DatasetList({ datasets, dataPrep }) {
                   <div className="ds-card-meta">col: {meta.value_column}</div>
                 )}
                 {active && (
-                  <div className="ds-card-actions">
-                    <button data-action="load-prep-to-chart" type="button">
+                  <div className="ds-card-actions" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={handleLoadToChart} type="button">
                       Load to Chart
                     </button>
                     {confirming ? (
@@ -474,21 +616,19 @@ function DatasetList({ datasets, dataPrep }) {
                         <span className="ds-confirm-msg">Delete?</span>
                         <button
                           className="danger"
-                          data-action="delete-dataset"
-                          data-dataset-id={ds.id}
+                          onClick={() => handleDeleteDataset(ds.id)}
                           type="button"
                         >
                           Yes
                         </button>
-                        <button data-action="cancel-delete" type="button">
+                        <button onClick={handleCancelDelete} type="button">
                           No
                         </button>
                       </>
                     ) : (
                       <button
                         className="danger"
-                        data-action="delete-dataset"
-                        data-dataset-id={ds.id}
+                        onClick={() => handleDeleteDataset(ds.id)}
                         type="button"
                       >
                         Delete
@@ -503,7 +643,7 @@ function DatasetList({ datasets, dataPrep }) {
       </div>
       <label className="ds-upload-btn">
         + Upload CSV
-        <input type="file" accept=".csv" data-action="upload-csv" hidden />
+        <input type="file" accept=".csv" onChange={handleUploadCSV} hidden />
       </label>
     </div>
   );
@@ -520,6 +660,96 @@ function UtilityBar({ dataPrep, datasets, columnConfig }) {
   const cols = (columnConfig.columns || []).length;
   const excl = dataPrep.excludedRows.length;
   const resetting = dataPrep.confirmingReset;
+  const resetTimerRef = useRef(null);
+
+  const handleSave = useCallback(async () => {
+    const state = spcStore.getState();
+    if (!state.dataPrep.rawRows || !state.dataPrep.selectedDatasetId) return;
+    try {
+      await createDataset({
+        name: `${state.datasets.find((d) => d.id === state.dataPrep.selectedDatasetId)?.name} (cleaned)`,
+        columns: state.columnConfig.columns,
+        rows: state.dataPrep.arqueroTable
+          ? state.dataPrep.arqueroTable.objects().map((row) => {
+              const out = {};
+              for (const [key, rawValue] of Object.entries(row)) out[key] = rawValue != null ? String(rawValue) : "";
+              return out;
+            })
+          : state.dataPrep.rawRows,
+      });
+      const dsList = await fetchDatasets();
+      let next = setDatasets(spcStore.getState(), dsList);
+      next = markPrepSaved(next);
+      spcStore.setState(next);
+    } catch (err) {
+      spcStore.setState(setPrepError(spcStore.getState(), err.message));
+    }
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const state = spcStore.getState();
+    if (state.dataPrep.transforms.length === 0) return;
+    let next = undoPrepTransform(state);
+    const replayed = replayPrepTransforms(next);
+    if (replayed) {
+      next = setPrepTable(next, replayed.table);
+      next = setColumns(next, replayed.columns);
+      next = setProfileCache(next, {});
+      if (next.dataPrep.transforms.length === 0) next = markPrepSaved(next);
+    }
+    spcStore.setState(next);
+  }, []);
+
+  const handleExportCSV = useCallback(() => {
+    const state = spcStore.getState();
+    const exportTable = state.dataPrep.arqueroTable;
+    const exportCols = state.columnConfig.columns || [];
+    if (exportTable && exportCols.length > 0) {
+      const header = exportCols.map((c) => c.name).join(",");
+      const rows = exportTable.objects().map((row) =>
+        exportCols.map((c) => {
+          const rawValue = row[c.name];
+          if (rawValue == null) return "";
+          const stringValue = String(rawValue);
+          return stringValue.includes(",") || stringValue.includes("\"") || stringValue.includes("\n")
+            ? `"${stringValue.replace(/"/g, "\"\"")}"` : stringValue;
+        }).join(",")
+      );
+      const csv = [header, ...rows].join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const dataset = state.datasets.find((item) => item.id === state.dataPrep.selectedDatasetId);
+      anchor.href = url;
+      anchor.download = `${dataset?.name || "export"}.csv`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    }
+  }, []);
+
+  const handleValidate = useCallback(() => {
+    spcStore.setState(setActivePanel(spcStore.getState(), "validate"));
+  }, []);
+
+  const handleReset = useCallback(() => {
+    const state = spcStore.getState();
+    if (state.dataPrep.transforms.length === 0) return;
+    if (state.dataPrep.confirmingReset) {
+      clearTimeout(resetTimerRef.current);
+      let next = clearPrepTransforms(state);
+      next = { ...next, dataPrep: { ...next.dataPrep, confirmingReset: false } };
+      spcStore.setState(next);
+    } else {
+      const next = { ...state, dataPrep: { ...state.dataPrep, confirmingReset: true } };
+      spcStore.setState(next);
+      resetTimerRef.current = setTimeout(() => {
+        const current = spcStore.getState();
+        if (current.dataPrep.confirmingReset) {
+          spcStore.setState({ ...current, dataPrep: { ...current.dataPrep, confirmingReset: false } });
+        }
+      }, 3000);
+    }
+  }, []);
 
   return (
     <div className="prep-menubar">
@@ -554,7 +784,7 @@ function UtilityBar({ dataPrep, datasets, columnConfig }) {
       <div className="prep-menubar-right">
         <div className="prep-menubar-actions">
           <button
-            data-action="prep-save"
+            onClick={handleSave}
             type="button"
             className={`prep-mbtn prep-mbtn-primary${unsaved ? " prep-mbtn-primary-active" : ""}`}
             title="Save cleaned dataset"
@@ -562,7 +792,7 @@ function UtilityBar({ dataPrep, datasets, columnConfig }) {
             Save
           </button>
           <button
-            data-action="prep-undo"
+            onClick={handleUndo}
             type="button"
             className="prep-mbtn"
             title="Undo last transform (Z)"
@@ -571,7 +801,7 @@ function UtilityBar({ dataPrep, datasets, columnConfig }) {
             Undo{count > 0 && <span className="prep-undo-badge">{count}</span>}
           </button>
           <button
-            data-action="prep-export-csv"
+            onClick={handleExportCSV}
             type="button"
             className="prep-mbtn prep-mbtn-quiet"
             title="Download current data as CSV"
@@ -580,7 +810,7 @@ function UtilityBar({ dataPrep, datasets, columnConfig }) {
             Export
           </button>
           <button
-            data-action="prep-validate"
+            onClick={handleValidate}
             type="button"
             className="prep-mbtn prep-mbtn-quiet"
             title="Validate data quality rules"
@@ -590,7 +820,7 @@ function UtilityBar({ dataPrep, datasets, columnConfig }) {
         </div>
         <div className="prep-menubar-dangerzone">
           <button
-            data-action="prep-reset"
+            onClick={handleReset}
             type="button"
             className={`prep-mbtn prep-mbtn-danger${resetting ? " prep-mbtn-danger-confirm" : ""}`}
             title="Discard all transforms and restore original data"
@@ -606,7 +836,7 @@ function UtilityBar({ dataPrep, datasets, columnConfig }) {
 
 /* ── TransformToolbar ────────────────────────────────────────────────── */
 
-function OpGroup({ label, groupClass, ops, activePanel }) {
+function OpGroup({ label, groupClass, ops, activePanel, onSetPanel, onTrim }) {
   return (
     <div className={`prep-op-group prep-op-group--${groupClass}`}>
       <span className="prep-op-group-label">{label}</span>
@@ -614,7 +844,13 @@ function OpGroup({ label, groupClass, ops, activePanel }) {
         {ops.map((op) => (
           <button
             key={op.action}
-            data-action={op.action}
+            onClick={() => {
+              if (op.panel) {
+                onSetPanel(op.panel);
+              } else if (op.action === "prep-trim") {
+                onTrim();
+              }
+            }}
             type="button"
             className={`prep-op-tab${op.panel && activePanel === op.panel ? " active" : ""}`}
             title={op.key ? `${op.label} (${op.key})` : undefined}
@@ -628,10 +864,27 @@ function OpGroup({ label, groupClass, ops, activePanel }) {
 }
 
 function TransformToolbar({ activePanel }) {
+  const handleSetPanel = useCallback((panel) => {
+    spcStore.setState(setActivePanel(spcStore.getState(), panel));
+  }, []);
+
+  const handleTrim = useCallback(() => {
+    const state = spcStore.getState();
+    const cols = state.columnConfig.columns.filter((c) => c.dtype === "text");
+    if (cols.length === 0 || !state.dataPrep.arqueroTable) return;
+    let table = state.dataPrep.arqueroTable;
+    for (const column of cols) {
+      try { table = cleanText(table, column.name, "trim"); } catch { /* skip */ }
+    }
+    let next = addPrepTransform(state, { type: "trim", params: { columns: cols.map((c) => c.name) } });
+    next = setPrepTable(next, table);
+    spcStore.setState(next);
+  }, []);
+
   return (
     <div className="prep-transform-toolbar">
-      <OpGroup label="Column" groupClass="column" ops={COL_OPS} activePanel={activePanel} />
-      <OpGroup label="Row" groupClass="row" ops={ROW_OPS} activePanel={activePanel} />
+      <OpGroup label="Column" groupClass="column" ops={COL_OPS} activePanel={activePanel} onSetPanel={handleSetPanel} onTrim={handleTrim} />
+      <OpGroup label="Row" groupClass="row" ops={ROW_OPS} activePanel={activePanel} onSetPanel={handleSetPanel} onTrim={handleTrim} />
     </div>
   );
 }
@@ -648,19 +901,64 @@ function ColOptions({ cols }) {
 
 function PrepPanel({ dataPrep, columnConfig }) {
   const ap = dataPrep.activePanel;
-  if (!ap) return null;
-
   const cols = columnConfig.columns || [];
 
+  // Form state for visibility toggles
+  const [filterOp, setFilterOp] = useState("eq");
+  const [missingStrategy, setMissingStrategy] = useState("remove");
+  const [recodeNewCol, setRecodeNewCol] = useState(false);
+  const [binCustom, setBinCustom] = useState(false);
+  const [validateType, setValidateType] = useState("range");
+  const [recodeMappings, setRecodeMappings] = useState([{ old: "", new: "" }]);
+
+  // Refs for form values
+  const filterColRef = useRef(null);
+  const filterValRef = useRef(null);
+  const filterVal2Ref = useRef(null);
+  const findColRef = useRef(null);
+  const findSearchRef = useRef(null);
+  const findReplaceRef = useRef(null);
+  const findRegexRef = useRef(null);
+  const missingColRef = useRef(null);
+  const missingCustomRef = useRef(null);
+  const renameColRef = useRef(null);
+  const renameNewRef = useRef(null);
+  const typeColRef = useRef(null);
+  const typeTargetRef = useRef(null);
+  const calcNameRef = useRef(null);
+  const calcExprRef = useRef(null);
+  const recodeColRef = useRef(null);
+  const recodeNewNameRef = useRef(null);
+  const binColRef = useRef(null);
+  const binCountRef = useRef(null);
+  const binBreaksRef = useRef(null);
+  const binNameRef = useRef(null);
+  const splitColRef = useRef(null);
+  const splitDelimRef = useRef(null);
+  const splitPartsRef = useRef(null);
+  const concatSepRef = useRef(null);
+  const concatNameRef = useRef(null);
+  const validateColRef = useRef(null);
+  const validateMinRef = useRef(null);
+  const validateMaxRef = useRef(null);
+  const validateValuesRef = useRef(null);
+  const validatePatternRef = useRef(null);
+  const dedupFormRef = useRef(null);
+  const concatFormRef = useRef(null);
+
+  if (!ap) return null;
+
   if (ap === "filter") {
+    const showVal2 = filterOp === "between";
+    const hideVal = filterOp === "is_null" || filterOp === "is_not_null";
     return (
       <div className="prep-panel">
         <span className="prep-panel-label">Column</span>
-        <select data-field="filter-col">
+        <select ref={filterColRef}>
           <ColOptions cols={cols} />
         </select>
         <span className="prep-panel-label">Op</span>
-        <select data-field="filter-op">
+        <select value={filterOp} onChange={(e) => setFilterOp(e.target.value)}>
           <option value="eq">=</option>
           <option value="neq">{"\u2260"}</option>
           <option value="gt">&gt;</option>
@@ -673,9 +971,24 @@ function PrepPanel({ dataPrep, columnConfig }) {
           <option value="is_null">is null</option>
           <option value="is_not_null">not null</option>
         </select>
-        <input type="text" data-field="filter-val" placeholder="value" />
-        <input type="text" data-field="filter-val2" placeholder="max" style={{ display: "none" }} />
-        <button data-action="prep-apply-filter" type="button" className="prep-panel-apply">
+        {!hideVal && <input type="text" ref={filterValRef} placeholder="value" />}
+        {showVal2 && <input type="text" ref={filterVal2Ref} placeholder="max" />}
+        <button
+          onClick={() => {
+            const column = filterColRef.current?.value;
+            const operator = filterOp;
+            const val = filterValRef.current?.value;
+            const val2 = filterVal2Ref.current?.value;
+            if (!column || !operator) return;
+            const filterVal = operator === "between" ? [val, val2] : (operator === "is_null" || operator === "is_not_null") ? null : val;
+            applyTransform((state) => ({
+              table: filterRows(state.dataPrep.arqueroTable, column, operator, filterVal),
+              transform: { type: "filter", params: { column, operator, value: filterVal } },
+            }));
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Apply
         </button>
       </div>
@@ -686,18 +999,42 @@ function PrepPanel({ dataPrep, columnConfig }) {
     return (
       <div className="prep-panel">
         <span className="prep-panel-label">Column</span>
-        <select data-field="find-col">
+        <select ref={findColRef}>
           <option value="__all__">All columns</option>
           <ColOptions cols={cols} />
         </select>
         <span className="prep-panel-label">Find</span>
-        <input type="text" data-field="find-search" placeholder="search" />
+        <input type="text" ref={findSearchRef} placeholder="search" />
         <span className="prep-panel-label">Replace</span>
-        <input type="text" data-field="find-replace" placeholder="replace with" />
+        <input type="text" ref={findReplaceRef} placeholder="replace with" />
         <label className="prep-panel-check">
-          <input type="checkbox" data-field="find-regex" /> Regex
+          <input type="checkbox" ref={findRegexRef} /> Regex
         </label>
-        <button data-action="prep-apply-find" type="button" className="prep-panel-apply">
+        <button
+          onClick={() => {
+            const column = findColRef.current?.value;
+            const search = findSearchRef.current?.value;
+            const replace = findReplaceRef.current?.value ?? "";
+            const useRegex = findRegexRef.current?.checked || false;
+            if (!search) return;
+            applyTransform((state) => {
+              let table = state.dataPrep.arqueroTable;
+              if (column === "__all__") {
+                for (const col of table.columnNames()) {
+                  try { table = findReplace(table, col, search, replace, useRegex); } catch { /* skip */ }
+                }
+              } else {
+                table = findReplace(table, column, search, replace, useRegex);
+              }
+              return {
+                table,
+                transform: { type: "find_replace", params: { column, find: search, replace, useRegex } },
+              };
+            });
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Replace All
         </button>
       </div>
@@ -706,15 +1043,27 @@ function PrepPanel({ dataPrep, columnConfig }) {
 
   if (ap === "dedup") {
     return (
-      <div className="prep-panel">
+      <div className="prep-panel" ref={dedupFormRef}>
         <span className="prep-panel-label">Key columns</span>
         {cols.map((c) => (
           <label key={c.name} className="prep-panel-check">
-            <input type="checkbox" data-field="dedup-col" value={c.name} defaultChecked /> {c.name}
+            <input type="checkbox" value={c.name} defaultChecked className="dedup-col-check" /> {c.name}
           </label>
         ))}
         <div className="prep-panel-sep" />
-        <button data-action="prep-apply-dedup" type="button" className="prep-panel-apply">
+        <button
+          onClick={() => {
+            const checkboxes = dedupFormRef.current?.querySelectorAll(".dedup-col-check:checked") || [];
+            const selectedColumns = [...checkboxes].map((el) => el.value);
+            if (selectedColumns.length === 0) return;
+            applyTransform((state) => ({
+              table: removeDuplicates(state.dataPrep.arqueroTable, selectedColumns),
+              transform: { type: "dedup", params: { keyColumns: selectedColumns } },
+            }));
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Remove Duplicates
         </button>
       </div>
@@ -725,11 +1074,11 @@ function PrepPanel({ dataPrep, columnConfig }) {
     return (
       <div className="prep-panel">
         <span className="prep-panel-label">Column</span>
-        <select data-field="missing-col">
+        <select ref={missingColRef}>
           <ColOptions cols={cols} />
         </select>
         <span className="prep-panel-label">Strategy</span>
-        <select data-field="missing-strategy">
+        <select value={missingStrategy} onChange={(e) => setMissingStrategy(e.target.value)}>
           <option value="remove">Remove rows</option>
           <option value="fill_mean">Fill with mean</option>
           <option value="fill_median">Fill with median</option>
@@ -738,13 +1087,23 @@ function PrepPanel({ dataPrep, columnConfig }) {
           <option value="fill_down">Fill down</option>
           <option value="fill_up">Fill up</option>
         </select>
-        <input
-          type="text"
-          data-field="missing-custom"
-          placeholder="custom value"
-          style={{ display: "none" }}
-        />
-        <button data-action="prep-apply-missing" type="button" className="prep-panel-apply">
+        {missingStrategy === "fill_custom" && (
+          <input type="text" ref={missingCustomRef} placeholder="custom value" />
+        )}
+        <button
+          onClick={() => {
+            const column = missingColRef.current?.value;
+            const strategy = missingStrategy;
+            const customValue = missingCustomRef.current?.value || null;
+            if (!column || !strategy) return;
+            applyTransform((state) => ({
+              table: handleMissing(state.dataPrep.arqueroTable, column, strategy, customValue),
+              transform: { type: "missing", params: { column, strategy, customValue } },
+            }));
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Apply
         </button>
       </div>
@@ -757,12 +1116,31 @@ function PrepPanel({ dataPrep, columnConfig }) {
     return (
       <div className="prep-panel">
         <span className="prep-panel-label">Column</span>
-        <select data-field="rename-col">
+        <select ref={renameColRef}>
           <ColOptions cols={cols} />
         </select>
         <span className="prep-panel-label">New name</span>
-        <input type="text" data-field="rename-new" placeholder="new column name" />
-        <button data-action="prep-apply-rename" type="button" className="prep-panel-apply">
+        <input type="text" ref={renameNewRef} placeholder="new column name" />
+        <button
+          onClick={() => {
+            const oldName = renameColRef.current?.value;
+            const newName = renameNewRef.current?.value?.trim();
+            if (!oldName || !newName) return;
+            const state = spcStore.getState();
+            const existing = state.columnConfig.columns.map((c) => c.name);
+            if (existing.includes(newName)) {
+              spcStore.setState(setPrepError(state, `Column "${newName}" already exists`));
+              return;
+            }
+            applyTransform((s) => ({
+              table: renameColumn(s.dataPrep.arqueroTable, oldName, newName),
+              transform: { type: "rename", params: { oldName, newName } },
+              meta: { updateCol: { name: oldName, updates: { name: newName } } },
+            }));
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Rename
         </button>
       </div>
@@ -776,7 +1154,7 @@ function PrepPanel({ dataPrep, columnConfig }) {
       const firstTarget = cols[0].dtype === "numeric" ? "text" : "numeric";
       const pv = previewTypeConversion(dataPrep.arqueroTable, firstCol, firstTarget);
       previewHtml = (
-        <span className="prep-preview-badge" data-field="type-preview">
+        <span className="prep-preview-badge">
           {pv.convertible}/{pv.total} convertible
         </span>
       );
@@ -784,16 +1162,29 @@ function PrepPanel({ dataPrep, columnConfig }) {
     return (
       <div className="prep-panel">
         <span className="prep-panel-label">Column</span>
-        <select data-field="type-col">
+        <select ref={typeColRef}>
           <ColOptions cols={cols} />
         </select>
         <span className="prep-panel-label">Convert to</span>
-        <select data-field="type-target">
+        <select ref={typeTargetRef}>
           <option value="numeric">Numeric</option>
           <option value="text">Text</option>
         </select>
         {previewHtml}
-        <button data-action="prep-apply-change-type" type="button" className="prep-panel-apply">
+        <button
+          onClick={() => {
+            const column = typeColRef.current?.value;
+            const targetType = typeTargetRef.current?.value;
+            if (!column || !targetType) return;
+            applyTransform((state) => ({
+              table: changeColumnType(state.dataPrep.arqueroTable, column, targetType),
+              transform: { type: "change_type", params: { column, targetType } },
+              meta: { updateCol: { name: column, updates: { dtype: targetType } } },
+            }));
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Convert
         </button>
       </div>
@@ -806,18 +1197,37 @@ function PrepPanel({ dataPrep, columnConfig }) {
         <span className="prep-panel-label">Name</span>
         <input
           type="text"
-          data-field="calc-name"
+          ref={calcNameRef}
           placeholder="new_column"
           style={{ width: "100px" }}
         />
         <span className="prep-panel-label">Expression</span>
         <input
           type="text"
-          data-field="calc-expr"
+          ref={calcExprRef}
           placeholder="[Thickness] * 25.4"
           style={{ minWidth: "200px" }}
         />
-        <button data-action="prep-apply-calc" type="button" className="prep-panel-apply">
+        <button
+          onClick={() => {
+            const newColName = calcNameRef.current?.value?.trim();
+            const expression = calcExprRef.current?.value?.trim();
+            if (!newColName || !expression) return;
+            const state = spcStore.getState();
+            const columns = state.columnConfig.columns.map((c) => c.name);
+            if (columns.includes(newColName)) {
+              spcStore.setState(setPrepError(state, `Column "${newColName}" already exists`));
+              return;
+            }
+            applyTransform((s) => ({
+              table: addCalculatedColumn(s.dataPrep.arqueroTable, newColName, expression, columns),
+              transform: { type: "calculated", params: { newColName, expression, columns } },
+              meta: { addCols: [{ name: newColName, dtype: "numeric" }] },
+            }));
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Create
         </button>
         <span className="prep-hint">
@@ -832,30 +1242,75 @@ function PrepPanel({ dataPrep, columnConfig }) {
       <div className="prep-panel" style={{ flexDirection: "column", alignItems: "stretch" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span className="prep-panel-label">Column</span>
-          <select data-field="recode-col">
+          <select ref={recodeColRef}>
             <ColOptions cols={cols} />
           </select>
           <label className="prep-panel-check">
-            <input type="checkbox" data-field="recode-new-col" /> Save as new column
+            <input type="checkbox" checked={recodeNewCol} onChange={(e) => setRecodeNewCol(e.target.checked)} /> Save as new column
           </label>
-          <input
-            type="text"
-            data-field="recode-new-name"
-            placeholder="new column name"
-            style={{ display: "none", width: "120px" }}
-          />
-          <button data-action="prep-apply-recode" type="button" className="prep-panel-apply">
+          {recodeNewCol && (
+            <input
+              type="text"
+              ref={recodeNewNameRef}
+              placeholder="new column name"
+              style={{ width: "120px" }}
+            />
+          )}
+          <button
+            onClick={() => {
+              const column = recodeColRef.current?.value;
+              const asNew = recodeNewCol;
+              const newColName = asNew ? recodeNewNameRef.current?.value?.trim() : null;
+              if (!column || (asNew && !newColName)) return;
+              const mapping = {};
+              for (const m of recodeMappings) {
+                if (m.old != null && m.old !== "") mapping[m.old] = m.new ?? "";
+              }
+              if (Object.keys(mapping).length === 0) return;
+              applyTransform((state) => ({
+                table: recodeValues(state.dataPrep.arqueroTable, column, mapping, newColName),
+                transform: { type: "recode", params: { column, mapping, newColName } },
+                meta: newColName ? { addCols: [{ name: newColName, dtype: "text" }] } : undefined,
+              }));
+            }}
+            type="button"
+            className="prep-panel-apply"
+          >
             Recode
           </button>
         </div>
-        <div className="prep-mapping-rows" data-field="recode-mappings">
-          <div className="prep-mapping-row">
-            <input type="text" data-field="recode-old" placeholder="old value" />
-            <span className="prep-panel-label">{"\u2192"}</span>
-            <input type="text" data-field="recode-new" placeholder="new value" />
-          </div>
+        <div className="prep-mapping-rows">
+          {recodeMappings.map((m, i) => (
+            <div key={i} className="prep-mapping-row">
+              <input
+                type="text"
+                placeholder="old value"
+                value={m.old}
+                onChange={(e) => {
+                  const updated = [...recodeMappings];
+                  updated[i] = { ...updated[i], old: e.target.value };
+                  setRecodeMappings(updated);
+                }}
+              />
+              <span className="prep-panel-label">{"\u2192"}</span>
+              <input
+                type="text"
+                placeholder="new value"
+                value={m.new}
+                onChange={(e) => {
+                  const updated = [...recodeMappings];
+                  updated[i] = { ...updated[i], new: e.target.value };
+                  setRecodeMappings(updated);
+                }}
+              />
+            </div>
+          ))}
         </div>
-        <button data-action="prep-recode-add-row" type="button" className="prep-mapping-add">
+        <button
+          onClick={() => setRecodeMappings([...recodeMappings, { old: "", new: "" }])}
+          type="button"
+          className="prep-mapping-add"
+        >
           + Add mapping
         </button>
       </div>
@@ -868,35 +1323,61 @@ function PrepPanel({ dataPrep, columnConfig }) {
     return (
       <div className="prep-panel">
         <span className="prep-panel-label">Column</span>
-        <select data-field="bin-col">
+        <select ref={binColRef}>
           <ColOptions cols={binCols} />
         </select>
         <span className="prep-panel-label">Bins</span>
         <input
           type="number"
-          data-field="bin-count"
+          ref={binCountRef}
           defaultValue="5"
           min="2"
           max="100"
           style={{ width: "50px" }}
         />
         <label className="prep-panel-check">
-          <input type="checkbox" data-field="bin-custom" /> Custom breaks
+          <input type="checkbox" checked={binCustom} onChange={(e) => setBinCustom(e.target.checked)} /> Custom breaks
         </label>
-        <input
-          type="text"
-          data-field="bin-breaks"
-          placeholder="10, 20, 30"
-          style={{ display: "none", minWidth: "120px" }}
-        />
+        {binCustom && (
+          <input
+            type="text"
+            ref={binBreaksRef}
+            placeholder="10, 20, 30"
+            style={{ minWidth: "120px" }}
+          />
+        )}
         <span className="prep-panel-label">Name</span>
         <input
           type="text"
-          data-field="bin-name"
+          ref={binNameRef}
           placeholder="binned_col"
           style={{ width: "100px" }}
         />
-        <button data-action="prep-apply-bin" type="button" className="prep-panel-apply">
+        <button
+          onClick={() => {
+            const column = binColRef.current?.value;
+            const binCount = parseInt(binCountRef.current?.value || "5", 10);
+            const useCustom = binCustom;
+            const newColName = binNameRef.current?.value?.trim() || `${column}_binned`;
+            let customBreaks = null;
+            if (useCustom) {
+              const breaksStr = binBreaksRef.current?.value || "";
+              customBreaks = breaksStr.split(",").map((p) => parseFloat(p.trim())).filter((n) => !isNaN(n)).sort((a, b) => a - b);
+              if (customBreaks.length === 0) {
+                spcStore.setState(setPrepError(spcStore.getState(), "Enter valid break values"));
+                return;
+              }
+            }
+            if (!column) return;
+            applyTransform((state) => ({
+              table: binColumn(state.dataPrep.arqueroTable, column, binCount, newColName, customBreaks),
+              transform: { type: "bin", params: { column, binCount, newColName, customBreaks } },
+              meta: { addCols: [{ name: newColName, dtype: "text" }] },
+            }));
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Bin
         </button>
       </div>
@@ -907,26 +1388,44 @@ function PrepPanel({ dataPrep, columnConfig }) {
     return (
       <div className="prep-panel">
         <span className="prep-panel-label">Column</span>
-        <select data-field="split-col">
+        <select ref={splitColRef}>
           <ColOptions cols={cols} />
         </select>
         <span className="prep-panel-label">Delimiter</span>
         <input
           type="text"
-          data-field="split-delim"
+          ref={splitDelimRef}
           defaultValue=","
           style={{ width: "40px" }}
         />
         <span className="prep-panel-label">Parts</span>
         <input
           type="number"
-          data-field="split-parts"
+          ref={splitPartsRef}
           defaultValue="2"
           min="2"
           max="10"
           style={{ width: "50px" }}
         />
-        <button data-action="prep-apply-split" type="button" className="prep-panel-apply">
+        <button
+          onClick={() => {
+            const column = splitColRef.current?.value;
+            const delimiter = splitDelimRef.current?.value || ",";
+            const maxParts = parseInt(splitPartsRef.current?.value || "2", 10);
+            if (!column) return;
+            applyTransform((state) => {
+              const table = splitColumn(state.dataPrep.arqueroTable, column, delimiter, maxParts);
+              const newCols = Array.from({ length: maxParts }, (_, i) => ({ name: `${column}_${i + 1}`, dtype: "text" }));
+              return {
+                table,
+                transform: { type: "split", params: { column, delimiter, maxParts } },
+                meta: { addCols: newCols },
+              };
+            });
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Split
         </button>
       </div>
@@ -935,29 +1434,44 @@ function PrepPanel({ dataPrep, columnConfig }) {
 
   if (ap === "concat") {
     return (
-      <div className="prep-panel">
+      <div className="prep-panel" ref={concatFormRef}>
         <span className="prep-panel-label">Columns</span>
         {cols.map((c) => (
           <label key={c.name} className="prep-panel-check">
-            <input type="checkbox" data-field="concat-col" value={c.name} /> {c.name}
+            <input type="checkbox" value={c.name} className="concat-col-check" /> {c.name}
           </label>
         ))}
         <div className="prep-panel-sep" />
         <span className="prep-panel-label">Separator</span>
         <input
           type="text"
-          data-field="concat-sep"
+          ref={concatSepRef}
           defaultValue=" "
           style={{ width: "40px" }}
         />
         <span className="prep-panel-label">Name</span>
         <input
           type="text"
-          data-field="concat-name"
+          ref={concatNameRef}
           placeholder="combined"
           style={{ width: "100px" }}
         />
-        <button data-action="prep-apply-concat" type="button" className="prep-panel-apply">
+        <button
+          onClick={() => {
+            const checkboxes = concatFormRef.current?.querySelectorAll(".concat-col-check:checked") || [];
+            const columns = [...checkboxes].map((el) => el.value);
+            const separator = concatSepRef.current?.value ?? " ";
+            const newColName = concatNameRef.current?.value?.trim() || "combined";
+            if (columns.length < 2) return;
+            applyTransform((state) => ({
+              table: concatColumns(state.dataPrep.arqueroTable, columns, separator, newColName),
+              transform: { type: "concat", params: { columns, separator, newColName } },
+              meta: { addCols: [{ name: newColName, dtype: "text" }] },
+            }));
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Concat
         </button>
       </div>
@@ -970,44 +1484,65 @@ function PrepPanel({ dataPrep, columnConfig }) {
     return (
       <div className="prep-panel">
         <span className="prep-panel-label">Column</span>
-        <select data-field="validate-col">
+        <select ref={validateColRef}>
           <ColOptions cols={cols} />
         </select>
         <span className="prep-panel-label">Rule</span>
-        <select data-field="validate-type">
+        <select value={validateType} onChange={(e) => setValidateType(e.target.value)}>
           <option value="range">Range (min&ndash;max)</option>
           <option value="allowed">Allowed values</option>
           <option value="regex">Regex pattern</option>
         </select>
-        <input
-          type="number"
-          data-field="validate-min"
-          placeholder="min"
-          style={{ width: "60px" }}
-        />
-        <input
-          type="number"
-          data-field="validate-max"
-          placeholder="max"
-          style={{ width: "60px" }}
-        />
-        <input
-          type="text"
-          data-field="validate-values"
-          placeholder="a, b, c"
-          style={{ display: "none", minWidth: "120px" }}
-        />
-        <input
-          type="text"
-          data-field="validate-pattern"
-          placeholder="^[A-Z]+"
-          style={{ display: "none", minWidth: "120px" }}
-        />
-        <button data-action="prep-apply-validate" type="button" className="prep-panel-apply">
+        {validateType === "range" && (
+          <>
+            <input type="number" ref={validateMinRef} placeholder="min" style={{ width: "60px" }} />
+            <input type="number" ref={validateMaxRef} placeholder="max" style={{ width: "60px" }} />
+          </>
+        )}
+        {validateType === "allowed" && (
+          <input type="text" ref={validateValuesRef} placeholder="a, b, c" style={{ minWidth: "120px" }} />
+        )}
+        {validateType === "regex" && (
+          <input type="text" ref={validatePatternRef} placeholder="^[A-Z]+" style={{ minWidth: "120px" }} />
+        )}
+        <button
+          onClick={() => {
+            const column = validateColRef.current?.value;
+            const type = validateType;
+            if (!column || !type) return;
+            let rule;
+            if (type === "range") {
+              const min = validateMinRef.current?.value;
+              const max = validateMaxRef.current?.value;
+              rule = { type: "range", min: min !== "" ? Number(min) : null, max: max !== "" ? Number(max) : null };
+            } else if (type === "allowed") {
+              const values = (validateValuesRef.current?.value || "").split(",").map((p) => p.trim()).filter(Boolean);
+              rule = { type: "allowed", values };
+            } else if (type === "regex") {
+              rule = { type: "regex", pattern: validatePatternRef.current?.value || "" };
+            }
+            if (rule) {
+              const state = spcStore.getState();
+              let next = updateColumnMeta(state, column, { validation: rule });
+              next = closeActivePanel(next);
+              spcStore.setState(next);
+            }
+          }}
+          type="button"
+          className="prep-panel-apply"
+        >
           Apply
         </button>
         <button
-          data-action="prep-clear-validate"
+          onClick={() => {
+            const column = validateColRef.current?.value;
+            if (column) {
+              const state = spcStore.getState();
+              let next = updateColumnMeta(state, column, { validation: null });
+              next = closeActivePanel(next);
+              spcStore.setState(next);
+            }
+          }}
           type="button"
           className="prep-tool-btn"
           title="Clear validation rule for selected column"
@@ -1026,6 +1561,20 @@ function PrepPanel({ dataPrep, columnConfig }) {
 function TransformLedger({ transforms }) {
   if (transforms.length === 0) return null;
 
+  const handleUndo = useCallback(() => {
+    const state = spcStore.getState();
+    if (state.dataPrep.transforms.length === 0) return;
+    let next = undoPrepTransform(state);
+    const replayed = replayPrepTransforms(next);
+    if (replayed) {
+      next = setPrepTable(next, replayed.table);
+      next = setColumns(next, replayed.columns);
+      next = setProfileCache(next, {});
+      if (next.dataPrep.transforms.length === 0) next = markPrepSaved(next);
+    }
+    spcStore.setState(next);
+  }, []);
+
   return (
     <div className="prep-ledger">
       {transforms.map((tr, i) => {
@@ -1040,7 +1589,7 @@ function TransformLedger({ transforms }) {
             {isLast && (
               <button
                 className="ledger-undo"
-                data-action="prep-undo"
+                onClick={handleUndo}
                 type="button"
                 title="Undo last"
               >
@@ -1057,6 +1606,29 @@ function TransformLedger({ transforms }) {
 /* ── PrepTable ───────────────────────────────────────────────────────── */
 
 function PrepCenter({ dataPrep, datasets, columnConfig }) {
+  const handleSelectColumn = useCallback((colName) => {
+    spcStore.setState(setExpandedProfileColumn(spcStore.getState(), colName));
+  }, []);
+
+  const handleToggleRow = useCallback((rowIdx) => {
+    spcStore.setState(toggleRowExclusion(spcStore.getState(), rowIdx));
+  }, []);
+
+  const handleToggleAllVisible = useCallback(() => {
+    const state = spcStore.getState();
+    const totalRows = state.dataPrep.arqueroTable ? state.dataPrep.arqueroTable.numRows() : state.dataPrep.datasetPoints.length;
+    const visibleCount = Math.min(totalRows, 500);
+    const current = new Set(state.dataPrep.excludedRows || []);
+    const selectedVisibleCount = Array.from({ length: visibleCount }, (_, i) => i)
+      .reduce((sum, i) => sum + (current.has(i) ? 0 : 1), 0);
+    const shouldSelectAll = selectedVisibleCount !== visibleCount;
+    for (let i = 0; i < visibleCount; i += 1) {
+      if (shouldSelectAll) current.delete(i);
+      else current.add(i);
+    }
+    spcStore.setState({ ...state, dataPrep: { ...state.dataPrep, excludedRows: [...current].sort((a, b) => a - b) } });
+  }, []);
+
   if (!dataPrep.selectedDatasetId) {
     return (
       <div className="prep-center">
@@ -1136,14 +1708,14 @@ function PrepCenter({ dataPrep, datasets, columnConfig }) {
       <PrepPanel dataPrep={dataPrep} columnConfig={columnConfig} />
       <TransformLedger transforms={dataPrep.transforms} />
       <div className="prep-table-area">
-        <div className="prep-table-wrap" data-action="prep-table-scroll">
+        <div className="prep-table-wrap">
           <table className="prep-table">
             <thead>
               <tr>
                 <th className="prep-row-select-head">
                   <button
                     className={`prep-master-checkbox${allVisibleSelected ? " is-selected" : ""}${partiallySelected ? " is-mixed" : ""}`}
-                    data-action="prep-toggle-all-visible-rows"
+                    onClick={handleToggleAllVisible}
                     type="button"
                     aria-pressed={allVisibleSelected ? "true" : "false"}
                     title={allVisibleSelected ? "Exclude visible rows" : "Keep visible rows"}
@@ -1163,8 +1735,7 @@ function PrepCenter({ dataPrep, datasets, columnConfig }) {
                     <th
                       key={c.name}
                       className={`${cache[c.name] ? "th-with-profile" : ""}${isSelected ? " th-selected" : ""}`}
-                      data-action="select-column"
-                      data-column={c.name}
+                      onClick={() => handleSelectColumn(c.name)}
                     >
                       <div className="th-name-row">
                         {c.name}
@@ -1183,7 +1754,6 @@ function PrepCenter({ dataPrep, datasets, columnConfig }) {
                   <tr
                     key={idx}
                     className={isExcluded ? "row-excluded" : ""}
-                    data-row-idx={idx}
                   >
                     <td className="prep-row-select-cell">
                       <span className="prep-row-index mono" aria-hidden="true">
@@ -1191,8 +1761,7 @@ function PrepCenter({ dataPrep, datasets, columnConfig }) {
                       </span>
                       <button
                         className={`prep-row-toggle${!isExcluded ? " is-selected" : ""}`}
-                        data-action="toggle-row-exclude"
-                        data-row={idx}
+                        onClick={() => handleToggleRow(idx)}
                         type="button"
                         aria-pressed={!isExcluded ? "true" : "false"}
                         aria-label={
@@ -1236,6 +1805,11 @@ function PrepCenter({ dataPrep, datasets, columnConfig }) {
 
 function PrepSidePanel({ dataPrep, datasets, columnConfig }) {
   const ds = datasets.find((d) => d.id === dataPrep.selectedDatasetId);
+
+  const handleBack = useCallback(() => {
+    spcStore.setState(setExpandedProfileColumn(spcStore.getState(), null));
+  }, []);
+
   if (!ds) {
     return (
       <div className="prep-sidepanel">
@@ -1269,7 +1843,7 @@ function PrepSidePanel({ dataPrep, datasets, columnConfig }) {
   if (selectedCol) {
     const c = cols.find((col) => col.name === selectedCol);
     if (c && cache[c.name]) {
-      panel = <DetailedProfile col={c} profile={cache[c.name]} />;
+      panel = <DetailedProfile col={c} profile={cache[c.name]} onBack={handleBack} />;
     }
   }
 

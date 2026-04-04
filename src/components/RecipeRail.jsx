@@ -1,8 +1,33 @@
 import { useRef, useLayoutEffect } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import { getFocused, collectChartIds, DEFAULT_PARAMS } from "../core/state.js";
-import { applyParamsToContext, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED, getDisabledChartTypes } from "../helpers.js";
+import {
+  getFocused,
+  collectChartIds,
+  DEFAULT_PARAMS,
+  focusChart,
+  setChartParams,
+  setActiveChipEditor,
+  addChart,
+  togglePaneDataTable,
+  setLoadingState,
+  setDatasets,
+  setError,
+  createSlot,
+} from "../core/state.js";
+import {
+  applyParamsToContext,
+  INDIVIDUAL_ONLY,
+  SUBGROUP_REQUIRED,
+  getDisabledChartTypes,
+} from "../helpers.js";
+import {
+  reanalyze,
+  loadDatasetById,
+  saveLayout,
+  restoreLayout,
+} from "../store/actions.js";
+import { fetchDatasets } from "../data/api.js";
 
 const CHART_TYPES = [
   ["Variables", [["imr","IMR"],["xbar_r","X-Bar R"],["xbar_s","X-Bar S"],["r","R"],["s","S"],["mr","MR"]]],
@@ -18,12 +43,18 @@ const NELSON_RULES = [[1,"1: Beyond 3\u03c3"],[2,"2: 9 same side"],[3,"3: 6 tren
 const SIGMA_METHOD_CHARTS = new Set(["imr"]);
 const NO_SIGMA_CHARTS = new Set(["p","np","c","u","laney_p","laney_u","cusum","ewma","cusum_vmask","hotelling_t2","mewma","run"]);
 
-function ChipSelect({ action, options, current }) {
+function parseNullableNumber(value) {
+  const trimmed = value.trim();
+  return trimmed !== "" ? parseFloat(trimmed) : null;
+}
+
+function ChipSelect({ onChange, options, current, resetKey }) {
   return (
     <select
+      key={resetKey || current}
       className="chip-select"
-      data-action={action}
       onClick={(e) => e.stopPropagation()}
+      onChange={onChange}
       defaultValue={current}
     >
       {options.map(([val, label]) => (
@@ -33,12 +64,13 @@ function ChipSelect({ action, options, current }) {
   );
 }
 
-function ChipGroupSelect({ action, groups, current, disabledSet = new Set() }) {
+function ChipGroupSelect({ onChange, groups, current, disabledSet = new Set(), resetKey }) {
   return (
     <select
+      key={resetKey || current}
       className="chip-select"
-      data-action={action}
       onClick={(e) => e.stopPropagation()}
+      onChange={onChange}
       defaultValue={current}
     >
       {groups.map(([group, items]) => (
@@ -66,6 +98,38 @@ function specSummary(params) {
   return parts.length > 0 ? parts.join(" \u2013 ") : "Not set";
 }
 
+/* --- Dispatch helpers for chart param changes --- */
+
+function dispatchChartParam(prefix, paramUpdate) {
+  if (prefix === "_pending") {
+    spcStore.setState((s) => {
+      const pending = { ...s.ui.pendingNewChart, ...paramUpdate };
+      let next = { ...s, ui: { ...s.ui, pendingNewChart: pending } };
+      next = setActiveChipEditor(next, null);
+      return next;
+    });
+  } else {
+    spcStore.setState((s) => {
+      let next = setChartParams(s, prefix, paramUpdate);
+      next = setActiveChipEditor(next, null);
+      return next;
+    });
+    reanalyze();
+  }
+}
+
+function dispatchPendingParamNoClose(prefix, paramUpdate) {
+  if (prefix === "_pending") {
+    spcStore.setState((s) => ({
+      ...s,
+      ui: { ...s.ui, pendingNewChart: { ...s.ui.pendingNewChart, ...paramUpdate } },
+    }));
+  } else {
+    spcStore.setState((s) => setChartParams(s, prefix, paramUpdate));
+    reanalyze();
+  }
+}
+
 function SpecEditor({ prefix, params }) {
   return (
     <span className="chip-sigma-editor">
@@ -74,7 +138,7 @@ function SpecEditor({ prefix, params }) {
         <input
           type="number"
           className="chip-k-input"
-          data-action={`${prefix}-set-lsl`}
+          onChange={(e) => dispatchChartParam(prefix, { lsl: parseNullableNumber(e.target.value) })}
           defaultValue={params.lsl ?? ""}
           step="any"
           onClick={(e) => e.stopPropagation()}
@@ -86,7 +150,7 @@ function SpecEditor({ prefix, params }) {
         <input
           type="number"
           className="chip-k-input"
-          data-action={`${prefix}-set-target`}
+          onChange={(e) => dispatchChartParam(prefix, { target: parseNullableNumber(e.target.value) })}
           defaultValue={params.target ?? ""}
           step="any"
           onClick={(e) => e.stopPropagation()}
@@ -98,7 +162,7 @@ function SpecEditor({ prefix, params }) {
         <input
           type="number"
           className="chip-k-input"
-          data-action={`${prefix}-set-usl`}
+          onChange={(e) => dispatchChartParam(prefix, { usl: parseNullableNumber(e.target.value) })}
           defaultValue={params.usl ?? ""}
           step="any"
           onClick={(e) => e.stopPropagation()}
@@ -118,7 +182,10 @@ function SigmaEditor({ prefix, params }) {
         <input
           type="number"
           className="chip-k-input"
-          data-action={`${prefix}-set-k-sigma`}
+          onChange={(e) => {
+            const k = parseFloat(e.target.value);
+            if (k > 0 && k <= 6) dispatchPendingParamNoClose(prefix, { k_sigma: k });
+          }}
           defaultValue={params.k_sigma}
           min="0.5"
           max="6"
@@ -130,7 +197,8 @@ function SigmaEditor({ prefix, params }) {
         <label className="chip-sigma-row">
           <span className="chip-sigma-label">Method</span>
           <ChipSelect
-            action={`${prefix}-set-sigma-method`}
+            resetKey={prefix}
+            onChange={(e) => dispatchChartParam(prefix, { sigma_method: e.target.value })}
             options={SIGMA_METHODS}
             current={params.sigma_method}
           />
@@ -147,12 +215,22 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
   const currentPh = params.phase_column || "";
   const activeTests = params.nelson_tests || [];
 
+  const handleToggleChip = (chipId, isLocked) => {
+    if (isLocked) return;
+    spcStore.setState((s) => setActiveChipEditor(s, ae === chipId ? null : chipId));
+  };
+
   const chips = [
     {
       id: `${prefix}-metric`,
       label: "Metric",
       value: ae === `${prefix}-metric`
-        ? <ChipSelect action={`${prefix}-set-metric-column`} options={numericCols.map((c) => [c.name, c.name])} current={numericCols.find((c) => c.role === "value")?.name || ""} />
+        ? <ChipSelect
+            resetKey={prefix}
+            onChange={(e) => dispatchChartParam(prefix, { value_column: e.target.value || null })}
+            options={numericCols.map((c) => [c.name, c.name])}
+            current={numericCols.find((c) => c.role === "value")?.name || ""}
+          />
         : context.metric.label,
       detail: context.metric.unit,
     },
@@ -163,7 +241,13 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
         ? "Individual (n=1)"
         : ae === `${prefix}-subgroup`
           ? <ChipSelect
-              action={`${prefix}-set-subgroup-column`}
+              resetKey={prefix}
+              onChange={(e) => {
+                if (INDIVIDUAL_ONLY.has(params.chart_type)) return;
+                const newSg = e.target.value || null;
+                if (!newSg && SUBGROUP_REQUIRED.has(params.chart_type)) return;
+                dispatchChartParam(prefix, { subgroup_column: newSg });
+              }}
               options={[
                 ...(SUBGROUP_REQUIRED.has(params.chart_type) ? [] : [["", "Individual (n=1)"]]),
                 ...allNonValue.map((c) => [c.name, c.name]),
@@ -179,7 +263,12 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
       id: `${prefix}-phase`,
       label: "Phase",
       value: ae === `${prefix}-phase`
-        ? <ChipSelect action={`${prefix}-set-phase-column`} options={[["", "No phases"], ...allNonValue.map((c) => [c.name, c.name])]} current={currentPh} />
+        ? <ChipSelect
+            resetKey={prefix}
+            onChange={(e) => dispatchChartParam(prefix, { phase_column: e.target.value || null })}
+            options={[["", "No phases"], ...allNonValue.map((c) => [c.name, c.name])]}
+            current={currentPh}
+          />
         : context.phase.label,
       detail: ae === `${prefix}-phase` ? "" : context.phase.detail,
     },
@@ -187,7 +276,18 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
       id: `${prefix}-chart`,
       label: "Chart",
       value: ae === `${prefix}-chart`
-        ? <ChipGroupSelect action={`${prefix}-set-chart-type`} groups={CHART_TYPES} current={params.chart_type} disabledSet={getDisabledChartTypes(params, cols)} />
+        ? <ChipGroupSelect
+            resetKey={prefix}
+            onChange={(e) => {
+              const newType = e.target.value;
+              const updates = { chart_type: newType };
+              if (INDIVIDUAL_ONLY.has(newType)) updates.subgroup_column = null;
+              dispatchChartParam(prefix, updates);
+            }}
+            groups={CHART_TYPES}
+            current={params.chart_type}
+            disabledSet={getDisabledChartTypes(params, cols)}
+          />
         : context.chartType.label,
       detail: ae === `${prefix}-chart` ? "" : context.chartType.detail,
     },
@@ -209,7 +309,23 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
               <label key={id} className="chip-test-toggle" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
-                  data-action={`${prefix}-toggle-nelson`}
+                  onChange={(e) => {
+                    const ruleId = id;
+                    if (prefix === "_pending") {
+                      spcStore.setState((s) => {
+                        const current = s.ui.pendingNewChart.nelson_tests || [];
+                        const nextRules = e.target.checked ? [...current, ruleId] : current.filter((r) => r !== ruleId);
+                        return { ...s, ui: { ...s.ui, pendingNewChart: { ...s.ui.pendingNewChart, nelson_tests: nextRules } } };
+                      });
+                    } else {
+                      spcStore.setState((s) => {
+                        const current = s.charts[prefix].params.nelson_tests || [];
+                        const nextRules = e.target.checked ? [...current, ruleId] : current.filter((r) => r !== ruleId);
+                        return setChartParams(s, prefix, { nelson_tests: nextRules });
+                      });
+                      reanalyze();
+                    }
+                  }}
                   data-value={id}
                   defaultChecked={activeTests.includes(id)}
                 />
@@ -253,7 +369,7 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
       <button
         key={chip.id}
         className={`recipe-chip ${isEditing ? "chip-editing" : ""} ${warnClass} ${lockedClass}`}
-        {...(!isLocked && { "data-action": "toggle-chip-editor", "data-chip": chip.id })}
+        onClick={() => handleToggleChip(chip.id, isLocked)}
         type="button"
         title={titleAttr}
         disabled={isLocked || undefined}
@@ -284,7 +400,13 @@ function CollapsedChartCard({ state, chartId }) {
   const summary = collapsedSummary(slot);
 
   return (
-    <div className="rail-card rail-card--collapsed" data-action="focus-chart" data-chart-id={chartId} data-accent={accentIdx}>
+    <div
+      className="rail-card rail-card--collapsed"
+      onClick={() => spcStore.setState((s) => focusChart(s, chartId))}
+      data-chart-id={chartId}
+      data-accent={accentIdx}
+      style={{ cursor: "pointer" }}
+    >
       <div className="rail-card-header rail-card-header--collapsed">
         <span className="rail-card-dot"></span>
         <span className="rail-card-label">{chartLabel}</span>
@@ -310,8 +432,7 @@ function ExpandedChartCard({ state, chartId, slot, ae, cols }) {
       <ChartChips state={state} prefix={chartId} params={slot.params} context={slot.context} ae={ae} cols={cols} />
       <button
         className={`recipe-chip recipe-chip--table ${slot.showDataTable ? "chip-editing" : ""}`}
-        data-action="toggle-pane-table"
-        data-chart-id={chartId}
+        onClick={() => spcStore.setState((s) => togglePaneDataTable(s, chartId))}
         type="button"
       >
         <span className="chip-label">Data Table</span>
@@ -342,17 +463,44 @@ function PendingChartCard({ state }) {
   const activeTests = pending.nelson_tests || [];
   context.tests = { label: activeTests.map((id) => `R${id}`).join(",") || "None", detail: "" };
 
+  const handleCancel = () => {
+    spcStore.setState((s) => ({ ...s, ui: { ...s.ui, pendingNewChart: null } }));
+  };
+
+  const handleConfirm = () => {
+    spcStore.setState((s) => {
+      const pendingParams = s.ui.pendingNewChart;
+      if (!pendingParams) return s;
+      let next = { ...s, ui: { ...s.ui, pendingNewChart: null } };
+      next = addChart(next, { chartType: pendingParams.chart_type });
+      const newId = `chart-${next.nextChartId - 1}`;
+      if (next.charts[newId]) {
+        next = {
+          ...next,
+          charts: {
+            ...next.charts,
+            [newId]: { ...next.charts[newId], params: { ...pendingParams } },
+          },
+        };
+      }
+      return next;
+    });
+    saveLayout();
+    const s = spcStore.getState();
+    if (s.activeDatasetId) reanalyze();
+  };
+
   return (
     <div className="rail-card rail-card--pending">
       <div className="rail-card-header rail-card-header--pending">
         <span className="rail-card-dot"></span>
         <span className="rail-card-label">New Chart</span>
-        <button className="rail-card-close" data-action="cancel-add-chart" type="button" aria-label="Cancel new chart" title="Cancel">&#10005;</button>
+        <button className="rail-card-close" onClick={handleCancel} type="button" aria-label="Cancel new chart" title="Cancel">&#10005;</button>
       </div>
       <ChartChips state={state} prefix="_pending" params={pending} context={context} ae={ae} cols={cols} />
       <div className="rail-card-actions">
-        <button className="rail-card-btn rail-card-btn--cancel" data-action="cancel-add-chart" type="button">Cancel</button>
-        <button className="rail-card-btn rail-card-btn--confirm" data-action="confirm-add-chart" type="button">Add</button>
+        <button className="rail-card-btn rail-card-btn--cancel" onClick={handleCancel} type="button">Cancel</button>
+        <button className="rail-card-btn rail-card-btn--confirm" onClick={handleConfirm} type="button">Add</button>
       </div>
     </div>
   );
@@ -362,8 +510,44 @@ function AddChartSection({ state }) {
   if (state.ui.pendingNewChart) {
     return <PendingChartCard state={state} />;
   }
+
+  const handleOpenAddChart = () => {
+    const s = spcStore.getState();
+    // Check workspace capacity
+    const arenaEl = document.querySelector(".chart-arena");
+    if (arenaEl) {
+      const maxPerRow = Math.floor(arenaEl.clientWidth / 250);
+      const maxRows = Math.floor(arenaEl.clientHeight / 180);
+      const maxCharts = maxPerRow * maxRows;
+      if (collectChartIds(s.chartLayout).length >= maxCharts) {
+        spcStore.setState({
+          ...s,
+          ui: {
+            ...s.ui,
+            notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." },
+          },
+        });
+        return;
+      }
+    }
+    const focused = getFocused(s);
+    spcStore.setState({
+      ...s,
+      ui: {
+        ...s.ui,
+        pendingNewChart: {
+          ...DEFAULT_PARAMS,
+          chart_type: focused.params.chart_type,
+          value_column: focused.params.value_column,
+          subgroup_column: focused.params.subgroup_column,
+          phase_column: focused.params.phase_column,
+        },
+      },
+    });
+  };
+
   return (
-    <button className="rail-card rail-card--add" data-action="open-add-chart" type="button">
+    <button className="rail-card rail-card--add" onClick={handleOpenAddChart} type="button">
       <div className="rail-card-header rail-card-header--add">
         <span className="rail-card-dot"></span>
         <span className="rail-card-label">New Chart</span>
@@ -387,21 +571,24 @@ export default function RecipeRail() {
   const railRef = useRef(null);
   const positionsRef = useRef(null);
 
-  // Capture card positions BEFORE React re-renders (runs synchronously before DOM paint)
-  useLayoutEffect(() => {
-    // Snapshot current positions for the NEXT render's FLIP
-    return () => {
-      if (railRef.current && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        const map = new Map();
-        railRef.current.querySelectorAll(".rail-card[data-chart-id]").forEach((el) => {
-          map.set(el.dataset.chartId, el.getBoundingClientRect());
-        });
-        if (map.size > 0) positionsRef.current = map;
-      }
-    };
-  });
+  // FLIP: capture "before" positions during render (synchronous, before DOM commit).
+  // This runs during the render phase, before useLayoutEffect, so it sees the OLD DOM.
+  const prevFocusedRef = useRef(focusedChartId);
+  const prevOrderRef = useRef(chartOrder);
+  if (focusedChartId !== prevFocusedRef.current || chartOrder !== prevOrderRef.current) {
+    // focusedChartId or chartOrder changed — snapshot positions from current (old) DOM
+    if (railRef.current && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const map = new Map();
+      railRef.current.querySelectorAll(".rail-card[data-chart-id]").forEach((el) => {
+        map.set(el.dataset.chartId, el.getBoundingClientRect());
+      });
+      if (map.size > 0) positionsRef.current = map;
+    }
+    prevFocusedRef.current = focusedChartId;
+    prevOrderRef.current = chartOrder;
+  }
 
-  // After React paints the new order, animate from old positions
+  // FLIP: after React commits the new card order, animate from old → new positions.
   useLayoutEffect(() => {
     const firstMap = positionsRef.current;
     positionsRef.current = null;
@@ -418,7 +605,7 @@ export default function RecipeRail() {
         { duration: 250, easing: "cubic-bezier(0.25, 1, 0.5, 1)", composite: "replace" }
       );
     });
-  });
+  }, [focusedChartId, chartOrder]);
 
   const cols = columnConfig.columns || [];
   const activeDs = datasets.find((ds) => ds.id === activeDatasetId);
@@ -430,6 +617,41 @@ export default function RecipeRail() {
 
   const otherIds = chartOrder.filter((id) => id !== focusedChartId);
 
+  const handleDatasetToggle = () => {
+    spcStore.setState((s) => setActiveChipEditor(s, ae === "dataset" ? null : "dataset"));
+  };
+
+  const handleSwitchDataset = async (e) => {
+    const dsId = e.target.value;
+    const s = spcStore.getState();
+    spcStore.setState(setLoadingState(s, true));
+    try {
+      const dsList = await fetchDatasets();
+      let next = setDatasets(spcStore.getState(), dsList);
+      const saved = restoreLayout();
+      if (saved && saved.chartOrder.length > 0) {
+        const restoredCharts = {};
+        for (const cid of saved.chartOrder) {
+          const p = saved.chartParams[cid];
+          if (p && INDIVIDUAL_ONLY.has(p.chart_type)) p.subgroup_column = null;
+          restoredCharts[cid] = createSlot(p ? { params: p } : {});
+        }
+        next = {
+          ...next,
+          charts: restoredCharts,
+          chartOrder: saved.chartOrder,
+          nextChartId: saved.nextChartId || saved.chartOrder.length + 1,
+          focusedChartId: saved.focusedChartId || saved.chartOrder[0],
+          chartLayout: { rows: saved.rows, colWeights: saved.colWeights, rowWeights: saved.rowWeights },
+        };
+      }
+      spcStore.setState(next);
+      await loadDatasetById(dsId);
+    } catch (err) {
+      spcStore.setState(setError(spcStore.getState(), err.message));
+    }
+  };
+
   return (
     <div className="recipe-rail" ref={railRef}>
       {/* Dataset card */}
@@ -440,15 +662,14 @@ export default function RecipeRail() {
         </div>
         <button
           className={`recipe-chip ${ae === "dataset" ? "chip-editing" : ""}`}
-          data-action="toggle-chip-editor"
-          data-chip="dataset"
+          onClick={handleDatasetToggle}
           type="button"
         >
           <strong>
             {ae === "dataset"
               ? (
                 <ChipSelect
-                  action="switch-dataset"
+                  onChange={handleSwitchDataset}
                   options={datasets.map((ds) => [String(ds.id), `${ds.name} (${ds.point_count} pts)`])}
                   current={String(activeDatasetId || "")}
                 />

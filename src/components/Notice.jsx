@@ -39,7 +39,7 @@ export function ErrorState({ error, onRetry }) {
     <section className="error-state">
       <h3>Something went wrong</h3>
       <p>{error}</p>
-      <button className="primary-action" type="button" onClick={onRetry}>
+      <button className="primary-action" type="button" data-action="retry-load">
         Retry
       </button>
     </section>

@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import { buildMethodLabComparison, buildDisagreements } from "../core/state.js";
+import { buildMethodLabComparison, buildDisagreements, toggleMethodLabChart } from "../core/state.js";
 import { capClass } from "../helpers.js";
 
 function fmt(v, decimals = 4) {
@@ -246,7 +246,7 @@ function DisagreementsSection({ disagreements }) {
   );
 }
 
-function ChartPicker({ allCharts, selectedIds }) {
+function ChartPicker({ allCharts, selectedIds, onToggle }) {
   if (allCharts.length === 0) return null;
   const count = [...selectedIds].filter((id) => allCharts.some((c) => c.id === id)).length;
   return (
@@ -260,8 +260,7 @@ function ChartPicker({ allCharts, selectedIds }) {
             <div
               key={c.id}
               className={`ml-picker-item${sel ? " active" : ""}`}
-              data-action="toggle-ml-chart"
-              data-chart-id={c.id}
+              onClick={() => onToggle(c.id)}
               role="checkbox"
               aria-checked={sel}
               tabIndex={0}
@@ -296,6 +295,10 @@ export default function MethodLabView() {
   const disagreements = buildDisagreements(state, [...selectedIds]);
   const chartCount = selected.length;
 
+  const handleToggleChart = useCallback((chartId) => {
+    if (chartId) spcStore.setState(toggleMethodLabChart(spcStore.getState(), chartId));
+  }, []);
+
   return (
     <section className="route-panel">
       <div className="route-header">
@@ -313,7 +316,7 @@ export default function MethodLabView() {
         </p>
       ) : (
         <div className="ml-body">
-          <ChartPicker allCharts={allCharts} selectedIds={selectedIds} />
+          <ChartPicker allCharts={allCharts} selectedIds={selectedIds} onToggle={handleToggleChart} />
           {chartCount === 0 ? (
             <p className="muted" style={{ padding: 8 }}>Select charts above to compare.</p>
           ) : (
