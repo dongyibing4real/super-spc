@@ -48,9 +48,10 @@ function parseNullableNumber(value) {
   return trimmed !== "" ? parseFloat(trimmed) : null;
 }
 
-function ChipSelect({ onChange, options, current }) {
+function ChipSelect({ onChange, options, current, resetKey }) {
   return (
     <select
+      key={resetKey || current}
       className="chip-select"
       onClick={(e) => e.stopPropagation()}
       onChange={onChange}
@@ -63,9 +64,10 @@ function ChipSelect({ onChange, options, current }) {
   );
 }
 
-function ChipGroupSelect({ onChange, groups, current, disabledSet = new Set() }) {
+function ChipGroupSelect({ onChange, groups, current, disabledSet = new Set(), resetKey }) {
   return (
     <select
+      key={resetKey || current}
       className="chip-select"
       onClick={(e) => e.stopPropagation()}
       onChange={onChange}
@@ -195,6 +197,7 @@ function SigmaEditor({ prefix, params }) {
         <label className="chip-sigma-row">
           <span className="chip-sigma-label">Method</span>
           <ChipSelect
+            resetKey={prefix}
             onChange={(e) => dispatchChartParam(prefix, { sigma_method: e.target.value })}
             options={SIGMA_METHODS}
             current={params.sigma_method}
@@ -223,6 +226,7 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
       label: "Metric",
       value: ae === `${prefix}-metric`
         ? <ChipSelect
+            resetKey={prefix}
             onChange={(e) => dispatchChartParam(prefix, { value_column: e.target.value || null })}
             options={numericCols.map((c) => [c.name, c.name])}
             current={numericCols.find((c) => c.role === "value")?.name || ""}
@@ -237,6 +241,7 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
         ? "Individual (n=1)"
         : ae === `${prefix}-subgroup`
           ? <ChipSelect
+              resetKey={prefix}
               onChange={(e) => {
                 if (INDIVIDUAL_ONLY.has(params.chart_type)) return;
                 const newSg = e.target.value || null;
@@ -259,6 +264,7 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
       label: "Phase",
       value: ae === `${prefix}-phase`
         ? <ChipSelect
+            resetKey={prefix}
             onChange={(e) => dispatchChartParam(prefix, { phase_column: e.target.value || null })}
             options={[["", "No phases"], ...allNonValue.map((c) => [c.name, c.name])]}
             current={currentPh}
@@ -271,6 +277,7 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
       label: "Chart",
       value: ae === `${prefix}-chart`
         ? <ChipGroupSelect
+            resetKey={prefix}
             onChange={(e) => {
               const newType = e.target.value;
               const updates = { chart_type: newType };
@@ -564,21 +571,24 @@ export default function RecipeRail() {
   const railRef = useRef(null);
   const positionsRef = useRef(null);
 
-  // Capture card positions BEFORE React re-renders (runs synchronously before DOM paint)
-  useLayoutEffect(() => {
-    // Snapshot current positions for the NEXT render's FLIP
-    return () => {
-      if (railRef.current && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        const map = new Map();
-        railRef.current.querySelectorAll(".rail-card[data-chart-id]").forEach((el) => {
-          map.set(el.dataset.chartId, el.getBoundingClientRect());
-        });
-        if (map.size > 0) positionsRef.current = map;
-      }
-    };
-  });
+  // FLIP: capture "before" positions during render (synchronous, before DOM commit).
+  // This runs during the render phase, before useLayoutEffect, so it sees the OLD DOM.
+  const prevFocusedRef = useRef(focusedChartId);
+  const prevOrderRef = useRef(chartOrder);
+  if (focusedChartId !== prevFocusedRef.current || chartOrder !== prevOrderRef.current) {
+    // focusedChartId or chartOrder changed — snapshot positions from current (old) DOM
+    if (railRef.current && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const map = new Map();
+      railRef.current.querySelectorAll(".rail-card[data-chart-id]").forEach((el) => {
+        map.set(el.dataset.chartId, el.getBoundingClientRect());
+      });
+      if (map.size > 0) positionsRef.current = map;
+    }
+    prevFocusedRef.current = focusedChartId;
+    prevOrderRef.current = chartOrder;
+  }
 
-  // After React paints the new order, animate from old positions
+  // FLIP: after React commits the new card order, animate from old → new positions.
   useLayoutEffect(() => {
     const firstMap = positionsRef.current;
     positionsRef.current = null;
@@ -595,7 +605,7 @@ export default function RecipeRail() {
         { duration: 250, easing: "cubic-bezier(0.25, 1, 0.5, 1)", composite: "replace" }
       );
     });
-  });
+  }, [focusedChartId, chartOrder]);
 
   const cols = columnConfig.columns || [];
   const activeDs = datasets.find((ds) => ds.id === activeDatasetId);
@@ -676,7 +686,7 @@ export default function RecipeRail() {
 
       {/* Focused chart card (expanded) */}
       {focusedSlot && (
-        <ExpandedChartCard key={focusedChartId} state={state} chartId={focusedChartId} slot={focusedSlot} ae={ae} cols={cols} />
+        <ExpandedChartCard state={state} chartId={focusedChartId} slot={focusedSlot} ae={ae} cols={cols} />
       )}
 
       {/* Collapsed count badge */}
