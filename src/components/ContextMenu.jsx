@@ -2,6 +2,13 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
+import {
+  togglePointExclusion,
+  closeContextMenu,
+  navigate,
+  toggleChartOption,
+  resetAxis,
+} from "../core/state.js";
 
 const LAYERS = [
   ["specLimits", "Limits & zones"],
@@ -17,16 +24,18 @@ function PointMenu({ x, y, pointIndex, isExcluded }) {
     <div className="context-menu" style={{ left: x, top: y }} role="menu">
       <div className="context-menu-header">Point</div>
       <button
-        data-action="exclude-point"
-        data-index={pointIndex}
+        onClick={() => {
+          spcStore.setState((s) => closeContextMenu(togglePointExclusion(s, pointIndex)));
+        }}
         role="menuitem"
         type="button"
       >
         {isExcluded ? "Restore point" : "Exclude point"}
       </button>
       <button
-        data-action="navigate"
-        data-route="methodlab"
+        onClick={() => {
+          spcStore.setState((s) => closeContextMenu(navigate(s, "methodlab")));
+        }}
         role="menuitem"
         type="button"
       >
@@ -41,8 +50,9 @@ function LineMenu({ x, y }) {
     <div className="context-menu" style={{ left: x, top: y }} role="menu">
       <div className="context-menu-header">Line</div>
       <button
-        data-action="navigate"
-        data-route="methodlab"
+        onClick={() => {
+          spcStore.setState((s) => closeContextMenu(navigate(s, "methodlab")));
+        }}
         role="menuitem"
         type="button"
       >
@@ -64,8 +74,9 @@ function CanvasMenu({ x, y, toggles }) {
         <button
           key={k}
           className={`context-toggle ${toggles[k] ? "is-on" : ""}`}
-          data-action="toggle-chart"
-          data-option={k}
+          onClick={() => {
+            spcStore.setState((s) => closeContextMenu(toggleChartOption(s, k)));
+          }}
           role="menuitem"
           type="button"
         >
@@ -87,8 +98,9 @@ function AxisMenu({ x, y, axis }) {
     >
       <div className="context-menu-header">{label}</div>
       <button
-        data-action="reset-axis"
-        data-axis={axis}
+        onClick={() => {
+          spcStore.setState((s) => closeContextMenu(resetAxis(s, axis)));
+        }}
         role="menuitem"
         type="button"
       >

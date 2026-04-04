@@ -1,7 +1,16 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useCallback } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import { deriveFindings } from "../core/findings-engine.js";
+import { deriveFindings, generateFindings } from "../core/findings-engine.js";
+import {
+  setFindingsChart,
+  toggleFindingsStandardsBar,
+  selectStructuralFinding,
+  setFindingsStandard,
+  setStructuralFindings,
+  setChartParams,
+} from "../core/state.js";
+import { reanalyze } from "../store/actions.js";
 import { CHART_TYPE_LABELS, capClass } from "../helpers.js";
 
 /* ── Constants ─────────────────────────────────────── */
@@ -509,7 +518,7 @@ function DetailPanel({ finding }) {
 
 /* ── Sub-Components ────────────────────────────────── */
 
-function ChartRailCard({ id, charts, isActive }) {
+function ChartRailCard({ id, charts, isActive, onSwitch }) {
   const s = charts[id];
   const label =
     s?.context?.chartType?.label ||
@@ -524,8 +533,7 @@ function ChartRailCard({ id, charts, isActive }) {
   return (
     <button
       className={`chart-rail-card ${isActive ? "active" : ""}`}
-      data-action="switch-findings-chart"
-      data-chart-id={id}
+      onClick={() => onSwitch(id)}
       type="button"
     >
       <p className="eyebrow">{roleLabel}</p>
@@ -538,7 +546,7 @@ function ChartRailCard({ id, charts, isActive }) {
   );
 }
 
-function ChartRail({ charts, chartOrder, activeChartId }) {
+function ChartRail({ charts, chartOrder, activeChartId, onSwitch }) {
   return (
     <div className="panel-card findings-chart-rail">
       <h4>Charts</h4>
@@ -549,6 +557,7 @@ function ChartRail({ charts, chartOrder, activeChartId }) {
             id={id}
             charts={charts}
             isActive={id === activeChartId}
+            onSwitch={onSwitch}
           />
         ))}
       </div>
@@ -578,6 +587,15 @@ function HeaderBar({ health, slot, stats, chartId }) {
     );
   }
 
+  const handleSpecChange = useCallback((key, e) => {
+    const raw = e.target.value.trim();
+    const value = raw !== "" ? parseFloat(raw) : null;
+    if (key && chartId && (value === null || !isNaN(value))) {
+      spcStore.setState(setChartParams(spcStore.getState(), chartId, { [key]: value }));
+      reanalyze();
+    }
+  }, [chartId]);
+
   return (
     <div className="findings-header-bar">
       <div className={`health-badge ${health.severity}`}>
@@ -598,8 +616,7 @@ function HeaderBar({ health, slot, stats, chartId }) {
           <input
             type="number"
             className="standard-input"
-            data-spec-key="lsl"
-            data-chart-id={chartId}
+            onChange={(e) => handleSpecChange("lsl", e)}
             defaultValue={params.lsl ?? ""}
             step="any"
             placeholder={"\u2014"}
@@ -610,8 +627,7 @@ function HeaderBar({ health, slot, stats, chartId }) {
           <input
             type="number"
             className="standard-input"
-            data-spec-key="target"
-            data-chart-id={chartId}
+            onChange={(e) => handleSpecChange("target", e)}
             defaultValue={params.target ?? ""}
             step="any"
             placeholder={"\u2014"}
@@ -622,8 +638,7 @@ function HeaderBar({ health, slot, stats, chartId }) {
           <input
             type="number"
             className="standard-input"
-            data-spec-key="usl"
-            data-chart-id={chartId}
+            onChange={(e) => handleSpecChange("usl", e)}
             defaultValue={params.usl ?? ""}
             step="any"
             placeholder={"\u2014"}
@@ -641,11 +656,25 @@ function StandardsBar({ findingsStandards, findingsStandardsExpanded }) {
   const std = findingsStandards || {};
   const expanded = findingsStandardsExpanded;
 
+  const handleToggle = useCallback(() => {
+    spcStore.setState(toggleFindingsStandardsBar(spcStore.getState()));
+  }, []);
+
+  const handleStandardChange = useCallback((key, e) => {
+    const value = parseFloat(e.target.value);
+    if (!key || isNaN(value) || value < 0) return;
+    let next = setFindingsStandard(spcStore.getState(), key, value);
+    try { localStorage.setItem("spc-findings-standards", JSON.stringify(next.findingsStandards)); } catch { /* */ }
+    const chartId = next.findingsChartId || next.chartOrder[0];
+    next = setStructuralFindings(next, generateFindings(next, chartId), chartId);
+    spcStore.setState(next);
+  }, []);
+
   return (
     <div className="findings-standards-bar">
       <button
         className="standards-toggle"
-        data-action="toggle-findings-standards"
+        onClick={handleToggle}
         type="button"
       >
         <span className="eyebrow">Standards</span>
@@ -659,7 +688,7 @@ function StandardsBar({ findingsStandards, findingsStandardsExpanded }) {
               <input
                 type="number"
                 className="standard-input"
-                data-standard-key={f.key}
+                onChange={(e) => handleStandardChange(f.key, e)}
                 defaultValue={std[f.key] ?? ""}
                 step="any"
                 min="0"
@@ -672,12 +701,11 @@ function StandardsBar({ findingsStandards, findingsStandardsExpanded }) {
   );
 }
 
-function FindingCard({ finding, isActive }) {
+function FindingCard({ finding, isActive, onSelect }) {
   return (
     <button
       className={`finding-card ${isActive ? "active" : ""} ${finding.severity}`}
-      data-action="select-structural-finding"
-      data-finding-id={finding.id}
+      onClick={() => onSelect(finding.id)}
       type="button"
     >
       <div className="finding-card-head">
@@ -774,6 +802,17 @@ export default function FindingsView() {
     return f?.context || null;
   }, [structuralFindings]);
 
+  const handleSwitchChart = useCallback((chartId) => {
+    const state = spcStore.getState();
+    const withChart = setFindingsChart(state, chartId);
+    const next = setStructuralFindings(withChart, generateFindings(withChart, chartId), chartId);
+    spcStore.setState(next);
+  }, []);
+
+  const handleSelectFinding = useCallback((findingId) => {
+    spcStore.setState(selectStructuralFinding(spcStore.getState(), findingId));
+  }, []);
+
   return (
     <section className="route-panel">
       <div className="route-header">
@@ -799,6 +838,7 @@ export default function FindingsView() {
           charts={charts}
           chartOrder={chartOrder}
           activeChartId={activeChartId}
+          onSwitch={handleSwitchChart}
         />
 
         <div className="findings-main">
@@ -830,6 +870,7 @@ export default function FindingsView() {
                           key={f.id}
                           finding={f}
                           isActive={derived.selected?.id === f.id}
+                          onSelect={handleSelectFinding}
                         />
                       ))}
                     </div>

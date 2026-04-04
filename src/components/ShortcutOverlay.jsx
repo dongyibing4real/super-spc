@@ -6,13 +6,15 @@ export default function ShortcutOverlay() {
 
   if (!show) return null;
 
+  const close = () => spcStore.setState((s) => ({ ...s, ui: { ...s.ui, shortcutOverlay: false } }));
+
   return (
     <div className="shortcut-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
-      <div className="shortcut-overlay-backdrop" data-action="close-shortcut-overlay" />
+      <div className="shortcut-overlay-backdrop" onClick={close} />
       <div className="shortcut-overlay-panel">
         <div className="shortcut-overlay-header">
           <h2 className="shortcut-overlay-title">Keyboard Shortcuts</h2>
-          <button className="shortcut-overlay-close" data-action="close-shortcut-overlay" type="button" aria-label="Close">&times;</button>
+          <button className="shortcut-overlay-close" onClick={close} type="button" aria-label="Close">&times;</button>
         </div>
         <dl className="shortcut-list">
           <div className="shortcut-group-label">Violations</div>

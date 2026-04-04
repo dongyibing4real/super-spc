@@ -1,5 +1,7 @@
-import { useRef, useEffect } from "react";
-import { bootLegacyApp } from "./legacy-boot.js";
+import { useRef } from "react";
+import useAppBoot from "./hooks/useAppBoot.js";
+import useKeyboardShortcuts from "./hooks/useKeyboardShortcuts.js";
+import useDragInteractions from "./hooks/useDragInteractions.js";
 import Sidebar from "./components/Sidebar.jsx";
 import Notice from "./components/Notice.jsx";
 import ContextMenu from "./components/ContextMenu.jsx";
@@ -7,24 +9,18 @@ import Router from "./components/Router.jsx";
 import ShortcutOverlay from "./components/ShortcutOverlay.jsx";
 
 export default function App() {
-  const legacyRef = useRef(null);
-  const bootedRef = useRef(false);
+  const mainRef = useRef(null);
 
-  useEffect(() => {
-    if (!bootedRef.current && legacyRef.current) {
-      bootLegacyApp(legacyRef.current);
-      bootedRef.current = true;
-    }
-  }, []);
+  useAppBoot();
+  useKeyboardShortcuts(mainRef);
+  useDragInteractions(mainRef);
 
   return (
     <div className="app-shell">
       <Sidebar />
-      <main className="main-shell">
+      <main className="main-shell" ref={mainRef}>
         <Notice />
         <Router />
-        {/* Legacy morphRoot — hidden, used for event listener scope */}
-        <div ref={legacyRef} style={{ display: "none" }} />
         <ShortcutOverlay />
       </main>
       <ContextMenu />
