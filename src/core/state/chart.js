@@ -1,7 +1,7 @@
 import { clamp, updateSlot, createSlot, DEFAULT_PARAMS } from './init.js';
 import { getFocused } from './selectors.js';
 import { collectChartIds } from './layout.js';
-import { reconcileParams } from '../../reconcile-params.js';  // used by setChartParams
+import { reconcileParams } from './reconcile-params.js';
 import { CHART_TYPE_LABELS } from '../../helpers.js';
 
 export function selectPoint(state, index, id = null) {

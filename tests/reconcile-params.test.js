@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { reconcileParams } from "../src/reconcile-params.js";
+import { reconcileParams } from "../src/core/state/reconcile-params.js";
 
 // ---------------------------------------------------------------------------
 // Test columns fixture
