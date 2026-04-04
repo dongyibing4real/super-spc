@@ -24,7 +24,7 @@ import { DEFAULT_FORECAST_HORIZON } from "../prediction/constants.js";
  * React wrapper around the D3 createChart factory.
  * React manages the mount lifecycle; D3 owns the SVG content.
  */
-export default function Chart({ chartId }) {
+export default function Chart({ chartId, onContextMenu: onContextMenuProp }) {
   const mountRef = useRef(null);
   const chartRef = useRef(null);
 
@@ -120,11 +120,22 @@ export default function Chart({ chartId }) {
     };
   }, [chartId]); // Only re-create if chartId changes
 
-  // Update D3 chart when data changes
+  // Update D3 chart when data changes.
+  // Defer to rAF so flex layout has settled and syncSize reads correct dimensions.
   useEffect(() => {
     if (!chartRef.current || !slot) return;
-    const data = buildChartData(chartId);
-    if (data) chartRef.current.update(data);
+    // Double-rAF: first frame to let React/browser settle layout,
+    // second frame to ensure flex dimensions are final.
+    let cancelled = false;
+    requestAnimationFrame(() => {
+      if (cancelled || !chartRef.current) return;
+      requestAnimationFrame(() => {
+        if (cancelled || !chartRef.current) return;
+        const data = buildChartData(chartId);
+        if (data) chartRef.current.update(data);
+      });
+    });
+    return () => { cancelled = true; };
   }, [chartId, slot, points, chartToggles, selectedPointIndex, selectedPointIndices]);
 
   return (
@@ -135,6 +146,7 @@ export default function Chart({ chartId }) {
       tabIndex={0}
       data-chart-focus="true"
       aria-label={`${chartId} control chart`}
+      onContextMenu={onContextMenuProp}
     />
   );
 }

@@ -135,9 +135,7 @@ function ChartPane({ state, chartId }) {
       {showTable ? (
         <DataTable state={state} chartId={chartId} />
       ) : (
-        <div className="chart-stage" onContextMenu={handleContextMenu}>
-          <Chart key={chartId} chartId={chartId} />
-        </div>
+        <Chart key={chartId} chartId={chartId} onContextMenu={handleContextMenu} />
       )}
     </div>
   );
