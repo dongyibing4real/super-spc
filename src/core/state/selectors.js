@@ -345,7 +345,7 @@ export function buildMethodLabComparison(state) {
       id,
       isFocused: id === state.focusedChartId,
       // Method config
-      chartType: slot.context?.chartType?.label || params.chart_type || "—",
+      chartType: slot.context?.chartType?.label || (params.chart_type ? params.chart_type : "Select…"),
       sigmaMethod: slot.context?.sigma?.detail || SIGMA_METHOD_LABELS[params.sigma_method] || "—",
       kSigma: params.k_sigma ?? 3,
       subgroup: slot.context?.subgroup?.detail || "Individual",

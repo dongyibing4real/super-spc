@@ -220,7 +220,7 @@ export function createLayoutInteractionRuntime(ctx) {
 
         const ghost = documentRef.createElement("div");
         ghost.className = "drag-ghost";
-        ghost.textContent = chartTypeLabels[getState().charts[chartId]?.params?.chart_type] || "Chart";
+        ghost.textContent = (getState().charts[chartId]?.params?.chart_type && chartTypeLabels[getState().charts[chartId].params.chart_type]) || "Chart";
         documentRef.body.appendChild(ghost);
         pane.classList.add("dragging");
 

@@ -66,18 +66,21 @@ export const SIGMA_METHOD_LABELS = {
 };
 
 export function applyParamsToContext(context, params) {
+  const chartLabel = params.chart_type
+    ? (CHART_TYPE_LABELS[params.chart_type] || params.chart_type)
+    : "Select\u2026";
   const result = {
     ...context,
     chartType: {
-      id: params.chart_type,
-      label: CHART_TYPE_LABELS[params.chart_type] || params.chart_type,
-      detail: "",
+      id: params.chart_type || null,
+      label: chartLabel,
+      detail: params.chart_type ? "" : "No chart type selected",
     },
     sigma: {
       label: `${params.k_sigma} Sigma`,
       detail: SIGMA_METHOD_LABELS[params.sigma_method] || params.sigma_method,
     },
-    methodBadge: CHART_TYPE_LABELS[params.chart_type] || params.chart_type,
+    methodBadge: params.chart_type ? chartLabel : "",
   };
   // Per-chart column overrides
   if (params.value_column) {
@@ -102,16 +105,13 @@ export function applyParamsToContext(context, params) {
  */
 export function getDisabledChartTypes(params, columns) {
   const disabled = new Set();
-  const hasValue = !!params.value_column;
-  const hasSubgroup = !!params.subgroup_column;
 
-  if (!hasValue) {
+  if (!params.value_column) {
     return new Set(Object.keys(CHART_TYPE_LABELS));
   }
-  if (!hasSubgroup) {
-    for (const ct of SUBGROUP_REQUIRED) disabled.add(ct);
-  }
-  const numericCount = columns.filter(c => c.dtype === "numeric").length;
+  // Subgroup-required charts are NOT disabled when subgroup is null.
+  // reconcileParams handles cascading; the UI shows a warning chip instead.
+  const numericCount = columns.filter((c) => c.dtype === "numeric").length;
   if (numericCount < 2) {
     disabled.add("hotelling_t2");
     disabled.add("mewma");

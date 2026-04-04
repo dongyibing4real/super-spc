@@ -7,6 +7,7 @@ import {
   DEFAULT_PARAMS,
   focusChart,
   setChartParams,
+  setRecipeParams,
   setActiveChipEditor,
   addChart,
   togglePaneDataTable,
@@ -20,6 +21,7 @@ import {
   INDIVIDUAL_ONLY,
   SUBGROUP_REQUIRED,
   getDisabledChartTypes,
+  CHART_TYPE_LABELS,
 } from "../helpers.js";
 import {
   reanalyze,
@@ -100,19 +102,21 @@ function specSummary(params) {
 
 /* --- Dispatch helpers for chart param changes --- */
 
+const RECIPE_KEYS = new Set(["chart_type", "value_column", "subgroup_column", "phase_column"]);
+
 function dispatchChartParam(prefix, paramUpdate) {
+  const needsReconcile = Object.keys(paramUpdate).some((k) => RECIPE_KEYS.has(k));
   if (prefix === "_pending") {
     spcStore.setState((s) => {
       const pending = { ...s.ui.pendingNewChart, ...paramUpdate };
       let next = { ...s, ui: { ...s.ui, pendingNewChart: pending } };
-      next = setActiveChipEditor(next, null);
-      return next;
+      return setActiveChipEditor(next, null);
     });
   } else {
     spcStore.setState((s) => {
-      let next = setChartParams(s, prefix, paramUpdate);
-      next = setActiveChipEditor(next, null);
-      return next;
+      const setter = needsReconcile ? setRecipeParams : setChartParams;
+      let next = setter(s, prefix, paramUpdate);
+      return setActiveChipEditor(next, null);
     });
     reanalyze();
   }
@@ -125,7 +129,9 @@ function dispatchPendingParamNoClose(prefix, paramUpdate) {
       ui: { ...s.ui, pendingNewChart: { ...s.ui.pendingNewChart, ...paramUpdate } },
     }));
   } else {
-    spcStore.setState((s) => setChartParams(s, prefix, paramUpdate));
+    const needsReconcile = Object.keys(paramUpdate).some((k) => RECIPE_KEYS.has(k));
+    const setter = needsReconcile ? setRecipeParams : setChartParams;
+    spcStore.setState((s) => setter(s, prefix, paramUpdate));
     reanalyze();
   }
 }
@@ -237,27 +243,18 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
     {
       id: `${prefix}-subgroup`,
       label: "Subgroup",
-      value: INDIVIDUAL_ONLY.has(params.chart_type)
-        ? "Individual (n=1)"
-        : ae === `${prefix}-subgroup`
-          ? <ChipSelect
-              resetKey={prefix}
-              onChange={(e) => {
-                if (INDIVIDUAL_ONLY.has(params.chart_type)) return;
-                const newSg = e.target.value || null;
-                if (!newSg && SUBGROUP_REQUIRED.has(params.chart_type)) return;
-                dispatchChartParam(prefix, { subgroup_column: newSg });
-              }}
-              options={[
-                ...(SUBGROUP_REQUIRED.has(params.chart_type) ? [] : [["", "Individual (n=1)"]]),
-                ...allNonValue.map((c) => [c.name, c.name]),
-              ]}
-              current={currentSg}
-            />
-          : context.subgroup.label,
-      detail: INDIVIDUAL_ONLY.has(params.chart_type)
-        ? "Locked"
-        : ae === `${prefix}-subgroup` ? "" : context.subgroup.detail,
+      value: ae === `${prefix}-subgroup`
+        ? <ChipSelect
+            resetKey={prefix}
+            onChange={(e) => dispatchChartParam(prefix, { subgroup_column: e.target.value || null })}
+            options={[
+              ["", "Individual (n=1)"],
+              ...allNonValue.map((c) => [c.name, c.name]),
+            ]}
+            current={currentSg}
+          />
+        : context.subgroup.label,
+      detail: ae === `${prefix}-subgroup` ? "" : context.subgroup.detail,
     },
     {
       id: `${prefix}-phase`,
@@ -278,20 +275,16 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
       value: ae === `${prefix}-chart`
         ? <ChipGroupSelect
             resetKey={prefix}
-            onChange={(e) => {
-              const newType = e.target.value;
-              const updates = { chart_type: newType };
-              if (INDIVIDUAL_ONLY.has(newType)) updates.subgroup_column = null;
-              dispatchChartParam(prefix, updates);
-            }}
+            onChange={(e) => dispatchChartParam(prefix, { chart_type: e.target.value || null })}
             groups={CHART_TYPES}
-            current={params.chart_type}
+            current={params.chart_type || ""}
             disabledSet={getDisabledChartTypes(params, cols)}
           />
         : context.chartType.label,
       detail: ae === `${prefix}-chart` ? "" : context.chartType.detail,
     },
-    ...(!NO_SIGMA_CHARTS.has(params.chart_type) ? [{
+    // Progressive disclosure: hide Sigma/Tests/Specs when chart_type is null
+    ...(params.chart_type && !NO_SIGMA_CHARTS.has(params.chart_type) ? [{
       id: `${prefix}-sigma`,
       label: "Sigma",
       value: ae === `${prefix}-sigma`
@@ -299,7 +292,8 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
         : context.sigma.label,
       detail: ae === `${prefix}-sigma` ? "" : (SIGMA_METHOD_CHARTS.has(params.chart_type) ? context.sigma.detail : ""),
     }] : []),
-    {
+    // Progressive disclosure: Tests and Specs hidden when chart_type is null
+    ...(params.chart_type ? [{
       id: `${prefix}-tests`,
       label: "Tests",
       value: ae === `${prefix}-tests`
@@ -336,46 +330,46 @@ function ChartChips({ state, prefix, params, context, ae, cols }) {
         )
         : context.tests.label,
       detail: ae === `${prefix}-tests` ? "" : context.tests.detail,
-    },
-    {
+    }] : []),
+    ...(params.chart_type ? [{
       id: `${prefix}-specs`,
       label: "Specs",
       value: ae === `${prefix}-specs`
         ? <SpecEditor prefix={prefix} params={params} />
         : specSummary(params),
       detail: "",
-    },
+    }] : []),
   ];
 
   return chips.map((chip) => {
     const isEditing = ae === chip.id;
-    const isSubgroup = chip.id.endsWith("-subgroup");
-    const isLocked = isSubgroup && INDIVIDUAL_ONLY.has(params.chart_type);
-    const needsSubgroup = isSubgroup && SUBGROUP_REQUIRED.has(params.chart_type) && !currentSg;
+    const isChart = chip.id.endsWith("-chart");
+    const isPlaceholder = isChart && !params.chart_type;
     const specVal = chip.id.endsWith("-specs") ? (typeof chip.value === "string" ? chip.value : "") : "";
     const isSpecsUnset = chip.id.endsWith("-specs") && specVal === "Not set";
-    const warnClass = isSpecsUnset || needsSubgroup ? "chip--warn" : "";
-    const lockedClass = isLocked ? "chip--locked" : "";
+    const warnClass = isSpecsUnset ? "chip--warn" : "";
+    const placeholderClass = isPlaceholder ? "chip--placeholder" : "";
     const titleAttr = isSpecsUnset
       ? "Set LSL / USL to enable Cpk, Ppk capability analysis"
-      : needsSubgroup
-        ? "This chart type requires a subgroup column"
-        : isLocked
-          ? "This chart type uses individual measurements only"
-          : undefined;
-    const valueStr = typeof chip.value === "string" ? chip.value : "";
+      : isPlaceholder
+        ? "Select a chart type to begin analysis"
+        : undefined;
+    const ariaLabel = isPlaceholder
+      ? "Chart type: not selected. Click to choose."
+      : undefined;
 
     return (
       <button
         key={chip.id}
-        className={`recipe-chip ${isEditing ? "chip-editing" : ""} ${warnClass} ${lockedClass}`}
-        onClick={() => handleToggleChip(chip.id, isLocked)}
+        className={`recipe-chip ${isEditing ? "chip-editing" : ""} ${warnClass} ${placeholderClass}`}
+        onClick={() => handleToggleChip(chip.id, false)}
         type="button"
         title={titleAttr}
-        disabled={isLocked || undefined}
+        aria-label={ariaLabel}
+        disabled={undefined}
       >
         <span className="chip-label">{chip.label}</span>
-        <strong>{typeof chip.value === "string" ? valueStr : chip.value}</strong>
+        <strong>{typeof chip.value === "string" ? chip.value : chip.value}</strong>
         {chip.detail ? <span className="chip-detail">{chip.detail}</span> : null}
       </button>
     );
@@ -633,8 +627,9 @@ export default function RecipeRail() {
         const restoredCharts = {};
         for (const cid of saved.chartOrder) {
           const p = saved.chartParams[cid];
-          if (p && INDIVIDUAL_ONLY.has(p.chart_type)) p.subgroup_column = null;
-          restoredCharts[cid] = createSlot(p ? { params: p } : {});
+          const mem = saved.cascadeMemory?.[cid] || null;
+          // Restore params as-is; setChartParams will reconcile on next param change
+          restoredCharts[cid] = createSlot(p ? { params: p, _cascadeMemory: mem } : {});
         }
         next = {
           ...next,

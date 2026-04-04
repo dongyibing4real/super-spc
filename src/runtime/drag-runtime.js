@@ -204,7 +204,7 @@ export function setupDragInteractions({
 
       const ghost = documentRef.createElement("div");
       ghost.className = "drag-ghost";
-      ghost.textContent = chartTypeLabels[state.charts[chartId]?.params?.chart_type] || "Chart";
+      ghost.textContent = (state.charts[chartId]?.params?.chart_type && chartTypeLabels[state.charts[chartId].params.chart_type]) || "Chart";
       documentRef.body.appendChild(ghost);
       pane.classList.add("dragging");
 

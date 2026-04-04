@@ -380,6 +380,16 @@
   pointer-events: none;
   cursor: default;
 }
+.recipe-chip.chip--placeholder {
+  border-style: dashed;
+}
+.recipe-chip.chip--placeholder strong {
+  color: var(--text-muted, #666);
+  opacity: 0.4;
+}
+.recipe-chip.chip--placeholder .chip-label {
+  opacity: 0.4;
+}
 
 .chip-label {
   display: block;

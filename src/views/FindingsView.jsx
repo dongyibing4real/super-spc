@@ -523,8 +523,8 @@ function ChartRailCard({ id, charts, isActive, onSwitch }) {
   const label =
     s?.context?.chartType?.label ||
     CHART_TYPE_LABELS[s?.params?.chart_type] ||
-    id;
-  const roleLabel = CHART_TYPE_LABELS[s?.params?.chart_type] || id;
+    (s?.params?.chart_type ? id : "Select\u2026");
+  const roleLabel = CHART_TYPE_LABELS[s?.params?.chart_type] || (s?.params?.chart_type ? id : "Select\u2026");
   const violations = s?.violations || [];
   const oocCount = violations.reduce((sum, v) => sum + v.indices.length, 0);
   const cap = s?.capability;

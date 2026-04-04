@@ -32,12 +32,12 @@ const DEFAULT_CONTEXT = {
   metric: { id: "value", label: "Value", unit: "" },
   subgroup: { id: "default", label: "Individual", detail: "n=1" },
   phase: { id: "default", label: "All data", detail: "No phases" },
-  chartType: { id: "imr", label: "IMR", detail: "Individual + Moving Range" },
+  chartType: { id: null, label: "Select\u2026", detail: "No chart type selected" },
   sigma: { label: "3 Sigma", detail: "Moving range" },
   tests: { label: "Nelson", detail: "Rule 1, 2, 5" },
   compare: { label: "None", detail: "Single method" },
   window: "",
-  methodBadge: "IMR",
+  methodBadge: "",
   status: "Loading"
 };
 
@@ -47,7 +47,7 @@ const DEFAULT_LIMITS = {
 };
 
 export const DEFAULT_PARAMS = {
-  chart_type: "imr",
+  chart_type: null,
   sigma_method: "moving_range",
   k_sigma: 3.0,
   nelson_tests: [1, 2, 5],
@@ -76,6 +76,7 @@ export function createSlot(overrides = {}) {
     selectedPointIndex: null,
     showDataTable: false,
     accentIdx: 0,
+    _cascadeMemory: { lastIndividualType: null, lastSubgroupedType: null },
     forecast: {
       mode: "hidden",   // hidden | prompt | active
       selected: false,

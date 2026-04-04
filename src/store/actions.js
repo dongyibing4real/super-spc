@@ -32,6 +32,9 @@ const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
 
 /** Pre-validate chart params before hitting the backend. */
 export function validatedRunAnalysis(datasetId, params) {
+  if (!params.chart_type) {
+    return Promise.reject(new Error("No chart type selected."));
+  }
   if (SUBGROUP_REQUIRED.has(params.chart_type) && !params.subgroup_column) {
     return Promise.reject(new Error(
       `${CHART_TYPE_LABELS[params.chart_type] || params.chart_type} requires a subgroup column. Select one in the Subgroup chip.`
@@ -125,9 +128,11 @@ export function saveLayout() {
       focusedChartId: state.focusedChartId,
       nextChartId: state.nextChartId,
       chartParams: {},
+      cascadeMemory: {},
     };
     for (const id of state.chartOrder) {
       data.chartParams[id] = state.charts[id]?.params || null;
+      data.cascadeMemory[id] = state.charts[id]?._cascadeMemory || null;
     }
     localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(data));
   } catch { /* localStorage unavailable or full */ }
@@ -177,8 +182,9 @@ export async function bootApp() {
       const restoredCharts = {};
       for (const cid of saved.chartOrder) {
         const p = saved.chartParams[cid];
-        if (p && INDIVIDUAL_ONLY.has(p.chart_type)) p.subgroup_column = null;
-        restoredCharts[cid] = createSlot(p ? { params: p } : {});
+        const mem = saved.cascadeMemory?.[cid] || null;
+        // Restore as-is; setChartParams reconciles on next param change
+        restoredCharts[cid] = createSlot(p ? { params: p, _cascadeMemory: mem } : {});
       }
       const state = spcStore.getState();
       spcStore.setState({

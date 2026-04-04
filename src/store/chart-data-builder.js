@@ -58,6 +58,11 @@ export function buildChartData(id) {
   const slot = state.charts[id];
   if (!slot) return null;
 
+  // No chart type selected: render empty canvas
+  if (!slot.params?.chart_type) {
+    return null;
+  }
+
   const points = getChartPoints(slot, state.points);
   const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
   const lastIdx = Math.max(0, points.length - 1);

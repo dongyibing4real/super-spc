@@ -48,6 +48,9 @@ export function setupAxisDrag(hitElement, axisType, getContext, callbacks) {
     document.body.style.cursor = 'grabbing';
     hitElement.style('cursor', 'grabbing');
 
+    let lastLo = startMin;
+    let lastHi = startMax;
+
     const onMove = (e) => {
       callbacks.onForecastActivity?.();
       const dx = e.clientX - startClientX;
@@ -66,14 +69,14 @@ export function setupAxisDrag(hitElement, axisType, getContext, callbacks) {
 
       // Clamp range only — no position walls, free pan like y-axis
       halfRange = Math.max(minRange / 2, Math.min(maxRange / 2, halfRange));
-      const lo = center - halfRange;
-      const hi = center + halfRange;
+      lastLo = center - halfRange;
+      lastHi = center + halfRange;
 
-      // Emit unified event
+      // Live re-render in D3 directly — bypass React/Zustand store
       if (axisType === 'x') {
-        callbacks.onAxisDrag?.({ axis: 'x', min: lo, max: hi });
+        callbacks.onAxisDragLive?.({ axis: 'x', min: lastLo, max: lastHi });
       } else {
-        callbacks.onAxisDrag?.({ axis: 'y', yMin: lo, yMax: hi });
+        callbacks.onAxisDragLive?.({ axis: 'y', yMin: lastLo, yMax: lastHi });
       }
     };
 
@@ -83,6 +86,12 @@ export function setupAxisDrag(hitElement, axisType, getContext, callbacks) {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       activeDragCleanup = null;
+      // Commit final position to store only on drag end
+      if (axisType === 'x') {
+        callbacks.onAxisDrag?.({ axis: 'x', min: lastLo, max: lastHi });
+      } else {
+        callbacks.onAxisDrag?.({ axis: 'y', yMin: lastLo, yMax: lastHi });
+      }
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);

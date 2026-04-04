@@ -66,7 +66,16 @@ test("focusChart does not mutate original state", () => {
 
 test("addChart creates a new chart slot", () => {
   const state = createInitialState();
-  const next = addChart(state, { chartType: "p" });
+  // Set up columns and value on focused chart so reconcileParams doesn't clear
+  let withCols = {
+    ...state,
+    columnConfig: { columns: [
+      { name: "val", dtype: "numeric", role: "value" },
+      { name: "batch", dtype: "string", role: "subgroup" },
+    ] },
+  };
+  withCols = setChartParams(withCols, "chart-1", { value_column: "val", subgroup_column: "batch" });
+  const next = addChart(withCols, { chartType: "p" });
   const newId = "chart-2";
   assert.ok(next.charts[newId], "new slot should exist");
   assert.equal(next.charts[newId].params.chart_type, "p");
@@ -100,15 +109,17 @@ test("addChart updates chartLayout", () => {
 
 test("addChart inherits column selections from focused chart", () => {
   const state = createInitialState();
-  const withCol = setChartParams(state, "chart-1", { value_column: "weight" });
+  // Set columnConfig BEFORE setChartParams so reconcileParams can validate the column
+  const withCols = { ...state, columnConfig: { columns: [{ name: "weight", dtype: "numeric", role: "value" }] } };
+  const withCol = setChartParams(withCols, "chart-1", { value_column: "weight" });
   const next = addChart(withCol, { chartType: "ewma" });
   assert.equal(next.charts["chart-2"].params.value_column, "weight");
 });
 
-test("addChart defaults to imr when no chartType given", () => {
+test("addChart defaults to null when no chartType given", () => {
   const state = createInitialState();
   const next = addChart(state);
-  assert.equal(next.charts["chart-2"].params.chart_type, "imr");
+  assert.equal(next.charts["chart-2"].params.chart_type, null);
 });
 
 test("addChart does not mutate original state", () => {
@@ -231,8 +242,8 @@ test("setChartParams merges params into the chart slot", () => {
   const next = setChartParams(state, "chart-1", { k_sigma: 2.0, nelson_tests: [1] });
   assert.equal(next.charts["chart-1"].params.k_sigma, 2.0);
   assert.deepEqual(next.charts["chart-1"].params.nelson_tests, [1]);
-  // Other params unchanged
-  assert.equal(next.charts["chart-1"].params.chart_type, "imr");
+  // Other params unchanged (chart_type defaults to null now)
+  assert.equal(next.charts["chart-1"].params.chart_type, null);
 });
 
 test("setChartParams does not affect other chart slots", () => {
