@@ -23,6 +23,7 @@
  */
 
 import { INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "../../helpers.js";
+import { updateSlot } from "./init.js";
 
 const DEFAULT_CASCADE_MEMORY = {
   lastIndividualType: null,
@@ -101,4 +102,16 @@ export function reconcileParams(oldParams, patch, columns, cascadeMemory) {
   }
 
   return { params: p, cascadeMemory: mem };
+}
+
+/** Set recipe-level params (chart_type, value_column, subgroup_column, phase_column)
+ *  with reconciliation. Only call this for params that affect recipe validity. */
+export function setRecipeParams(state, id, patch) {
+  const slot = state.charts[id];
+  if (!slot) return state;
+  const cols = state.columnConfig?.columns || [];
+  const { params: reconciled, cascadeMemory } = reconcileParams(
+    slot.params, patch, cols, slot._cascadeMemory
+  );
+  return updateSlot(state, id, { params: reconciled, _cascadeMemory: cascadeMemory });
 }

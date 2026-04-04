@@ -1,7 +1,6 @@
 import { clamp, updateSlot, createSlot, DEFAULT_PARAMS } from './init.js';
 import { getFocused } from './selectors.js';
 import { collectChartIds } from './layout.js';
-import { reconcileParams } from './reconcile-params.js';
 import { CHART_TYPE_LABELS } from '../../helpers.js';
 
 export function selectPoint(state, index, id = null) {
@@ -129,17 +128,6 @@ export function setChartParams(state, id, params) {
   return updateSlot(state, id, { params: { ...state.charts[id].params, ...params } });
 }
 
-/** Set recipe-level params (chart_type, value_column, subgroup_column, phase_column)
- *  with reconciliation. Only call this for params that affect recipe validity. */
-export function setRecipeParams(state, id, patch) {
-  const slot = state.charts[id];
-  if (!slot) return state;
-  const cols = state.columnConfig?.columns || [];
-  const { params: reconciled, cascadeMemory } = reconcileParams(
-    slot.params, patch, cols, slot._cascadeMemory
-  );
-  return updateSlot(state, id, { params: reconciled, _cascadeMemory: cascadeMemory });
-}
 
 export function setActiveChipEditor(state, chipId) {
   return {
