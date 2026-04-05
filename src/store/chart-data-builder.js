@@ -53,8 +53,8 @@ export function extendForecastToViewport(nextState, id, nextXMax) {
  * @param {string} id — chart slot ID (e.g. "chart-1")
  * @returns {object} — { points, limits, phases, forecast, toggles, selectedIndex, ... }
  */
-export function buildChartData(id) {
-  const state = spcStore.getState();
+export function buildChartData(id, state) {
+  state = state || spcStore.getState();
   const slot = state.charts[id];
   if (!slot) return null;
 
