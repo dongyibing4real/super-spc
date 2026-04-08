@@ -6,7 +6,6 @@ import { renderGrid, renderConfidenceBand } from './overlays.js';
 import { renderPhases } from './phases.js';
 import { renderSeries } from './series.js';
 import { renderPoints } from './points.js';
-import { renderSelection } from './selection.js';
 import { renderAxes } from './axes.js';
 import { renderEvents } from './events.js';
 import { renderProjection, renderProjectionPrompt, renderProjectionShell } from './projection.js';
@@ -169,7 +168,6 @@ export function createChart(container, options = {}) {
     xTitle: svg.append('g').attr('class', 'layer-x-title'),     // x-axis title
     yTitle: svg.append('g').attr('class', 'layer-y-title'),     // y-axis title
     forecastHandle: svg.append('g').attr('class', 'layer-forecast-handle'),
-    selection: plotClip.append('g').attr('class', 'layer-selection'),
     marquee: svg.append('g').attr('class', 'layer-marquee'),
   };
 
@@ -536,9 +534,6 @@ export function createChart(container, options = {}) {
 
     // Axis titles
     renderAxisTitles(layers.xTitle, layers.yTitle, data, sizedConfig);
-
-    // Selection halo (using configurable seriesKey)
-    renderSelection(layers.selection, scales, data, seriesKey, sizedConfig);
 
     // ── Update clip rect to match plot area ────────────────────────
     const p = sizedConfig.padding;

@@ -43,7 +43,7 @@ import { navigate, setLoadingState, setError, setDatasets } from "../core/state/
 import {
   createDataset,
   fetchDatasets,
-  fetchPoints,
+  fetchRows,
   fetchColumns,
   deleteDataset,
 } from "../data/api.js";
@@ -500,7 +500,7 @@ function DatasetList({ datasets, dataPrep }) {
     spcStore.setState(selectPrepDataset(state, dsId));
     try {
       const [pts, cols] = await Promise.all([
-        fetchPoints(dsId),
+        fetchRows(dsId),
         fetchColumns(dsId).catch(() => []),
       ]);
       let next = setColumns(spcStore.getState(), cols);

@@ -1,12 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  createInitialState,
-  setStructuralFindings,
-  selectStructuralFinding,
-  setFindingsChart,
-} from "../../src/core/state.js";
+import { createInitialState } from "../../src/core/state/init.js";
+import { setStructuralFindings, selectStructuralFinding, setFindingsChart } from "../../src/core/state/findings.js";
 
 test("setStructuralFindings stores findings and auto-selects first", () => {
   const state = createInitialState();

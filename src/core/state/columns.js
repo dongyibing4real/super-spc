@@ -5,13 +5,6 @@ export function setColumns(state, columns) {
   };
 }
 
-export function setColumnsLoading(state) {
-  return {
-    ...state,
-    columnConfig: { ...state.columnConfig, loading: true },
-  };
-}
-
 export function setExpandedProfileColumn(state, colName) {
   const current = state.dataPrep.expandedProfileColumn;
   return {

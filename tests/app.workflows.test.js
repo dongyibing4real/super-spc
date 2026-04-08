@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createInitialState, createSlot } from "../src/core/state.js";
+import { createInitialState, createSlot } from "../src/core/state/init.js";
 import {
   applyColumnRolesToChartParams,
   buildSuccessfulAnalysisSlots,
   finalizeDatasetLoad,
   finalizeReanalysis,
-} from "../src/runtime/analysis-runtime.js";
+} from "../src/core/state/analysis.js";
 
 function createAnalysisResult({
   id = "analysis-1",

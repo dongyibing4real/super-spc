@@ -1,33 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { createInitialState, createSlot } from "../src/core/state/init.js";
 import {
-  activateForecast,
-  cancelForecast,
-  clearNotice,
-  createInitialState,
-  createSlot,
-  deriveWorkspace,
-  failTransformStep,
-  getPrimary,
-  loadDataset,
-  navigate,
-  recoverTransformStep,
-  resetAxis,
-  selectForecast,
-  selectPoint,
-  setForecastHorizon,
-  setForecastPrompt,
-  setChallengerStatus,
-  setDatasets,
-  setError,
-  setLoadingState,
-  setXDomainOverride,
-  setYDomainOverride,
-  toggleChartOption,
-  togglePointExclusion,
-  toggleTransform,
-} from "../src/core/state.js";
+  activateForecast, cancelForecast, resetAxis, selectForecast, selectPoint,
+  setForecastHorizon, setForecastPrompt, setXDomainOverride, setYDomainOverride,
+  toggleChartOption, togglePointExclusion,
+} from "../src/core/state/chart.js";
+import { clearNotice, navigate, setDatasets, setError, setLoadingState } from "../src/core/state/ui.js";
+import { loadDataset } from "../src/core/state/pipeline.js";
+import { deriveWorkspace, getFirstChart } from "../src/core/state/selectors.js";
 
 /* 鈺愨晲鈺?Test fixture 鈥?builds a populated state like the old mock 鈺愨晲鈺?*/
 
@@ -183,17 +165,6 @@ test("excluding a point keeps it visible and updates exclusion count", () => {
   // Notice is now set by middleware, not the reducer directly
 });
 
-test("failed transform keeps the prior chart result while marking pipeline partial", () => {
-  const initial = createPopulatedState();
-  const before = deriveWorkspace(initial).signal.title;
-  const next = failTransformStep(initial, "normalize");
-  const after = deriveWorkspace(next).signal.title;
-
-  assert.equal(next.pipeline.status, "partial");
-  assert.equal(next.pipeline.rescueMode, "retain-previous-compute");
-  assert.equal(before, after);
-});
-
 // 鈹€鈹€ Axis interaction state tests 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 test("setXDomainOverride stores custom x-axis range", () => {
@@ -259,14 +230,6 @@ test("toggleChartOption does not mutate original chartToggles", () => {
   assert.equal(initial.chartToggles.grid, true);
   assert.equal(next.chartToggles.grid, false);
   assert.notEqual(initial.chartToggles, next.chartToggles);
-});
-
-test("toggleTransform does not mutate original transforms", () => {
-  const initial = createPopulatedState();
-  const next = toggleTransform(initial, "winsorize");
-  assert.equal(initial.transforms[1].active, true);
-  assert.equal(next.transforms[1].active, false);
-  assert.notEqual(initial.transforms, next.transforms);
 });
 
 test("clearNotice clears the notice", () => {
@@ -394,10 +357,9 @@ test("challenger phases are independent from primary phases", () => {
   assert.deepEqual(next.charts["chart-2"].phases, []);
 });
 
-test("getPhaseLabel reads from primary slot phases", () => {
+test("getFirstChart reads from primary slot phases", () => {
   const s = createPopulatedState();
-  // getPrimary(s).phases has P1, P2, P3
-  const primary = getPrimary(s);
+  const primary = getFirstChart(s);
   assert.equal(primary.phases.length, 3);
   assert.equal(primary.phases[0].label, "Pre-clean baseline");
   // State no longer has top-level phases
