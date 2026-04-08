@@ -1,8 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
+import { createInitialState } from "../../src/core/state/init.js";
 import {
-  createInitialState,
   selectPrepDataset,
   loadPrepPoints,
   setPrepError,
@@ -11,18 +11,14 @@ import {
   setPrepTable,
   addPrepTransform,
   undoPrepTransform,
-  undoPrepTransformTo,
   clearPrepTransforms,
-  setPrepHiddenColumns,
   markPrepSaved,
   setActivePanel,
   closeActivePanel,
   updateColumnMeta,
   addColumnMeta,
   toggleRowExclusion,
-  bulkExcludeRows,
-  clearAllExclusions,
-} from "../../src/core/state.js";
+} from "../../src/core/state/data-prep.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -232,34 +228,6 @@ describe("undoPrepTransform", () => {
   });
 });
 
-describe("undoPrepTransformTo", () => {
-  it("removes transforms from stepIndex onward", () => {
-    let s = createInitialState();
-    s = addPrepTransform(s, { type: "sort", id: 0 });
-    s = addPrepTransform(s, { type: "filter", id: 1 });
-    s = addPrepTransform(s, { type: "rename", id: 2 });
-    s = addPrepTransform(s, { type: "recode", id: 3 });
-
-    const next = undoPrepTransformTo(s, 2);
-
-    assert.equal(next.dataPrep.transforms.length, 2);
-    assert.equal(next.dataPrep.transforms[0].id, 0);
-    assert.equal(next.dataPrep.transforms[1].id, 1);
-    assert.equal(next.dataPrep.unsavedChanges, true);
-  });
-
-  it("clears all transforms when stepIndex is 0", () => {
-    let s = createInitialState();
-    s = addPrepTransform(s, { type: "sort" });
-    s = addPrepTransform(s, { type: "filter" });
-
-    const next = undoPrepTransformTo(s, 0);
-
-    assert.equal(next.dataPrep.transforms.length, 0);
-    assert.equal(next.dataPrep.unsavedChanges, false);
-  });
-});
-
 describe("clearPrepTransforms", () => {
   it("empties transforms and marks saved", () => {
     let s = createInitialState();
@@ -270,18 +238,6 @@ describe("clearPrepTransforms", () => {
 
     assert.deepEqual(next.dataPrep.transforms, []);
     assert.equal(next.dataPrep.unsavedChanges, false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// setPrepHiddenColumns
-// ---------------------------------------------------------------------------
-describe("setPrepHiddenColumns", () => {
-  it("sets hiddenColumns", () => {
-    const prev = createInitialState();
-    const next = setPrepHiddenColumns(prev, ["x", "y"]);
-
-    assert.deepEqual(next.dataPrep.hiddenColumns, ["x", "y"]);
   });
 });
 
@@ -416,34 +372,3 @@ describe("toggleRowExclusion", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// bulkExcludeRows
-// ---------------------------------------------------------------------------
-describe("bulkExcludeRows", () => {
-  it("adds multiple row indices, deduplicating", () => {
-    const prev = stateWithPrep({ excludedRows: [1, 3] });
-    const next = bulkExcludeRows(prev, [3, 5, 7]);
-
-    const sorted = [...next.dataPrep.excludedRows].sort((a, b) => a - b);
-    assert.deepEqual(sorted, [1, 3, 5, 7]);
-  });
-
-  it("works on empty initial exclusions", () => {
-    const prev = createInitialState();
-    const next = bulkExcludeRows(prev, [10, 20]);
-
-    assert.deepEqual(next.dataPrep.excludedRows, [10, 20]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// clearAllExclusions
-// ---------------------------------------------------------------------------
-describe("clearAllExclusions", () => {
-  it("empties excludedRows", () => {
-    const prev = stateWithPrep({ excludedRows: [1, 2, 3, 4, 5] });
-    const next = clearAllExclusions(prev);
-
-    assert.deepEqual(next.dataPrep.excludedRows, []);
-  });
-});

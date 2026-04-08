@@ -1,19 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  createInitialState,
-  createSlot,
-  focusChart,
-  addChart,
-  removeChart,
-  moveSelection,
-  setChartParams,
-  setActiveChipEditor,
-  selectPhase,
-  selectPoint,
-  collectChartIds,
-} from "../../src/core/state.js";
+import { createInitialState, createSlot } from "../../src/core/state/init.js";
+import { focusChart, addChart, removeChart, moveSelection, setChartParams, setActiveChipEditor, selectPhase, selectPoint } from "../../src/core/state/chart.js";
+import { collectChartIds } from "../../src/core/state/layout.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

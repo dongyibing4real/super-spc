@@ -1,11 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  createInitialState,
-  getFocused,
-  loadDataset,
-} from "../../src/core/state.js";
+import { createInitialState } from "../../src/core/state/init.js";
+import { getFocused } from "../../src/core/state/selectors.js";
+import { loadDataset } from "../../src/core/state/pipeline.js";
 
 /* --- getFocused --- */
 

@@ -13,7 +13,7 @@ import {
   createDataset,
   fetchColumns,
   fetchDatasets,
-  fetchPoints,
+  fetchRows,
   runAnalysis,
 } from "../data/api.js";
 import { parseCSV } from "../data/csv-engine.js";
@@ -41,7 +41,7 @@ export async function loadDatasetById(datasetId) {
   spcStore.setState(setLoadingState(spcStore.getState(), true));
   try {
     const [points, columns] = await Promise.all([
-      fetchPoints(datasetId),
+      fetchRows(datasetId),
       fetchColumns(datasetId).catch(() => []),
     ]);
     spcStore.setState(setColumns(spcStore.getState(), columns));
@@ -69,7 +69,7 @@ export async function reanalyze() {
   if (!state.activeDatasetId) return;
   try {
     const dsId = state.activeDatasetId;
-    const points = await fetchPoints(dsId);
+    const points = await fetchRows(dsId);
     const freshState = spcStore.getState();
     const analysisResults = await Promise.allSettled(
       freshState.chartOrder.map(id => validatedRunAnalysis(dsId, freshState.charts[id].params))

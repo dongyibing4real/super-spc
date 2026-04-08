@@ -27,15 +27,13 @@ export function detectRuleViolations(state, id = null) {
 export function getFirstChart(state) {
   return state.charts[state.chartOrder[0]];
 }
-/** @deprecated Use getFirstChart(). */
-export const getPrimary = getFirstChart;
 
 /** Helper to read the focused chart slot */
 export function getFocused(state) {
   return state.charts[state.focusedChartId] || getFirstChart(state);
 }
 
-export function getSelectedPoint(state) {
+function getSelectedPoint(state) {
   const focused = getFocused(state);
   const hasChartValues = focused.chartValues && focused.chartValues.length > 0;
   if (hasChartValues) {
@@ -53,12 +51,12 @@ export function getSelectedPoint(state) {
   return state.points[state.selectedPointIndex];
 }
 
-export function getPhaseLabel(state, phaseId) {
-  const phases = getPrimary(state).phases || [];
+function getPhaseLabel(state, phaseId) {
+  const phases = getFirstChart(state).phases || [];
   return phases.find((phase) => phase.id === phaseId)?.label || phaseId;
 }
 
-export function buildSignalNarrative(state, point) {
+function buildSignalNarrative(state, point) {
   if (!point) {
     return { title: "Select a point to inspect.", confidence: "Pending", statusTone: "neutral" };
   }
@@ -101,7 +99,7 @@ export function buildSignalNarrative(state, point) {
   };
 }
 
-export function buildWhyTriggered(state, point) {
+function buildWhyTriggered(state, point) {
   const violations = getFocused(state).violations || [];
   if (violations.length === 0) {
     return ["No rule violations detected in this dataset."];

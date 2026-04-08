@@ -75,26 +75,10 @@ export function undoPrepTransform(state) {
   };
 }
 
-/** Tail-trim: undo all transforms from stepIndex onward (view-only ledger, end-trimmable). */
-export function undoPrepTransformTo(state, stepIndex) {
-  const transforms = state.dataPrep.transforms.slice(0, stepIndex);
-  return {
-    ...state,
-    dataPrep: { ...state.dataPrep, transforms, unsavedChanges: transforms.length > 0 },
-  };
-}
-
 export function clearPrepTransforms(state) {
   return {
     ...state,
     dataPrep: { ...state.dataPrep, transforms: [], unsavedChanges: false },
-  };
-}
-
-export function setPrepHiddenColumns(state, hiddenColumns) {
-  return {
-    ...state,
-    dataPrep: { ...state.dataPrep, hiddenColumns },
   };
 }
 
@@ -170,12 +154,4 @@ export function toggleRowExclusion(state, rowIdx) {
   return { ...state, dataPrep: { ...state.dataPrep, excludedRows: excluded } };
 }
 
-export function bulkExcludeRows(state, indices) {
-  const excluded = [...new Set([...state.dataPrep.excludedRows, ...indices])];
-  return { ...state, dataPrep: { ...state.dataPrep, excludedRows: excluded } };
-}
-
-export function clearAllExclusions(state) {
-  return { ...state, dataPrep: { ...state.dataPrep, excludedRows: [] } };
-}
 

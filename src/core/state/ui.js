@@ -31,10 +31,6 @@ export function clearNotice(state) {
   return { ...state, ui: { ...state.ui, notice: null } };
 }
 
-export function toggleLayers(state) {
-  return { ...state, ui: { ...state.ui, layersExpanded: !state.ui.layersExpanded } };
-}
-
 export function openContextMenu(state, x, y, info) {
   return {
     ...state,
@@ -72,10 +68,6 @@ export function setLoadingState(state, loading) {
 
 export function setDatasets(state, datasets) {
   return { ...state, datasets };
-}
-
-export function toggleDataTable(state) {
-  return { ...state, showDataTable: !state.showDataTable };
 }
 
 export function togglePaneDataTable(state, chartId) {

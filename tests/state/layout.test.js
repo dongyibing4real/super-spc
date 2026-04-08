@@ -1,15 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import {
-  createInitialState,
-  addChart,
-  collectChartIds,
-  migrateTreeToRows,
-  insertChart,
-  computeGridPreview,
-  setColWeight,
-  setRowWeight,
-} from "../../src/core/state.js";
+import { createInitialState, migrateTreeToRows } from "../../src/core/state/init.js";
+import { addChart } from "../../src/core/state/chart.js";
+import { collectChartIds, insertChart, computeGridPreview, setColWeight, setRowWeight } from "../../src/core/state/layout.js";
 
 // ---------------------------------------------------------------------------
 // collectChartIds

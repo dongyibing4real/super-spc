@@ -26,8 +26,6 @@ export function fetchRows(datasetId) {
   return request(`/api/datasets/${datasetId}/rows`);
 }
 
-/** @deprecated alias for backward compat during migration */
-export const fetchPoints = fetchRows;
 
 /**
  * POST /api/datasets/:id/analyze
