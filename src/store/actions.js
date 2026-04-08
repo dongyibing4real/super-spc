@@ -5,17 +5,10 @@
  * directly -- no bridge needed.
  */
 import { spcStore } from "../store/spc-store.js";
-import {
-  createSlot,
-  setColumns,
-  setDatasets,
-  setError,
-  setLoadingState,
-  setPrepParsedData,
-  loadPrepPoints,
-  setPrepError,
-  migrateTreeToRows,
-} from "../core/state.js";
+import { createSlot, migrateTreeToRows } from "../core/state/init.js";
+import { setColumns } from "../core/state/columns.js";
+import { setDatasets, setError, setLoadingState, initTheme } from "../core/state/ui.js";
+import { setPrepParsedData, loadPrepPoints, setPrepError } from "../core/state/data-prep.js";
 import {
   createDataset,
   fetchColumns,
@@ -25,8 +18,8 @@ import {
 } from "../data/api.js";
 import { parseCSV } from "../data/csv-engine.js";
 import { createTable } from "../data/data-prep-engine.js";
-import { finalizeDatasetLoad, finalizeReanalysis } from "../runtime/analysis-runtime.js";
-import { CHART_TYPE_LABELS, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "../helpers.js";
+import { finalizeDatasetLoad, finalizeReanalysis } from "../core/state/analysis.js";
+import { CHART_TYPE_LABELS, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "../constants.js";
 
 const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
 
@@ -168,6 +161,8 @@ export function restoreLayout() {
 
 /** Boot sequence: fetch datasets, restore layout, load the first dataset. */
 export async function bootApp() {
+  // Apply theme before anything renders
+  spcStore.setState(initTheme(spcStore.getState()));
   try {
     const datasets = await fetchDatasets();
     spcStore.setState(setDatasets(spcStore.getState(), datasets));

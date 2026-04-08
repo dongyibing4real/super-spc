@@ -5,7 +5,8 @@
  * Findings regenerate on every analysis — no stale state.
  */
 
-import { computeStats, capClass, SIGMA_METHOD_LABELS } from "../helpers.js";
+import { SIGMA_METHOD_LABELS } from "../constants.js";
+import { computeStats, capClass } from "../helpers.js";
 
 const DEFAULT_STANDARDS = {
   cpkThreshold: 1.33,

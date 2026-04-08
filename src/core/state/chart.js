@@ -1,7 +1,8 @@
-import { clamp, updateSlot, createSlot, DEFAULT_PARAMS } from './init.js';
+import { updateSlot, createSlot, DEFAULT_PARAMS } from './init.js';
+import { clamp } from '../../helpers.js';
 import { getFocused } from './selectors.js';
 import { collectChartIds } from './layout.js';
-import { CHART_TYPE_LABELS } from '../../helpers.js';
+import { CHART_TYPE_LABELS } from '../../constants.js';
 
 export function selectPoint(state, index, id = null) {
   // null/undefined index = deselect (click empty space)

@@ -1,6 +1,6 @@
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import { clearNotice } from "../core/state.js";
+import { clearNotice } from "../core/state/ui.js";
 import { toneClass } from "../helpers.js";
 
 export default function Notice() {

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import { deriveWorkspace, getFocused } from "../core/state.js";
+import { deriveWorkspace, getFocused } from "../core/state/selectors.js";
 import { toneClass } from "../helpers.js";
 
 

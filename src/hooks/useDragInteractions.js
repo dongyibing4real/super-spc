@@ -2,9 +2,9 @@ import { useEffect } from "react";
 import { spcStore } from "../store/spc-store.js";
 import { setupDragInteractions } from "../runtime/drag-runtime.js";
 import { renderGhostRows } from "../components/ChartArena.jsx";
-import { buildChartData } from "../store/chart-data-builder.js";
-import { collectChartIds, computeGridPreview, insertChart, setColWeight, setRowWeight } from "../core/state.js";
-import { CHART_TYPE_LABELS } from "../helpers.js";
+import { buildChartData } from "../data/chart-data-builder.js";
+import { collectChartIds, computeGridPreview, insertChart, setColWeight, setRowWeight } from "../core/state/layout.js";
+import { CHART_TYPE_LABELS } from "../constants.js";
 import { saveLayout } from "../store/actions.js";
 
 export default function useDragInteractions(rootRef) {

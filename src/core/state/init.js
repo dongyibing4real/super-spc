@@ -18,14 +18,6 @@ function restoreFindingsStandards() {
   return { ...DEFAULT_FINDINGS_STANDARDS };
 }
 
-export function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-export function getFailedTransformCount(state) {
-  return state.transforms.filter((step) => step.status === "failed").length;
-}
-
 /* ---Default empty state for initial load ---*/
 const DEFAULT_CONTEXT = {
   title: "",
@@ -172,6 +164,8 @@ export function createInitialState() {
       contextMenu: null,
       layersExpanded: false,
       pendingNewChart: null,
+      themePreference: 'system',
+      themeResolved: 'dark',
     },
     auditLog: [],
     dataPrep: {

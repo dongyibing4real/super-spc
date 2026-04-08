@@ -22,7 +22,7 @@
  *   5. Validate column references exist in columns array
  */
 
-import { INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "../../helpers.js";
+import { INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "../../constants.js";
 import { updateSlot } from "./init.js";
 
 const DEFAULT_CASCADE_MEMORY = {

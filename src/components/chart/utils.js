@@ -3,7 +3,5 @@ export function fmt(v) {
   return v != null && Number.isFinite(v) ? v.toFixed(3) : '—';
 }
 
-/** Clamp a value to [min, max]. Shared across chart modules to avoid per-file copies. */
-export function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
+/** Re-exported from helpers.js — single canonical copy. */
+export { clamp } from '../../helpers.js';

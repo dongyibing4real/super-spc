@@ -5,7 +5,7 @@
  * Custom middleware runs auditMiddleware + noticeMiddleware on every setState.
  */
 import { createStore } from "zustand/vanilla";
-import { createInitialState } from "../core/state.js";
+import { createInitialState } from "../core/state/init.js";
 import { auditMiddleware } from "../core/middleware/audit.js";
 import { noticeMiddleware } from "../core/middleware/notice.js";
 

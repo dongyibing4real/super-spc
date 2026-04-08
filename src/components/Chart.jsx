@@ -1,6 +1,6 @@
 import { useRef, useEffect } from "react";
 import { spcStore } from "../store/spc-store.js";
-import { getChartPoints, ensureForecastVisible, extendForecastToViewport } from "../store/chart-data-builder.js";
+import { getChartPoints, ensureForecastVisible, extendForecastToViewport } from "../data/chart-data-builder.js";
 import { useChartData } from "../hooks/useChartData.js";
 import { createChart } from "./chart/index.js";
 import {
@@ -8,7 +8,6 @@ import {
   selectPoint,
   selectPoints,
   selectPhase,
-  openContextMenu,
   setXDomainOverride,
   setYDomainOverride,
   setForecastHorizon,
@@ -17,7 +16,8 @@ import {
   selectForecast,
   cancelForecast,
   resetAxis,
-} from "../core/state.js";
+} from "../core/state/chart.js";
+import { openContextMenu } from "../core/state/ui.js";
 import { DEFAULT_FORECAST_HORIZON } from "../prediction/constants.js";
 
 /**

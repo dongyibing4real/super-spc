@@ -9,7 +9,7 @@
 import { useRef } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import { buildChartData } from "../store/chart-data-builder.js";
+import { buildChartData } from "../data/chart-data-builder.js";
 
 /**
  * @param {string} chartId
@@ -32,17 +32,25 @@ export function useChartData(chartId) {
 }
 
 function makeKey(slot, s) {
-  // Geometry fields: ref-identity changes on analysis/dataset load
-  // Visual fields: value or ref changes on user interaction
+  // Arrays stringify fine with .join() but plain objects become "[object Object]".
+  // Flatten object fields to their scalar properties.
+  const f = slot.forecast;
+  const t = s.chartToggles;
   return [
+    // Geometry — ref-identity changes on analysis/dataset load
     slot.chartValues,
     slot.limits,
     slot.phases,
     slot.violations,
-    slot.forecast,
-    slot.overrides,
+    // Forecast — scalar fields so key changes on mode/horizon/result transitions
+    f?.mode, f?.selected, f?.horizon, f?.result?.predMean?.length ?? 0,
+    // Overrides — scalar fields
+    slot.overrides?.x, slot.overrides?.y,
+    // Global data ref
     s.points,
-    s.chartToggles,
+    // Toggles — flatten the boolean object
+    t?.overlay, t?.specLimits, t?.grid, t?.phaseTags, t?.events, t?.excludedMarkers, t?.confidenceBand,
+    // Selection
     slot.selectedPointIndex,
     slot.selectedPointIndices,
     slot.selectedPhaseIndex,

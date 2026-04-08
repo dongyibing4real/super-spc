@@ -2,13 +2,8 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import {
-  togglePointExclusion,
-  closeContextMenu,
-  navigate,
-  toggleChartOption,
-  resetAxis,
-} from "../core/state.js";
+import { togglePointExclusion, toggleChartOption, resetAxis } from "../core/state/chart.js";
+import { closeContextMenu, navigate } from "../core/state/ui.js";
 
 const LAYERS = [
   ["specLimits", "Limits & zones"],

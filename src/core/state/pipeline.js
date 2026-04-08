@@ -72,23 +72,3 @@ export function recoverTransformStep(state, stepId) {
     },
   };
 }
-
-/** @deprecated Legacy status action — kept for backward compatibility. */
-export function setChallengerStatus(state, status) {
-  return {
-    ...state,
-    ui: {
-      ...state.ui,
-      notice: {
-        tone: status === "ready" ? "positive" : status === "partial" ? "warning" : "critical",
-        title: "Method lab updated",
-        body:
-          status === "ready"
-            ? "Methods are now fully comparable."
-            : status === "partial"
-              ? "Analysis incomplete — some charts need another run."
-              : "Analysis timed out."
-      }
-    }
-  };
-}

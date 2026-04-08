@@ -1,13 +1,17 @@
-import {
-  getFirstChart,
-  loadDataset,
-  setRecipeParams,
-  setColumns,
-  setStructuralFindings,
-} from "../core/state.js";
-import { applyParamsToContext, INDIVIDUAL_ONLY } from "../helpers.js";
-import { buildDefaultContext, transformAnalysis, transformPoints } from "../data/transforms.js";
-import { generateFindings } from "../core/findings-engine.js";
+/**
+ * analysis.js — Compound state reducers for dataset load and reanalysis.
+ *
+ * These functions compose multiple primitive reducers (setColumns, setRecipeParams,
+ * loadDataset, setStructuralFindings) into complete state transitions.
+ */
+import { getFirstChart } from './selectors.js';
+import { loadDataset } from './pipeline.js';
+import { setRecipeParams } from './reconcile-params.js';
+import { setColumns } from './columns.js';
+import { setStructuralFindings } from './findings.js';
+import { applyParamsToContext } from '../../data/params.js';
+import { buildDefaultContext, transformAnalysis, transformPoints } from '../../data/transforms.js';
+import { generateFindings } from '../findings-engine.js';
 
 /** Expected rejection messages that indicate incomplete config, not real errors. */
 const SILENT_REJECTIONS = new Set([

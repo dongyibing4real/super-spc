@@ -1,17 +1,14 @@
 import React from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import {
-  focusChart,
-  removeChart,
-  togglePaneDataTable,
-  selectPoint,
-  openContextMenu,
-} from "../core/state.js";
+import { focusChart, removeChart, selectPoint } from "../core/state/chart.js";
+import { togglePaneDataTable, openContextMenu } from "../core/state/ui.js";
 import { saveLayout } from "../store/actions.js";
-import { getCapability, capClass, CHART_TYPE_LABELS } from "../helpers.js";
+import { CHART_TYPE_LABELS } from "../constants.js";
+import { capClass } from "../helpers.js";
+import { getCapability } from "../core/state/selectors.js";
 import { buildForecastView } from "../prediction/build-forecast-view.js";
-import { getChartPoints } from "../store/chart-data-builder.js";
+import { getChartPoints } from "../data/chart-data-builder.js";
 import Chart from "./Chart.jsx";
 
 const FOCUSED_TAIL_WINDOW = 60;

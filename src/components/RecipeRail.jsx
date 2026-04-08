@@ -1,28 +1,14 @@
 import { useRef, useLayoutEffect } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import {
-  getFocused,
-  collectChartIds,
-  DEFAULT_PARAMS,
-  focusChart,
-  setChartParams,
-  setRecipeParams,
-  setActiveChipEditor,
-  addChart,
-  togglePaneDataTable,
-  setLoadingState,
-  setDatasets,
-  setError,
-  createSlot,
-} from "../core/state.js";
-import {
-  applyParamsToContext,
-  INDIVIDUAL_ONLY,
-  SUBGROUP_REQUIRED,
-  getDisabledChartTypes,
-  CHART_TYPE_LABELS,
-} from "../helpers.js";
+import { getFocused } from "../core/state/selectors.js";
+import { collectChartIds } from "../core/state/layout.js";
+import { DEFAULT_PARAMS, createSlot } from "../core/state/init.js";
+import { focusChart, setChartParams, setActiveChipEditor, addChart } from "../core/state/chart.js";
+import { setRecipeParams } from "../core/state/reconcile-params.js";
+import { togglePaneDataTable, setLoadingState, setDatasets, setError } from "../core/state/ui.js";
+import { CHART_TYPE_LABELS, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "../constants.js";
+import { applyParamsToContext, getDisabledChartTypes } from "../data/params.js";
 import {
   reanalyze,
   loadDatasetById,
