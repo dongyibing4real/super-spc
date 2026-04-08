@@ -22,8 +22,8 @@ export function getChartPoints(slot, globalPoints) {
     : globalPoints;
 }
 
-export function ensureForecastVisible(nextState, id) {
-  const slot = nextState.charts[id];
+export function ensureForecastVisible(nextState, chartId) {
+  const slot = nextState.charts[chartId];
   if (!slot) return nextState;
   const points = getChartPoints(slot, nextState.points);
   const lastIdx = Math.max(0, points.length - 1);
@@ -33,28 +33,28 @@ export function ensureForecastVisible(nextState, id) {
   if (!currentOverride || currentOverride.max >= requiredMax) {
     return nextState;
   }
-  return setXDomainOverride(nextState, currentOverride.min, requiredMax, id);
+  return setXDomainOverride(nextState, currentOverride.min, requiredMax, chartId);
 }
 
-export function extendForecastToViewport(nextState, id, nextXMax) {
-  const slot = nextState.charts[id];
+export function growForecastHorizonToFit(nextState, chartId, nextXMax) {
+  const slot = nextState.charts[chartId];
   if (!slot || slot.forecast?.mode !== "active") return nextState;
   const points = getChartPoints(slot, nextState.points);
   const lastIdx = Math.max(0, points.length - 1);
   const requiredHorizon = Math.max(1, Math.ceil(Math.max(0, nextXMax - lastIdx)));
   const currentHorizon = slot.forecast?.horizon ?? DEFAULT_FORECAST_HORIZON;
   if (requiredHorizon <= currentHorizon) return nextState;
-  return setForecastHorizon(nextState, requiredHorizon, id);
+  return setForecastHorizon(nextState, requiredHorizon, chartId);
 }
 
 /**
  * Build the full data payload a D3 chart needs to render.
- * @param {string} id — chart slot ID (e.g. "chart-1")
+ * @param {string} chartId — chart slot ID (e.g. "chart-1")
  * @param {object} state — full app state (required)
  * @returns {object} — { points, limits, phases, forecast, toggles, selectedIndex, ... }
  */
-export function buildChartData(id, state) {
-  const slot = state.charts[id];
+export function buildChartData(chartId, state) {
+  const slot = state.charts[chartId];
   if (!slot) return null;
 
   // No chart type selected: render empty canvas
@@ -91,13 +91,13 @@ export function buildChartData(id, state) {
     selectedIndex: hasChartValues ? (slot.selectedPointIndex ?? -1) : state.selectedPointIndex,
     selectedIndices: hasChartValues ? (slot.selectedPointIndices || null) : (state.selectedPointIndices || null),
     selectedPhaseIndex: slot.selectedPhaseIndex ?? null,
-    violations: detectRuleViolations(state, id),
-    capability: getCapability(state, id),
+    violations: detectRuleViolations(state, chartId),
+    capability: getCapability(state, chartId),
     metric: slot.context.metric,
     subgroup: slot.context.subgroup,
     phase: slot.context.phase,
     chartType: slot.context.chartType,
     seriesKey: "primaryValue",
-    seriesType: id,
+    seriesType: chartId,
   };
 }

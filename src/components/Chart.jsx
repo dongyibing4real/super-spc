@@ -1,7 +1,7 @@
 import { useRef, useEffect } from "react";
 import { useChartData } from "../hooks/useChartData.js";
 import { createChart } from "./chart/index.js";
-import { buildChartCallbacks, cleanupChartCallbacks } from "./chart-callbacks.js";
+import { buildChartCallbacks, cleanupForecastState } from "./chart-callbacks.js";
 
 /**
  * React wrapper around the D3 createChart factory.
@@ -21,7 +21,7 @@ export default function Chart({ chartId, onContextMenu: onContextMenuProp }) {
     chartRef.current = createChart(mountRef.current, buildChartCallbacks(chartId));
 
     return () => {
-      cleanupChartCallbacks(chartId);
+      cleanupForecastState(chartId);
       if (chartRef.current) {
         chartRef.current.destroy();
         chartRef.current = null;

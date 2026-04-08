@@ -8,7 +8,7 @@ import { renderPoints } from './points.js';
 import { renderAxes, setupAxisDrag } from './axes.js';
 import { renderEvents } from './events.js';
 import { renderProjection, renderProjectionPrompt, renderProjectionShell } from './projection.js';
-import { DEFAULT_CONFIG, computeLayout } from './config.js';
+import { DEFAULT_CHART_OPTIONS, computeAdaptivePadding } from './config.js';
 import { renderAxisTitles } from './y-labels.js';
 import { createSvgSkeleton } from './svg-setup.js';
 import { setupContextMenu } from './context-menu.js';
@@ -22,7 +22,7 @@ import { setupMarquee } from './marquee.js';
  * @returns {{ update: Function, destroy: Function, svg: Selection, remount: Function }}
  */
 export function createChart(container, options = {}) {
-  const config = { ...DEFAULT_CONFIG, ...options };
+  const config = { ...DEFAULT_CHART_OPTIONS, ...options };
 
   // ── SVG skeleton (layers, clip path, axis hit regions) ────────────
   const { svg, defs, clipRect, layers, xAxisHit, yAxisHit } = createSvgSkeleton(container);
@@ -125,7 +125,7 @@ export function createChart(container, options = {}) {
     const seriesKey = data.seriesKey || 'primaryValue';
     const seriesType = data.seriesType || 'primary';
 
-    const layout = computeLayout(data, currentWidth, currentHeight);
+    const layout = computeAdaptivePadding(data, currentWidth, currentHeight);
     const sizedConfig = {
       ...config,
       padding: layout.padding,

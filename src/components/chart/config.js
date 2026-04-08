@@ -8,13 +8,13 @@ import { fmt } from './utils.js';
  * (7–10px). This ratio is also used in axes.js for x-axis label width
  * estimation — keep them in sync.
  */
-const MONO_RATIO = 0.6;
+const MONOSPACE_CHAR_WIDTH_RATIO = 0.6;
 
 /**
  * Estimate pixel width of a string rendered in monospace at a given font size.
  */
 function textWidth(str, fontSize) {
-  return str.length * fontSize * MONO_RATIO;
+  return str.length * fontSize * MONOSPACE_CHAR_WIDTH_RATIO;
 }
 
 /**
@@ -51,7 +51,7 @@ function fitFontSize(text, budget, max = 10, min = 7) {
  * @param {number} height - container height in px
  * @returns {{ padding, yLabelFontSize, edgeLabelFontSize, showAxisTitles, phaseHeaderHeight }}
  */
-export function computeLayout(data, width, height) {
+export function computeAdaptivePadding(data, width, height) {
   // ── Height pressure: scale factor for vertical padding ────────
   // At height ≥ 300px: full padding. Below that, linearly compress.
   // Floor at 0.4 prevents labels from disappearing entirely.
@@ -140,10 +140,10 @@ export function computeLayout(data, width, height) {
 }
 
 /** Default chart configuration — callbacks only.
- *  Padding is computed dynamically per render via computeLayout().
+ *  Padding is computed dynamically per render via computeAdaptivePadding().
  *  Width/height are derived from the container via ResizeObserver.
  */
-export const DEFAULT_CONFIG = {
+export const DEFAULT_CHART_OPTIONS = {
   padding: { top: 16, right: 40, bottom: 34, left: 36 }, // fallback only
 
   // Callbacks (set by app)

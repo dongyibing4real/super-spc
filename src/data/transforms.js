@@ -19,7 +19,7 @@
  * @param {Array<{name: string, ordinal: number, dtype: string, role: string|null}>} [columns]
  * @returns {Array<{id: string, label: string, subgroupLabel: string, phaseId: string|null, primaryValue: number, excluded: boolean, annotation: null, raw: object}>}
  */
-export function transformPoints(rows, columns) {
+export function mapRowsToChartPoints(rows, columns) {
   if (!Array.isArray(rows)) return [];
 
   // Find column roles from the columns config
@@ -55,7 +55,7 @@ export function transformPoints(rows, columns) {
  * @param {number|null} lsl - Lower spec limit (not in API response, passed separately)
  * @returns {{limits: object, capability: object|null, sigma: object|null, zones: object|null, violations: Array}}
  */
-export function transformAnalysis(analysisResult, usl = null, lsl = null) {
+export function mapAnalysisToSlotFields(analysisResult, usl = null, lsl = null) {
   const apiLimits = analysisResult.limits;
 
   const limits = {
@@ -129,7 +129,7 @@ export function transformAnalysis(analysisResult, usl = null, lsl = null) {
  * @param {Array<{name: string, ordinal: number, dtype: string, role: string|null}>} [columns]
  * @returns {object}
  */
-export function buildDefaultContext(datasetMeta, columns) {
+export function buildInitialChartContext(datasetMeta, columns) {
   const valueCol = columns?.find((c) => c.role === "value");
   const subgroupCol = columns?.find((c) => c.role === "subgroup");
   const phaseCol = columns?.find((c) => c.role === "phase");

@@ -26,8 +26,8 @@ import { clamp } from './utils.js';
  *   Line + Points: 35%/40% opacity
  */
 
-const BLUE = '#2D72D2';
-const RED = '#CD4246';
+const COLOR_WITHIN_LIMITS = '#2D72D2';
+const COLOR_BEYOND_LIMITS = '#CD4246';
 
 export function renderProjectionPrompt(layer, scales, data, config) {
   layer.selectAll('*').remove();
@@ -52,9 +52,9 @@ export function renderProjectionPrompt(layer, scales, data, config) {
     .attr('width', width)
     .attr('height', plotHeight)
     .attr('rx', 3)
-    .attr('fill', BLUE)
+    .attr('fill', COLOR_WITHIN_LIMITS)
     .attr('fill-opacity', 0.04)
-    .attr('stroke', BLUE)
+    .attr('stroke', COLOR_WITHIN_LIMITS)
     .attr('stroke-opacity', 0.14)
     .attr('stroke-dasharray', '4 4');
 
@@ -65,7 +65,7 @@ export function renderProjectionPrompt(layer, scales, data, config) {
     .attr('x2', x0)
     .attr('y1', plotTop)
     .attr('y2', plotTop + plotHeight)
-    .attr('stroke', BLUE)
+    .attr('stroke', COLOR_WITHIN_LIMITS)
     .attr('stroke-opacity', 0.14)
     .attr('stroke-dasharray', '3 5');
 
@@ -87,7 +87,7 @@ export function renderProjectionPrompt(layer, scales, data, config) {
         .attr('y', cy)
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'central')
-        .attr('fill', BLUE)
+        .attr('fill', COLOR_WITHIN_LIMITS)
         .attr('fill-opacity', 0.28)
         .style('font-size', `${fontSize}px`)
         .style('font-weight', '500')
@@ -113,7 +113,7 @@ export function renderProjectionPrompt(layer, scales, data, config) {
           .attr('y', startY + ci * lineHeight)
           .attr('text-anchor', 'middle')
           .attr('dominant-baseline', 'central')
-          .attr('fill', BLUE)
+          .attr('fill', COLOR_WITHIN_LIMITS)
           .attr('fill-opacity', 0.28)
           .style('font-size', `${fontSize}px`)
           .style('font-weight', '500')
@@ -261,9 +261,9 @@ export function renderProjection(layer, defs, scales, data, config) {
     .attr('class', 'ghost-cone ghost-cone-within')
     .attr('points', conePoints)
     .attr('clip-path', `url(#${clipIdWithin})`)
-    .attr('fill', BLUE)
+    .attr('fill', COLOR_WITHIN_LIMITS)
     .attr('fill-opacity', 0.12)
-    .attr('stroke', BLUE)
+    .attr('stroke', COLOR_WITHIN_LIMITS)
     .attr('stroke-opacity', 0.20)
     .attr('stroke-width', 1);
 
@@ -272,9 +272,9 @@ export function renderProjection(layer, defs, scales, data, config) {
     .attr('class', 'ghost-cone ghost-cone-beyond')
     .attr('points', conePoints)
     .attr('clip-path', `url(#${clipIdBeyond})`)
-    .attr('fill', RED)
+    .attr('fill', COLOR_BEYOND_LIMITS)
     .attr('fill-opacity', 0.18)
-    .attr('stroke', RED)
+    .attr('stroke', COLOR_BEYOND_LIMITS)
     .attr('stroke-opacity', 0.25)
     .attr('stroke-width', 1);
 
@@ -294,7 +294,7 @@ export function renderProjection(layer, defs, scales, data, config) {
     .attr('d', lineGen(linePoints))
     .attr('clip-path', `url(#${clipIdWithin})`)
     .attr('fill', 'none')
-    .attr('stroke', BLUE)
+    .attr('stroke', COLOR_WITHIN_LIMITS)
     .attr('stroke-opacity', 0.35)
     .attr('stroke-width', 1.5);
 
@@ -304,7 +304,7 @@ export function renderProjection(layer, defs, scales, data, config) {
     .attr('d', lineGen(linePoints))
     .attr('clip-path', `url(#${clipIdBeyond})`)
     .attr('fill', 'none')
-    .attr('stroke', RED)
+    .attr('stroke', COLOR_BEYOND_LIMITS)
     .attr('stroke-opacity', 0.40)
     .attr('stroke-width', 1.5);
 
@@ -321,7 +321,7 @@ export function renderProjection(layer, defs, scales, data, config) {
       .attr('cx', px)
       .attr('cy', py)
       .attr('r', 3)
-      .attr('fill', isBeyond ? RED : BLUE)
+      .attr('fill', isBeyond ? COLOR_BEYOND_LIMITS : COLOR_WITHIN_LIMITS)
       .attr('fill-opacity', isBeyond ? 0.40 : 0.35)
       .style('pointer-events', 'none');
   }

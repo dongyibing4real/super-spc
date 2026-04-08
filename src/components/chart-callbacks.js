@@ -6,7 +6,7 @@
  * Includes forecast prompt timer management (per-chart, module-level Maps).
  */
 import { spcStore } from "../store/spc-store.js";
-import { getChartPoints, ensureForecastVisible, extendForecastToViewport } from "../data/chart-data-builder.js";
+import { getChartPoints, ensureForecastVisible, growForecastHorizonToFit } from "../data/chart-data-builder.js";
 import {
   focusChart,
   selectPoint,
@@ -84,7 +84,7 @@ function handleForecastActivity(id) {
 }
 
 /** Clean up forecast state when a chart unmounts. */
-export function cleanupChartCallbacks(chartId) {
+export function cleanupForecastState(chartId) {
   clearForecastPromptTimer(chartId);
   forecastPromptEligibility.delete(chartId);
 }
@@ -116,7 +116,7 @@ export function buildChartCallbacks(chartId) {
       const focused = focusChart(s, chartId);
       if (info.axis === "x") {
         let next = setXDomainOverride(focused, info.min, info.max, chartId);
-        next = extendForecastToViewport(next, chartId, info.max);
+        next = growForecastHorizonToFit(next, chartId, info.max);
         spcStore.setState(next);
         return;
       }

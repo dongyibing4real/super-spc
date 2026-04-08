@@ -4,14 +4,14 @@ import { getFocused } from './selectors.js';
 import { collectChartIds } from './layout.js';
 import { CHART_TYPE_LABELS } from '../../constants.js';
 
-export function selectPoint(state, index, id = null) {
+export function selectPoint(state, index, chartId = null) {
   // null/undefined index = deselect (click empty space)
   if (index == null) {
-    if (id && state.charts[id]) {
-      const slot = state.charts[id];
+    if (chartId && state.charts[chartId]) {
+      const slot = state.charts[chartId];
       return {
         ...state,
-        charts: { ...state.charts, [id]: { ...slot, selectedPointIndex: null, selectedPointIndices: null } },
+        charts: { ...state.charts, [chartId]: { ...slot, selectedPointIndex: null, selectedPointIndices: null } },
         selectedPointIndices: null,
         ui: { ...state.ui, contextMenu: null },
       };
@@ -28,14 +28,14 @@ export function selectPoint(state, index, id = null) {
   // chartValues indices don't map to raw state.points indices.  Store selection
   // per-slot so clicks in one chart don't highlight semantically-unrelated
   // points in a chart that uses a different granularity.
-  if (id && state.charts[id]) {
-    const slot = state.charts[id];
+  if (chartId && state.charts[chartId]) {
+    const slot = state.charts[chartId];
     const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
     if (hasChartValues) {
       const clamped = clamp(index, 0, Math.max(0, slot.chartValues.length - 1));
       return {
         ...state,
-        charts: { ...state.charts, [id]: { ...slot, selectedPointIndex: clamped, selectedPointIndices: null } },
+        charts: { ...state.charts, [chartId]: { ...slot, selectedPointIndex: clamped, selectedPointIndices: null } },
         selectedPointIndices: null,
         ui: { ...state.ui, contextMenu: null },
       };
@@ -50,15 +50,15 @@ export function selectPoint(state, index, id = null) {
   };
 }
 
-export function selectPhase(state, phaseIndex, id = null) {
+export function selectPhase(state, phaseIndex, chartId = null) {
   // null = deselect. Same index = toggle off.
-  if (id && state.charts[id]) {
-    const slot = state.charts[id];
+  if (chartId && state.charts[chartId]) {
+    const slot = state.charts[chartId];
     const current = slot.selectedPhaseIndex;
     const next = (phaseIndex == null || phaseIndex === current) ? null : phaseIndex;
     return {
       ...state,
-      charts: { ...state.charts, [id]: { ...slot, selectedPhaseIndex: next } },
+      charts: { ...state.charts, [chartId]: { ...slot, selectedPhaseIndex: next } },
       ui: { ...state.ui, contextMenu: null },
     };
   }
@@ -72,14 +72,14 @@ export function selectPhase(state, phaseIndex, id = null) {
 }
 
 /** Multi-point selection (marquee / rubber-band). */
-export function selectPoints(state, indices, id = null) {
+export function selectPoints(state, indices, chartId = null) {
   // null/empty = clear multi-selection
   if (!indices || indices.length === 0) {
-    if (id && state.charts[id]) {
-      const slot = state.charts[id];
+    if (chartId && state.charts[chartId]) {
+      const slot = state.charts[chartId];
       return {
         ...state,
-        charts: { ...state.charts, [id]: { ...slot, selectedPointIndices: null } },
+        charts: { ...state.charts, [chartId]: { ...slot, selectedPointIndices: null } },
         selectedPointIndices: null,
         ui: { ...state.ui, contextMenu: null },
       };
@@ -94,15 +94,15 @@ export function selectPoints(state, indices, id = null) {
   // Store as sorted array of unique indices
   const unique = [...new Set(indices)].sort((a, b) => a - b);
 
-  if (id && state.charts[id]) {
-    const slot = state.charts[id];
+  if (chartId && state.charts[chartId]) {
+    const slot = state.charts[chartId];
     const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
     if (hasChartValues) {
       const maxIdx = Math.max(0, slot.chartValues.length - 1);
       const clamped = unique.filter(i => i >= 0 && i <= maxIdx);
       return {
         ...state,
-        charts: { ...state.charts, [id]: { ...slot, selectedPointIndices: clamped, selectedPointIndex: null } },
+        charts: { ...state.charts, [chartId]: { ...slot, selectedPointIndices: clamped, selectedPointIndex: null } },
         selectedPointIndex: null,
         selectedPointIndices: null,
         ui: { ...state.ui, contextMenu: null },
@@ -125,8 +125,8 @@ export function moveSelection(state, delta) {
 }
 
 /** Merge params into a chart slot. No validation — use setRecipeParams for recipe fields. */
-export function setChartParams(state, id, params) {
-  return updateSlot(state, id, { params: { ...state.charts[id].params, ...params } });
+export function setChartParams(state, chartId, params) {
+  return updateSlot(state, chartId, { params: { ...state.charts[chartId].params, ...params } });
 }
 
 
@@ -244,7 +244,7 @@ export function removeChart(state, chartId) {
 
   const newCharts = { ...state.charts };
   delete newCharts[chartId];
-  const newOrder = state.chartOrder.filter(id => id !== chartId);
+  const newOrder = state.chartOrder.filter(cid => cid !== chartId);
   const newFocus = state.focusedChartId === chartId ? newOrder[0] : state.focusedChartId;
 
   return {
@@ -256,29 +256,29 @@ export function removeChart(state, chartId) {
   };
 }
 
-export function setXDomainOverride(state, min, max, id) {
-  if (!id) id = state.focusedChartId || state.chartOrder[0];
-  return updateSlot(state, id, { overrides: { ...state.charts[id].overrides, x: { min, max } } });
+export function setXDomainOverride(state, min, max, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  return updateSlot(state, chartId, { overrides: { ...state.charts[chartId].overrides, x: { min, max } } });
 }
 
-export function setYDomainOverride(state, yMin, yMax, id) {
-  if (!id) id = state.focusedChartId || state.chartOrder[0];
-  return updateSlot(state, id, { overrides: { ...state.charts[id].overrides, y: { yMin, yMax } } });
+export function setYDomainOverride(state, yMin, yMax, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  return updateSlot(state, chartId, { overrides: { ...state.charts[chartId].overrides, y: { yMin, yMax } } });
 }
 
-export function resetAxis(state, axis, id) {
-  if (!id) id = state.focusedChartId || state.chartOrder[0];
-  const overrides = state.charts[id].overrides;
-  if (axis === 'x') return updateSlot(state, id, { overrides: { ...overrides, x: null } });
-  if (axis === 'y') return updateSlot(state, id, { overrides: { ...overrides, y: null } });
+export function resetAxis(state, axis, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  const overrides = state.charts[chartId].overrides;
+  if (axis === 'x') return updateSlot(state, chartId, { overrides: { ...overrides, x: null } });
+  if (axis === 'y') return updateSlot(state, chartId, { overrides: { ...overrides, y: null } });
   return state;
 }
 
-export function activateForecast(state, id) {
-  if (!id) id = state.focusedChartId || state.chartOrder[0];
-  const slot = state.charts[id];
+export function activateForecast(state, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[chartId];
   if (!slot) return state;
-  return updateSlot(state, id, {
+  return updateSlot(state, chartId, {
     forecast: {
       ...slot.forecast,
       mode: "active",
@@ -287,12 +287,12 @@ export function activateForecast(state, id) {
   });
 }
 
-export function selectForecast(state, selected, id) {
-  if (!id) id = state.focusedChartId || state.chartOrder[0];
-  const slot = state.charts[id];
+export function selectForecast(state, selected, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[chartId];
   if (!slot || slot.forecast?.mode !== "active") return state;
   if (slot.forecast.selected === selected) return state;
-  return updateSlot(state, id, {
+  return updateSlot(state, chartId, {
     forecast: {
       ...slot.forecast,
       selected,
@@ -300,13 +300,13 @@ export function selectForecast(state, selected, id) {
   });
 }
 
-export function setForecastPrompt(state, visible, id) {
-  if (!id) id = state.focusedChartId || state.chartOrder[0];
-  const slot = state.charts[id];
+export function setForecastPrompt(state, visible, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[chartId];
   if (!slot || slot.forecast?.mode === "active") return state;
   const nextMode = visible ? "prompt" : "hidden";
   if ((slot.forecast?.mode || "hidden") === nextMode) return state;
-  return updateSlot(state, id, {
+  return updateSlot(state, chartId, {
     forecast: {
       ...slot.forecast,
       mode: nextMode,
@@ -315,13 +315,13 @@ export function setForecastPrompt(state, visible, id) {
   });
 }
 
-export function setForecastHorizon(state, horizon, id) {
-  if (!id) id = state.focusedChartId || state.chartOrder[0];
-  const slot = state.charts[id];
+export function setForecastHorizon(state, horizon, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[chartId];
   if (!slot) return state;
   const nextHorizon = Math.max(1, Math.ceil(horizon));
   if (slot.forecast?.horizon === nextHorizon) return state;
-  return updateSlot(state, id, {
+  return updateSlot(state, chartId, {
     forecast: {
       ...slot.forecast,
       horizon: nextHorizon,
@@ -329,11 +329,11 @@ export function setForecastHorizon(state, horizon, id) {
   });
 }
 
-export function cancelForecast(state, id) {
-  if (!id) id = state.focusedChartId || state.chartOrder[0];
-  const slot = state.charts[id];
+export function cancelForecast(state, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[chartId];
   if (!slot) return state;
-  return updateSlot(state, id, {
+  return updateSlot(state, chartId, {
     forecast: {
       ...slot.forecast,
       mode: "hidden",
