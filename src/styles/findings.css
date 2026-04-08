@@ -9,7 +9,7 @@
 }
 .finding-item:hover { border-color: var(--border-3); }
 .finding-item.active {
-  border-color: rgba(45,114,210,0.3); background: var(--blue-dim);
+  border-color: var(--chip-blue-border); background: var(--blue-dim);
   border-left-color: var(--blue);
 }
 .finding-item h4 { font-size: 12px; font-weight: 700; margin: 0; }
@@ -21,7 +21,7 @@
 .evidence-list.light li { background: var(--bg-3); border-color: var(--border-2); }
 .evidence-list.light span { color: var(--t-4); }
 .evidence-list.light strong { color: var(--t-2); }
-.evidence-list.light li.unresolved { border-color: rgba(200,118,25,0.2); background: rgba(200,118,25,0.05); }
+.evidence-list.light li.unresolved { border-color: var(--chip-amber-border); background: var(--amber-dim); }
 
 .rail-list.light li { background: var(--bg-3); border-color: var(--border-2); color: var(--t-3); }
 

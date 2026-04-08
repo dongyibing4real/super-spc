@@ -105,10 +105,35 @@
   width: 6px; height: 6px;
   border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 4px rgba(35,133,81,0.5);
+  box-shadow: 0 0 4px var(--status-glow);
 }
 .status-dot-live.offline {
   background: var(--t-4);
   box-shadow: none;
+}
+
+/* Theme toggle */
+.theme-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--t-3);
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--dur-short) var(--ease), border-color var(--dur-short) var(--ease);
+}
+.theme-toggle:hover {
+  color: var(--t-1);
+  border-color: var(--border-3);
+}
+.theme-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 

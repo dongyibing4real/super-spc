@@ -108,7 +108,7 @@
   padding: 3px 8px;
   border-radius: 3px;
   white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  box-shadow: 0 2px 8px var(--shadow-color);
   animation: drag-ghost-in 150ms cubic-bezier(0.25, 1, 0.5, 1) both;
 }
 

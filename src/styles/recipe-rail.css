@@ -42,7 +42,7 @@
 
 .rail-card-header--dataset {
   background: var(--gold-dim);
-  border-bottom: 1px solid rgba(209,152,11,0.2);
+  border-bottom: 1px solid var(--gold-dim);
 }
 .rail-card-header--dataset .rail-card-dot {
   width: 6px; height: 6px;
@@ -71,7 +71,7 @@
 
 .rail-card-header--focused {
   background: var(--card-accent-dim, var(--blue-dim));
-  border-bottom: 1px solid rgba(45,114,210,0.2);
+  border-bottom: 1px solid var(--blue-dim);
 }
 .rail-card-header--focused .rail-card-dot {
   width: 6px; height: 6px;
@@ -227,7 +227,7 @@
 }
 .rail-card-header--pending {
   background: transparent;
-  border-bottom: 1px solid rgba(45,114,210,0.18);
+  border-bottom: 1px solid var(--blue-dim);
   display: flex;
   align-items: center;
 }
@@ -266,7 +266,7 @@
 }
 .rail-card-close:hover {
   opacity: 1;
-  background: rgba(45, 114, 210, 0.15);
+  background: var(--blue-dim);
 }
 .rail-card-actions {
   display: flex;
@@ -361,7 +361,7 @@
 .recipe-chip:hover { background: var(--bg-3); }
 .recipe-chip.active-chip {
   border-left-color: var(--card-accent, var(--blue)); background: var(--card-accent-dim, var(--blue-dim));
-  box-shadow: inset 2px 0 6px rgba(45,114,210,0.06);
+  box-shadow: inset 2px 0 6px var(--blue-dim);
 }
 
 
@@ -583,7 +583,7 @@
 .overlay-toggle.is-on { color: var(--t-2); }
 .overlay-toggle.is-on .toggle-dot {
   background: var(--blue-dim);
-  border-color: rgba(45,114,210,0.3);
+  border-color: var(--chip-blue-border);
 }
 .overlay-toggle.is-on .toggle-dot::after {
   background: var(--blue-bright);
