@@ -1,9 +1,7 @@
 import { useRef, useEffect } from "react";
-import { spcStore } from "../store/spc-store.js";
 import { useChartData } from "../hooks/useChartData.js";
 import { createChart } from "./chart/index.js";
-import { setForecastPrompt } from "../core/state/chart.js";
-import { buildChartCallbacks } from "./chart-callbacks.js";
+import { buildChartCallbacks, cleanupChartCallbacks } from "./chart-callbacks.js";
 
 /**
  * React wrapper around the D3 createChart factory.
@@ -20,15 +18,10 @@ export default function Chart({ chartId, onContextMenu: onContextMenuProp }) {
   useEffect(() => {
     if (!mountRef.current) return;
 
-    const callbacks = buildChartCallbacks(chartId, {
-      handleForecastActivity,
-      handleForecastPromptEligibility,
-    });
-    chartRef.current = createChart(mountRef.current, callbacks);
+    chartRef.current = createChart(mountRef.current, buildChartCallbacks(chartId));
 
     return () => {
-      clearForecastPromptTimer(chartId);
-      forecastPromptEligibility.delete(chartId);
+      cleanupChartCallbacks(chartId);
       if (chartRef.current) {
         chartRef.current.destroy();
         chartRef.current = null;
@@ -63,63 +56,4 @@ export default function Chart({ chartId, onContextMenu: onContextMenuProp }) {
       onContextMenu={onContextMenuProp}
     />
   );
-}
-
-// --- Forecast prompt timers (per-chart, module-level) ---
-const forecastPromptTimers = new Map();
-const forecastPromptEligibility = new Map();
-
-function clearForecastPromptTimer(id) {
-  const timer = forecastPromptTimers.get(id);
-  if (timer) {
-    clearTimeout(timer);
-    forecastPromptTimers.delete(id);
-  }
-}
-
-function scheduleForecastPrompt(id, { force = false } = {}) {
-  const state = spcStore.getState();
-  const slot = state.charts[id];
-  if (!slot || slot.forecast?.mode !== "hidden" || !forecastPromptEligibility.get(id)) {
-    clearForecastPromptTimer(id);
-    return;
-  }
-  if (forecastPromptTimers.has(id) && !force) return;
-  clearForecastPromptTimer(id);
-  forecastPromptTimers.set(id, window.setTimeout(() => {
-    forecastPromptTimers.delete(id);
-    const current = spcStore.getState().charts[id];
-    if (!current || current.forecast?.mode !== "hidden" || !forecastPromptEligibility.get(id)) return;
-    spcStore.setState(setForecastPrompt(spcStore.getState(), true, id));
-  }, 900));
-}
-
-function handleForecastPromptEligibility(id, eligible) {
-  forecastPromptEligibility.set(id, eligible);
-  const state = spcStore.getState();
-  const slot = state.charts[id];
-  if (!slot) return;
-  if (!eligible) {
-    clearForecastPromptTimer(id);
-    if (slot.forecast?.mode === "prompt") {
-      spcStore.setState(setForecastPrompt(state, false, id));
-    }
-    return;
-  }
-  if (slot.forecast?.mode === "hidden") {
-    scheduleForecastPrompt(id);
-  }
-}
-
-function handleForecastActivity(id) {
-  const state = spcStore.getState();
-  const slot = state.charts[id];
-  if (!slot || slot.forecast?.mode === "active") return;
-  clearForecastPromptTimer(id);
-  if (slot.forecast?.mode === "prompt") {
-    spcStore.setState(setForecastPrompt(state, false, id));
-  }
-  if (forecastPromptEligibility.get(id)) {
-    scheduleForecastPrompt(id, { force: true });
-  }
 }

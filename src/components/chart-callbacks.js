@@ -3,6 +3,7 @@
  *
  * Each chart instance needs its own callbacks closed over `chartId`.
  * This wires Zustand store actions to the D3 chart engine's callback interface.
+ * Includes forecast prompt timer management (per-chart, module-level Maps).
  */
 import { spcStore } from "../store/spc-store.js";
 import { getChartPoints, ensureForecastVisible, extendForecastToViewport } from "../data/chart-data-builder.js";
@@ -14,6 +15,7 @@ import {
   setXDomainOverride,
   setYDomainOverride,
   setForecastHorizon,
+  setForecastPrompt,
   activateForecast,
   selectForecast,
   cancelForecast,
@@ -22,12 +24,76 @@ import {
 import { openContextMenu } from "../core/state/ui.js";
 import { DEFAULT_FORECAST_HORIZON } from "../prediction/constants.js";
 
+// --- Forecast prompt timers (per-chart, module-level) ---
+const forecastPromptTimers = new Map();
+const forecastPromptEligibility = new Map();
+
+function clearForecastPromptTimer(id) {
+  const timer = forecastPromptTimers.get(id);
+  if (timer) {
+    clearTimeout(timer);
+    forecastPromptTimers.delete(id);
+  }
+}
+
+function scheduleForecastPrompt(id, { force = false } = {}) {
+  const state = spcStore.getState();
+  const slot = state.charts[id];
+  if (!slot || slot.forecast?.mode !== "hidden" || !forecastPromptEligibility.get(id)) {
+    clearForecastPromptTimer(id);
+    return;
+  }
+  if (forecastPromptTimers.has(id) && !force) return;
+  clearForecastPromptTimer(id);
+  forecastPromptTimers.set(id, window.setTimeout(() => {
+    forecastPromptTimers.delete(id);
+    const current = spcStore.getState().charts[id];
+    if (!current || current.forecast?.mode !== "hidden" || !forecastPromptEligibility.get(id)) return;
+    spcStore.setState(setForecastPrompt(spcStore.getState(), true, id));
+  }, 900));
+}
+
+function handleForecastPromptEligibility(id, eligible) {
+  forecastPromptEligibility.set(id, eligible);
+  const state = spcStore.getState();
+  const slot = state.charts[id];
+  if (!slot) return;
+  if (!eligible) {
+    clearForecastPromptTimer(id);
+    if (slot.forecast?.mode === "prompt") {
+      spcStore.setState(setForecastPrompt(state, false, id));
+    }
+    return;
+  }
+  if (slot.forecast?.mode === "hidden") {
+    scheduleForecastPrompt(id);
+  }
+}
+
+function handleForecastActivity(id) {
+  const state = spcStore.getState();
+  const slot = state.charts[id];
+  if (!slot || slot.forecast?.mode === "active") return;
+  clearForecastPromptTimer(id);
+  if (slot.forecast?.mode === "prompt") {
+    spcStore.setState(setForecastPrompt(state, false, id));
+  }
+  if (forecastPromptEligibility.get(id)) {
+    scheduleForecastPrompt(id, { force: true });
+  }
+}
+
+/** Clean up forecast state when a chart unmounts. */
+export function cleanupChartCallbacks(chartId) {
+  clearForecastPromptTimer(chartId);
+  forecastPromptEligibility.delete(chartId);
+}
+
 /**
  * Build the callback options object for a specific chart instance.
  * @param {string} chartId
- * @param {{ handleForecastActivity: Function, handleForecastPromptEligibility: Function }} forecastHandlers
  */
-export function buildChartCallbacks(chartId, forecastHandlers) {
+export function buildChartCallbacks(chartId) {
   return {
     onSelectPoint: (index) => {
       const s = spcStore.getState();
@@ -66,10 +132,10 @@ export function buildChartCallbacks(chartId, forecastHandlers) {
       spcStore.setState(next);
     },
     onForecastActivity: () => {
-      forecastHandlers.handleForecastActivity(chartId);
+      handleForecastActivity(chartId);
     },
     onForecastPromptEligibilityChange: (payload) => {
-      forecastHandlers.handleForecastPromptEligibility(chartId, payload.eligible);
+      handleForecastPromptEligibility(chartId, payload.eligible);
     },
     onActivateForecast: () => {
       const s = spcStore.getState();
