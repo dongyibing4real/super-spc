@@ -32,19 +32,14 @@ import {
   addColumnMeta,
   addPrepTransform,
   setPrepTable,
-  setColumns,
-  setProfileCache,
   markPrepSaved,
   undoPrepTransform,
-  setDatasets,
-  setExpandedProfileColumn,
-  navigate,
-  setLoadingState,
-  setError,
   setPrepParsedData,
   deletePrepDataset,
   loadPrepPoints,
-} from "../core/state.js";
+} from "../core/state/data-prep.js";
+import { setColumns, setProfileCache, setExpandedProfileColumn } from "../core/state/columns.js";
+import { navigate, setLoadingState, setError, setDatasets } from "../core/state/ui.js";
 import {
   createDataset,
   fetchDatasets,

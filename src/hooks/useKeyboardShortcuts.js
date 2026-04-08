@@ -1,13 +1,9 @@
 import { useEffect } from "react";
 import { spcStore } from "../store/spc-store.js";
-import {
-  moveSelection,
-  openContextMenu,
-  closeContextMenu,
-  selectPoint,
-  setActivePanel,
-  getFocused,
-} from "../core/state.js";
+import { moveSelection, selectPoint } from "../core/state/chart.js";
+import { openContextMenu, closeContextMenu } from "../core/state/ui.js";
+import { setActivePanel } from "../core/state/data-prep.js";
+import { getFocused } from "../core/state/selectors.js";
 
 export function navigateSelectionToViolation(indices, currentIndex, directionKey) {
   if (directionKey === "n") {

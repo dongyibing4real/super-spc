@@ -1,7 +1,7 @@
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import { navigate } from "../core/state.js";
-import { NAV } from "../helpers.js";
+import { navigate, setTheme } from "../core/state/ui.js";
+import { NAV } from "../constants.js";
 
 function BrandMark() {
   return (
@@ -27,12 +27,40 @@ function BrandMark() {
   );
 }
 
+const THEME_CYCLE = { dark: 'light', light: 'system', system: 'dark' };
+const THEME_LABEL = { dark: 'Dark', light: 'Light', system: 'Auto' };
+
+function ThemeIcon({ resolved }) {
+  if (resolved === 'light') {
+    // Sun
+    return (
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  // Moon (dark + system)
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path d="M13.5 9.5a5.5 5.5 0 0 1-7-7 5.5 5.5 0 1 0 7 7Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function Sidebar() {
   const route = useStore(spcStore, (s) => s.route);
   const pipelineStatus = useStore(spcStore, (s) => s.pipeline.status);
+  const themePreference = useStore(spcStore, (s) => s.ui.themePreference);
+  const themeResolved = useStore(spcStore, (s) => s.ui.themeResolved);
 
   function handleNavigate(targetRoute) {
     spcStore.setState(navigate(spcStore.getState(), targetRoute));
+  }
+
+  function cycleTheme() {
+    const next = THEME_CYCLE[themePreference] || 'dark';
+    spcStore.setState(setTheme(spcStore.getState(), next));
   }
 
   return (
@@ -62,6 +90,15 @@ export default function Sidebar() {
           className={`status-dot-live ${pipelineStatus === "ready" ? "" : "offline"}`}
         />
         <span>Pipeline {pipelineStatus}</span>
+        <button
+          className="theme-toggle"
+          onClick={cycleTheme}
+          type="button"
+          title={`Theme: ${THEME_LABEL[themePreference]}`}
+        >
+          <ThemeIcon resolved={themeResolved} />
+          <span className="theme-label">{THEME_LABEL[themePreference]}</span>
+        </button>
       </div>
     </aside>
   );

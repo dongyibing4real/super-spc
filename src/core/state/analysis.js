@@ -1,30 +1,47 @@
-import {
-  getFirstChart,
-  loadDataset,
-  setChartParams,
-  setColumns,
-  setStructuralFindings,
-} from "../core/state.js";
-import { applyParamsToContext, INDIVIDUAL_ONLY } from "../helpers.js";
-import { buildDefaultContext, transformAnalysis, transformPoints } from "../data/transforms.js";
-import { generateFindings } from "../core/findings-engine.js";
+/**
+ * analysis.js — Compound state reducers for dataset load and reanalysis.
+ *
+ * These functions compose multiple primitive reducers (setColumns, setRecipeParams,
+ * loadDataset, setStructuralFindings) into complete state transitions.
+ */
+import { getFirstChart } from './selectors.js';
+import { loadDataset } from './pipeline.js';
+import { setRecipeParams } from './reconcile-params.js';
+import { setColumns } from './columns.js';
+import { setStructuralFindings } from './findings.js';
+import { applyParamsToContext } from '../../data/params.js';
+import { buildDefaultContext, transformAnalysis, transformPoints } from '../../data/transforms.js';
+import { generateFindings } from '../findings-engine.js';
+
+/** Expected rejection messages that indicate incomplete config, not real errors. */
+const SILENT_REJECTIONS = new Set([
+  "No chart type selected.",
+]);
+
+function isExpectedRejection(reason) {
+  if (!reason?.message) return false;
+  if (SILENT_REJECTIONS.has(reason.message)) return true;
+  if (reason.message.includes("requires a subgroup column")) return true;
+  return false;
+}
 
 function buildWarningNotice(failedCharts, analysisResults) {
   if (failedCharts.length === 0) return null;
-  // Extract the first meaningful error message from failed results
-  let reason = "";
+  // Filter out expected incomplete-config rejections
+  const realFailures = [];
   if (analysisResults) {
     for (const r of analysisResults) {
-      if (r.status === "rejected" && r.reason?.message) {
-        reason = r.reason.message;
-        break;
+      if (r.status === "rejected" && !isExpectedRejection(r.reason)) {
+        realFailures.push(r);
       }
     }
   }
+  if (realFailures.length === 0) return null;
+  const reason = realFailures[0]?.reason?.message || "";
   return {
     tone: "warning",
     title: "Analysis failed",
-    body: reason || `${failedCharts.length} chart(s) could not be analyzed.`,
+    body: reason || `${realFailures.length} chart(s) could not be analyzed.`,
   };
 }
 
@@ -36,10 +53,9 @@ export function applyColumnRolesToChartParams(state, columns) {
 
   for (const id of next.chartOrder) {
     if (!next.charts[id].params.value_column) {
-      const chartType = next.charts[id].params.chart_type;
-      next = setChartParams(next, id, {
+      next = setRecipeParams(next, id, {
         value_column: valueName,
-        subgroup_column: INDIVIDUAL_ONLY.has(chartType) ? null : subgroupName,
+        subgroup_column: subgroupName,
         phase_column: phaseName,
       });
     }

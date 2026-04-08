@@ -8,10 +8,11 @@ import {
   selectStructuralFinding,
   setFindingsStandard,
   setStructuralFindings,
-  setChartParams,
-} from "../core/state.js";
+} from "../core/state/findings.js";
+import { setChartParams } from "../core/state/chart.js";
 import { reanalyze } from "../store/actions.js";
-import { CHART_TYPE_LABELS, capClass } from "../helpers.js";
+import { CHART_TYPE_LABELS } from "../constants.js";
+import { capClass } from "../helpers.js";
 
 /* ── Constants ─────────────────────────────────────── */
 
@@ -523,8 +524,8 @@ function ChartRailCard({ id, charts, isActive, onSwitch }) {
   const label =
     s?.context?.chartType?.label ||
     CHART_TYPE_LABELS[s?.params?.chart_type] ||
-    id;
-  const roleLabel = CHART_TYPE_LABELS[s?.params?.chart_type] || id;
+    (s?.params?.chart_type ? id : "Select\u2026");
+  const roleLabel = CHART_TYPE_LABELS[s?.params?.chart_type] || (s?.params?.chart_type ? id : "Select\u2026");
   const violations = s?.violations || [];
   const oocCount = violations.reduce((sum, v) => sum + v.indices.length, 0);
   const cap = s?.capability;

@@ -2,7 +2,7 @@
   background: var(--bg-3, #2F343C);
   border: 1px solid var(--border-2, rgba(255,255,255,0.1));
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 12px var(--shadow-color);
   padding: 4px;
   min-width: 130px;
   display: flex;
@@ -39,7 +39,7 @@
   position: absolute; display: flex; flex-direction: column; gap: 1px;
   width: 180px; padding: 4px; border-radius: var(--r-md);
   border: 1px solid var(--chart-border); background: var(--chart-bg);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 100;
+  box-shadow: 0 8px 24px var(--shadow-color); z-index: 100;
 }
 .context-menu button {
   text-align: left; padding: 5px 8px; border-radius: var(--r-xs);
@@ -68,7 +68,7 @@
   transition: transform var(--dur-short) var(--ease), background var(--dur-short) var(--ease);
 }
 .context-toggle.is-on .toggle-dot {
-  background: var(--blue-dim); border-color: rgba(45,114,210,0.3);
+  background: var(--blue-dim); border-color: var(--chip-blue-border);
 }
 .context-toggle.is-on .toggle-dot::after {
   background: var(--blue-bright); transform: translateX(10px);
@@ -77,7 +77,7 @@
 .primary-action {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 4px 10px; border-radius: var(--r-sm);
-  border: 1px solid rgba(45,114,210,0.5); background: var(--blue);
+  border: 1px solid var(--btn-primary-border); background: var(--blue);
   color: #fff; font-size: 11px; font-weight: 700;
 }
 .primary-action:hover { background: #215DB0; }

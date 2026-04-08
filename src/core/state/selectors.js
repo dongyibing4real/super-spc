@@ -1,5 +1,27 @@
-import { getFailedTransformCount } from './init.js';
-import { SIGMA_METHOD_LABELS, capClass } from '../../helpers.js';
+import { SIGMA_METHOD_LABELS } from '../../constants.js';
+import { capClass } from '../../helpers.js';
+
+export function getFailedTransformCount(state) {
+  return state.transforms.filter((step) => step.status === "failed").length;
+}
+
+export function getCapability(state, id = null) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
+  return state.charts[id]?.capability || { cpk: null, ppk: null, cp: null };
+}
+
+export function detectRuleViolations(state, id = null) {
+  if (!id) id = state.focusedChartId || state.chartOrder[0];
+  const violations = new Map();
+  const stateViolations = state.charts[id]?.violations || [];
+  stateViolations.forEach(v => {
+    v.indices.forEach(idx => {
+      if (!violations.has(idx)) violations.set(idx, []);
+      violations.get(idx).push(v.testId);
+    });
+  });
+  return violations;
+}
 
 /** Helper to read the first chart slot (chartOrder[0]). */
 export function getFirstChart(state) {
@@ -345,7 +367,7 @@ export function buildMethodLabComparison(state) {
       id,
       isFocused: id === state.focusedChartId,
       // Method config
-      chartType: slot.context?.chartType?.label || params.chart_type || "—",
+      chartType: slot.context?.chartType?.label || (params.chart_type ? params.chart_type : "Select…"),
       sigmaMethod: slot.context?.sigma?.detail || SIGMA_METHOD_LABELS[params.sigma_method] || "—",
       kSigma: params.k_sigma ?? 3,
       subgroup: slot.context?.subgroup?.detail || "Individual",

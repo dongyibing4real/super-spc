@@ -1,5 +1,32 @@
 import { updateSlot } from './init.js';
 
+/* ── Theme ── */
+
+function resolveTheme(preference) {
+  if (preference === 'dark' || preference === 'light') return preference;
+  // 'system' or unknown → check OS preference
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function applyTheme(resolved) {
+  document.documentElement.dataset.theme = resolved;
+}
+
+export function setTheme(state, preference) {
+  const resolved = resolveTheme(preference);
+  applyTheme(resolved);
+  try { localStorage.setItem('super-spc-theme', preference); } catch {}
+  return { ...state, ui: { ...state.ui, themePreference: preference, themeResolved: resolved } };
+}
+
+export function initTheme(state) {
+  let preference = 'system';
+  try { preference = localStorage.getItem('super-spc-theme') || 'system'; } catch {}
+  const resolved = resolveTheme(preference);
+  applyTheme(resolved);
+  return { ...state, ui: { ...state.ui, themePreference: preference, themeResolved: resolved } };
+}
+
 export function clearNotice(state) {
   return { ...state, ui: { ...state.ui, notice: null } };
 }

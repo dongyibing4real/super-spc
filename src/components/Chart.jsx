@@ -1,14 +1,13 @@
 import { useRef, useEffect } from "react";
-import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import { buildChartData, getChartPoints, ensureForecastVisible, extendForecastToViewport } from "../store/chart-data-builder.js";
+import { getChartPoints, ensureForecastVisible, extendForecastToViewport } from "../data/chart-data-builder.js";
+import { useChartData } from "../hooks/useChartData.js";
 import { createChart } from "./chart/index.js";
 import {
   focusChart,
   selectPoint,
   selectPoints,
   selectPhase,
-  openContextMenu,
   setXDomainOverride,
   setYDomainOverride,
   setForecastHorizon,
@@ -17,7 +16,8 @@ import {
   selectForecast,
   cancelForecast,
   resetAxis,
-} from "../core/state.js";
+} from "../core/state/chart.js";
+import { openContextMenu } from "../core/state/ui.js";
 import { DEFAULT_FORECAST_HORIZON } from "../prediction/constants.js";
 
 /**
@@ -28,12 +28,8 @@ export default function Chart({ chartId, onContextMenu: onContextMenuProp }) {
   const mountRef = useRef(null);
   const chartRef = useRef(null);
 
-  // Subscribe to the state fields that affect this chart's data
-  const slot = useStore(spcStore, (s) => s.charts[chartId]);
-  const points = useStore(spcStore, (s) => s.points);
-  const chartToggles = useStore(spcStore, (s) => s.chartToggles);
-  const selectedPointIndex = useStore(spcStore, (s) => s.selectedPointIndex);
-  const selectedPointIndices = useStore(spcStore, (s) => s.selectedPointIndices);
+  // Single memoized selector — only recomputes when chart-relevant state changes
+  const data = useChartData(chartId);
 
   // Create D3 chart on mount, destroy on unmount
   useEffect(() => {
@@ -122,21 +118,19 @@ export default function Chart({ chartId, onContextMenu: onContextMenuProp }) {
 
   // Update D3 chart when data changes.
   // Defer to rAF so flex layout has settled and syncSize reads correct dimensions.
+  // `data` is memoized by useChartData — only changes when chart-relevant state changes.
   useEffect(() => {
-    if (!chartRef.current || !slot) return;
-    // Double-rAF: first frame to let React/browser settle layout,
-    // second frame to ensure flex dimensions are final.
+    if (!chartRef.current || !data) return;
     let cancelled = false;
     requestAnimationFrame(() => {
       if (cancelled || !chartRef.current) return;
       requestAnimationFrame(() => {
         if (cancelled || !chartRef.current) return;
-        const data = buildChartData(chartId);
-        if (data) chartRef.current.update(data);
+        chartRef.current.update(data);
       });
     });
     return () => { cancelled = true; };
-  }, [chartId, slot, points, chartToggles, selectedPointIndex, selectedPointIndices]);
+  }, [data]);
 
   return (
     <div

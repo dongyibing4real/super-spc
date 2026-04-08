@@ -1,6 +1,8 @@
-import { clamp, updateSlot, createSlot, DEFAULT_PARAMS } from './init.js';
+import { updateSlot, createSlot, DEFAULT_PARAMS } from './init.js';
+import { clamp } from '../../helpers.js';
 import { getFocused } from './selectors.js';
 import { collectChartIds } from './layout.js';
+import { CHART_TYPE_LABELS } from '../../constants.js';
 
 export function selectPoint(state, index, id = null) {
   // null/undefined index = deselect (click empty space)
@@ -122,9 +124,11 @@ export function moveSelection(state, delta) {
   return selectPoint(state, state.selectedPointIndex + delta);
 }
 
+/** Merge params into a chart slot. No validation — use setRecipeParams for recipe fields. */
 export function setChartParams(state, id, params) {
   return updateSlot(state, id, { params: { ...state.charts[id].params, ...params } });
 }
+
 
 export function setActiveChipEditor(state, chipId) {
   return {
@@ -162,7 +166,7 @@ export function focusChart(state, chartId) {
 }
 
 /** Add a new chart using row-grid auto-placement rules */
-export function addChart(state, { chartType = "imr" } = {}) {
+export function addChart(state, { chartType = null } = {}) {
   const newId = `chart-${state.nextChartId}`;
   const focusedSlot = getFocused(state);
 
@@ -173,19 +177,18 @@ export function addChart(state, { chartType = "imr" } = {}) {
     subgroup_column: focusedSlot.params.subgroup_column,
     phase_column: focusedSlot.params.phase_column,
   };
-  const chartLabels = {
-    imr: "IMR", xbar_r: "X-Bar R", xbar_s: "X-Bar S", r: "R", s: "S", mr: "MR",
-    p: "P", np: "NP", c: "C", u: "U", laney_p: "Laney P\u2019", laney_u: "Laney U\u2019",
-    cusum: "CUSUM", ewma: "EWMA", levey_jennings: "Levey-Jennings",
-    cusum_vmask: "CUSUM V-Mask", three_way: "Three-Way", presummarize: "Presummarize",
-    run: "Run Chart", short_run: "Short Run", g: "G", t: "T",
-    hotelling_t2: "Hotelling T\u00B2", mewma: "MEWMA",
-  };
-  const label = chartLabels[chartType] || chartType;
+
+  const label = chartType
+    ? (CHART_TYPE_LABELS[chartType] || chartType)
+    : "Select\u2026";
   const newSlot = createSlot({
     params: newParams,
     accentIdx: state.chartOrder.length % 8,
-    context: { ...focusedSlot.context, chartType: { id: chartType, label, detail: "" }, methodBadge: label },
+    context: {
+      ...focusedSlot.context,
+      chartType: { id: chartType, label, detail: chartType ? "" : "No chart type selected" },
+      methodBadge: chartType ? label : "",
+    },
   });
 
   // Auto-placement: fill last row first, then new row below

@@ -1,7 +1,8 @@
 import React, { useCallback } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import { buildMethodLabComparison, buildDisagreements, toggleMethodLabChart } from "../core/state.js";
+import { buildMethodLabComparison, buildDisagreements } from "../core/state/selectors.js";
+import { toggleMethodLabChart } from "../core/state/ui.js";
 import { capClass } from "../helpers.js";
 
 function fmt(v, decimals = 4) {

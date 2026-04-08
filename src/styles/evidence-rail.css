@@ -74,11 +74,11 @@
 }
 
 /* Phase limits — color-coded rows */
-.phase-limits .evidence-list li.limit-ucl { border-color: rgba(205,66,70,0.15); background: rgba(205,66,70,0.04); }
+.phase-limits .evidence-list li.limit-ucl { border-color: var(--red-dim); background: var(--red-dim); }
 .phase-limits .evidence-list li.limit-ucl strong { color: var(--red); }
-.phase-limits .evidence-list li.limit-cl { border-color: rgba(35,133,81,0.15); background: rgba(35,133,81,0.04); }
+.phase-limits .evidence-list li.limit-cl { border-color: var(--green-dim); background: var(--green-dim); }
 .phase-limits .evidence-list li.limit-cl strong { color: var(--green); }
-.phase-limits .evidence-list li.limit-lcl { border-color: rgba(205,66,70,0.15); background: rgba(205,66,70,0.04); }
+.phase-limits .evidence-list li.limit-lcl { border-color: var(--red-dim); background: var(--red-dim); }
 .phase-limits .evidence-list li.limit-lcl strong { color: var(--red); }
 
 /* Violation breakdown — shared across point/selection/phase tiers */
@@ -107,8 +107,8 @@
 
 /* Marquee rubber-band rectangle */
 .marquee-rect {
-  fill: rgba(45, 114, 210, 0.08);
-  stroke: rgba(45, 114, 210, 0.50);
+  fill: var(--blue-dim);
+  stroke: var(--blue);
   stroke-width: 1;
   stroke-dasharray: 4 3;
   pointer-events: none;
@@ -149,7 +149,7 @@
   border-radius: var(--r-xs);
   background: var(--red-dim);
   color: var(--red);
-  border: 1px solid rgba(205,66,70,0.3);
+  border: 1px solid var(--chip-red-border);
   font-family: ui-monospace, monospace;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -227,8 +227,8 @@
 }
 
 .evidence-list li.unresolved {
-  border-color: rgba(200,118,25,0.2);
-  background: rgba(200,118,25,0.05);
+  border-color: var(--chip-amber-border);
+  background: var(--amber-dim);
 }
 .evidence-list li.unresolved strong { color: var(--amber); }
 

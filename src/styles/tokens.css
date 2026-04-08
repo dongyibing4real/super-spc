@@ -1,66 +1,9 @@
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap");
 
 
+/* ── Shared tokens (theme-independent) ── */
 :root {
-  
-  --bg-0: #111418;
-  --bg-1: #1C2127;
-  --bg-2: #252A31;
-  --bg-3: #2F343C;
-  --bg-4: #383E47;
-  --bg-5: #404854;
-
-  
-  --border-1: rgba(0,0,0,0.4);
-  --border-2: rgba(255,255,255,0.1);
-  --border-3: rgba(255,255,255,0.2);
-
-  
-  --t-1: #F6F7F9;
-  --t-2: #C5CBD3;
-  --t-3: #8F99A8;
-  --t-4: #5F6B7C;
-
-  
-  --chart-bg: #F6F7F9;
-  --chart-surface: #EDEFF2;
-  --chart-border: #DCE0E5;
-  --chart-grid: #E5E8EB;
-  --chart-text: #1C2127;
-  --chart-text-2: #5F6B7C;
-  --chart-text-3: #8F99A8;
-
-  
-  --blue: #2D72D2;
-  --blue-bright: #4C90F0;
-  --blue-dim: rgba(45,114,210,0.15);
-  --teal: #1C6E42;
-  --teal-bright: #32A467;
-  --teal-dim: rgba(28,110,66,0.12);
-  --green: #238551;
-  --green-dim: rgba(35,133,81,0.15);
-  --amber: #C87619;
-  --amber-dim: rgba(200,118,25,0.15);
-  --red: #CD4246;
-  --red-dim: rgba(205,66,70,0.15);
-  --gold: #D1980B;
-  --gold-dim: rgba(209,152,11,0.12);
-  --purple: #8B5CF6;
-  --purple-dim: rgba(139,92,246,0.15);
-  --cyan: #0EA5E9;
-  --cyan-dim: rgba(14,165,233,0.15);
-
-  
-  --accent-0: var(--blue);       --accent-dim-0: var(--blue-dim);
-  --accent-1: var(--teal-bright);--accent-dim-1: var(--teal-dim);
-  --accent-2: var(--amber);      --accent-dim-2: var(--amber-dim);
-  --accent-3: var(--purple);     --accent-dim-3: var(--purple-dim);
-  --accent-4: var(--red);        --accent-dim-4: var(--red-dim);
-  --accent-5: var(--gold);       --accent-dim-5: var(--gold-dim);
-  --accent-6: var(--green);      --accent-dim-6: var(--green-dim);
-  --accent-7: var(--cyan);       --accent-dim-7: var(--cyan-dim);
-
-  
+  /* Border radii */
   --r-xs: 3px;
   --r-sm: 4px;
   --r-md: 6px;
@@ -79,7 +22,7 @@
   --chart-w-mid: 1.0px;
   --chart-w-data: 2px;
 
-  
+  /* Motion */
   --dur-micro: 60ms;
   --dur-short: 100ms;
   --dur-med: 150ms;
@@ -88,6 +31,251 @@
 }
 
 
+/* ── Dark theme (neutral gray — default) ── */
+:root,
+[data-theme="dark"] {
+  /* Surfaces — neutral gray, no blue cast
+     Spread: #121212 → #424242 = 48 pts (wider than before for zone separation) */
+  --bg-0: #121212;
+  --bg-1: #1A1A1A;
+  --bg-2: #282828;
+  --bg-3: #303030;
+  --bg-4: #3A3A3A;
+  --bg-5: #424242;
+
+  /* Borders */
+  --border-1: rgba(0,0,0,0.5);
+  --border-2: rgba(255,255,255,0.08);
+  --border-3: rgba(255,255,255,0.14);
+
+  /* Text — t-3 at #909090 gives ~4.6:1 on bg-2 for WCAG AA */
+  --t-1: #ECECEC;
+  --t-2: #B3B3B3;
+  --t-3: #909090;
+  --t-4: #5C5C5C;
+
+  /* Chart island (light surface in dark chrome) */
+  --chart-bg: #F6F7F9;
+  --chart-surface: #EDEFF2;
+  --chart-border: #DCE0E5;
+  --chart-grid: #E5E8EB;
+  --chart-text: #1C2127;
+  --chart-text-2: #5F6B7C;
+  --chart-text-3: #8F99A8;
+
+  /* Intent colors — slightly desaturated for scientific feel */
+  --blue: #3574C4;
+  --blue-bright: #5A8FD4;
+  --blue-dim: rgba(53,116,196,0.15);
+  --teal: #1C6E42;
+  --teal-bright: #32A467;
+  --teal-dim: rgba(28,110,66,0.12);
+  --green: #2D8B56;
+  --green-dim: rgba(45,139,86,0.15);
+  --amber: #C07B2A;
+  --amber-dim: rgba(192,123,42,0.15);
+  --red: #C24B4F;
+  --red-dim: rgba(194,75,79,0.15);
+  --gold: #D1980B;
+  --gold-dim: rgba(209,152,11,0.12);
+  --purple: #7B5CD6;
+  --purple-dim: rgba(123,92,214,0.15);
+  --cyan: #0D95D4;
+  --cyan-dim: rgba(13,149,212,0.15);
+
+  /* Accent cycle (multi-chart identity) */
+  --accent-0: var(--blue);       --accent-dim-0: var(--blue-dim);
+  --accent-1: var(--teal-bright);--accent-dim-1: var(--teal-dim);
+  --accent-2: var(--amber);      --accent-dim-2: var(--amber-dim);
+  --accent-3: var(--purple);     --accent-dim-3: var(--purple-dim);
+  --accent-4: var(--red);        --accent-dim-4: var(--red-dim);
+  --accent-5: var(--gold);       --accent-dim-5: var(--gold-dim);
+  --accent-6: var(--green);      --accent-dim-6: var(--green-dim);
+  --accent-7: var(--cyan);       --accent-dim-7: var(--cyan-dim);
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(255,255,255,0.06);
+
+  /* Status chip borders (dark mode) */
+  --chip-blue-border: rgba(53,116,196,0.25);
+  --chip-amber-border: rgba(192,123,42,0.25);
+  --chip-red-border: rgba(194,75,79,0.25);
+  --chip-green-border: rgba(45,139,86,0.25);
+
+  /* Status dot glow */
+  --status-glow: rgba(45,139,86,0.5);
+
+  /* Surface modifiers (white-additive on dark) */
+  --hover-overlay: rgba(255,255,255,0.03);
+  --subtle-overlay: rgba(255,255,255,0.05);
+  --medium-overlay: rgba(255,255,255,0.08);
+  --shadow-color: rgba(0,0,0,0.4);
+  --shadow-heavy: rgba(0,0,0,0.5);
+
+  /* Btn primary border */
+  --btn-primary-border: rgba(53,116,196,0.5);
+}
+
+
+/* ── Light theme (JMP-modern) ── */
+[data-theme="light"] {
+  /* Surfaces — warm-tinted light grays (lab instrument feel, not Gmail) */
+  --bg-0: #EFEEED;
+  --bg-1: #F9F8F7;
+  --bg-2: #F4F3F1;
+  --bg-3: #FFFFFF;
+  --bg-4: #E7E6E4;
+  --bg-5: #DFDEDD;
+
+  /* Borders */
+  --border-1: rgba(0,0,0,0.06);
+  --border-2: rgba(0,0,0,0.10);
+  --border-3: rgba(0,0,0,0.18);
+
+  /* Text */
+  --t-1: #1A1A1A;
+  --t-2: #4A4A4A;
+  --t-3: #808080;
+  --t-4: #B0B0B0;
+
+  /* Chart island — pure white so it reads as a distinct zone against warm bg */
+  --chart-bg: #FFFFFF;
+  --chart-surface: #F5F4F2;
+  --chart-border: #E0DFDD;
+  --chart-grid: #EBEAE8;
+  --chart-text: #1A1A1A;
+  --chart-text-2: #666666;
+  --chart-text-3: #999999;
+
+  /* Intent colors — adjusted for light backgrounds */
+  --blue: #2B68B8;
+  --blue-bright: #3574C4;
+  --blue-dim: rgba(43,104,184,0.10);
+  --teal: #1C6E42;
+  --teal-bright: #2D8B56;
+  --teal-dim: rgba(28,110,66,0.08);
+  --green: #27864E;
+  --green-dim: rgba(39,134,78,0.10);
+  --amber: #B8741F;
+  --amber-dim: rgba(184,116,31,0.10);
+  --red: #C0392B;
+  --red-dim: rgba(192,57,43,0.10);
+  --gold: #C48A0A;
+  --gold-dim: rgba(196,138,10,0.08);
+  --purple: #6D4BC8;
+  --purple-dim: rgba(109,75,200,0.10);
+  --cyan: #0D8ECB;
+  --cyan-dim: rgba(13,142,203,0.10);
+
+  /* Accent cycle */
+  --accent-0: var(--blue);       --accent-dim-0: var(--blue-dim);
+  --accent-1: var(--teal-bright);--accent-dim-1: var(--teal-dim);
+  --accent-2: var(--amber);      --accent-dim-2: var(--amber-dim);
+  --accent-3: var(--purple);     --accent-dim-3: var(--purple-dim);
+  --accent-4: var(--red);        --accent-dim-4: var(--red-dim);
+  --accent-5: var(--gold);       --accent-dim-5: var(--gold-dim);
+  --accent-6: var(--green);      --accent-dim-6: var(--green-dim);
+  --accent-7: var(--cyan);       --accent-dim-7: var(--cyan-dim);
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(0,0,0,0.08);
+
+  /* Status chip borders (light mode) */
+  --chip-blue-border: rgba(43,104,184,0.20);
+  --chip-amber-border: rgba(184,116,31,0.20);
+  --chip-red-border: rgba(192,57,43,0.20);
+  --chip-green-border: rgba(39,134,78,0.20);
+
+  /* Status dot glow */
+  --status-glow: rgba(39,134,78,0.4);
+
+  /* Surface modifiers (dark-additive on light) */
+  --hover-overlay: rgba(0,0,0,0.03);
+  --subtle-overlay: rgba(0,0,0,0.04);
+  --medium-overlay: rgba(0,0,0,0.06);
+  --shadow-color: rgba(0,0,0,0.12);
+  --shadow-heavy: rgba(0,0,0,0.2);
+
+  /* Btn primary border */
+  --btn-primary-border: rgba(43,104,184,0.4);
+}
+
+
+/* ── System preference fallback (before JS loads) ──
+   SYNC: must mirror [data-theme="light"] above.
+   This duplication exists so the correct theme applies before JS hydrates.
+   When updating light theme values, update BOTH blocks. ── */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg-0: #EFEEED;
+    --bg-1: #F9F8F7;
+    --bg-2: #F4F3F1;
+    --bg-3: #FFFFFF;
+    --bg-4: #E7E6E4;
+    --bg-5: #DFDEDD;
+
+    --border-1: rgba(0,0,0,0.06);
+    --border-2: rgba(0,0,0,0.10);
+    --border-3: rgba(0,0,0,0.18);
+
+    --t-1: #1A1A1A;
+    --t-2: #4A4A4A;
+    --t-3: #808080;
+    --t-4: #B0B0B0;
+
+    --chart-bg: #FFFFFF;
+    --chart-surface: #F5F4F2;
+    --chart-border: #E0DFDD;
+    --chart-grid: #EBEAE8;
+    --chart-text: #1A1A1A;
+    --chart-text-2: #666666;
+    --chart-text-3: #999999;
+
+    --blue: #2B68B8;
+    --blue-bright: #3574C4;
+    --blue-dim: rgba(43,104,184,0.10);
+    --teal: #1C6E42;
+    --teal-bright: #2D8B56;
+    --teal-dim: rgba(28,110,66,0.08);
+    --green: #27864E;
+    --green-dim: rgba(39,134,78,0.10);
+    --amber: #B8741F;
+    --amber-dim: rgba(184,116,31,0.10);
+    --red: #C0392B;
+    --red-dim: rgba(192,57,43,0.10);
+    --gold: #C48A0A;
+    --gold-dim: rgba(196,138,10,0.08);
+    --purple: #6D4BC8;
+    --purple-dim: rgba(109,75,200,0.10);
+    --cyan: #0D8ECB;
+    --cyan-dim: rgba(13,142,203,0.10);
+
+    --accent-0: var(--blue);       --accent-dim-0: var(--blue-dim);
+    --accent-1: var(--teal-bright);--accent-dim-1: var(--teal-dim);
+    --accent-2: var(--amber);      --accent-dim-2: var(--amber-dim);
+    --accent-3: var(--purple);     --accent-dim-3: var(--purple-dim);
+    --accent-4: var(--red);        --accent-dim-4: var(--red-dim);
+    --accent-5: var(--gold);       --accent-dim-5: var(--gold-dim);
+    --accent-6: var(--green);      --accent-dim-6: var(--green-dim);
+    --accent-7: var(--cyan);       --accent-dim-7: var(--cyan-dim);
+
+    --scrollbar-thumb: rgba(0,0,0,0.08);
+    --chip-blue-border: rgba(43,104,184,0.20);
+    --chip-amber-border: rgba(184,116,31,0.20);
+    --chip-red-border: rgba(192,57,43,0.20);
+    --chip-green-border: rgba(39,134,78,0.20);
+    --status-glow: rgba(39,134,78,0.4);
+    --hover-overlay: rgba(0,0,0,0.03);
+    --subtle-overlay: rgba(0,0,0,0.04);
+    --medium-overlay: rgba(0,0,0,0.06);
+    --shadow-color: rgba(0,0,0,0.12);
+    --shadow-heavy: rgba(0,0,0,0.2);
+    --btn-primary-border: rgba(43,104,184,0.4);
+  }
+}
+
+
+/* ── Resets ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html {
@@ -114,5 +302,4 @@ h1, h2, h3, h4, h5, h6 {
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 99px; }
-
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 99px; }

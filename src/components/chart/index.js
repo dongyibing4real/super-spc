@@ -233,7 +233,20 @@ export function createChart(container, options = {}) {
   });
 
   // ── Axis drag: JMP-style pan/scale (extracted to axes.js) ───────────
-  const axisCallbacks = { onAxisDrag: config.onAxisDrag, onForecastActivity: config.onForecastActivity };
+  // Live drag re-render: update overrides in lastData and do a full renderAll.
+  // This bypasses React/Zustand — D3 renders directly during drag.
+  // Store is updated only on drag end via onAxisDrag.
+  const onAxisDragLive = (info) => {
+    if (!lastData) return;
+    const liveData = { ...lastData, toggles: { ...lastData.toggles } };
+    if (info.axis === 'x') {
+      liveData.toggles.xDomainOverride = { min: info.min, max: info.max };
+    } else {
+      liveData.toggles.yDomainOverride = { yMin: info.yMin, yMax: info.yMax };
+    }
+    renderAll(liveData);
+  };
+  const axisCallbacks = { onAxisDrag: config.onAxisDrag, onAxisDragLive, onForecastActivity: config.onForecastActivity };
   const getAxisContext = () => ({ scales: currentScales, sizedConfig: currentSizedConfig, width: currentWidth, height: currentHeight });
   const cleanupXDrag = setupAxisDrag(xAxisHit, 'x', getAxisContext, axisCallbacks);
   const cleanupYDrag = setupAxisDrag(yAxisHit, 'y', getAxisContext, axisCallbacks);

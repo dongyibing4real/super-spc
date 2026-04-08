@@ -1,3 +1,19 @@
+## Working Style 
+
+When asked for a design review or architectural analysis, provide the full critique FIRST before implementing any fixes. Do not rush to code changes unless explicitly asked.
+
+## Tools & Conventions 
+
+For UI/visual work, use Playwright for screenshots — never use the preview tool for visual verification.
+
+## Design Principles
+
+Prefer the simplest UX solution first (e.g., hide invalid options) rather than adding validation warnings or complex error handling. Ask before adding complexity.
+
+## File Organization
+
+Save project files (plans, docs, skills) inside the project repo under `.claude/` or `docs/` — never in global config directories unless explicitly told.
+
 ## Design System
 
 Before making any visual or UI decisions, always read the **latest** design files in `.claude/design/`:

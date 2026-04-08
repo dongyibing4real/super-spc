@@ -72,12 +72,12 @@
   white-space: nowrap;
 }
 
-.info    { border-color: rgba(45,114,210,0.25); background: var(--blue-dim); color: var(--blue-bright); }
-.warning { border-color: rgba(200,118,25,0.25); background: var(--amber-dim); color: var(--amber); }
+.info    { border-color: var(--chip-blue-border); background: var(--blue-dim); color: var(--blue-bright); }
+.warning { border-color: var(--chip-amber-border); background: var(--amber-dim); color: var(--amber); }
 .critical,
-.danger  { border-color: rgba(205,66,70,0.25); background: var(--red-dim); color: var(--red); }
+.danger  { border-color: var(--chip-red-border); background: var(--red-dim); color: var(--red); }
 .positive,
-.success { border-color: rgba(35,133,81,0.25); background: var(--green-dim); color: var(--green); }
+.success { border-color: var(--chip-green-border); background: var(--green-dim); color: var(--green); }
 .neutral { background: var(--bg-3); color: var(--t-3); }
 
 .sdot {
@@ -108,7 +108,7 @@
 
 .btn-primary {
   background: var(--blue);
-  border-color: rgba(45,114,210,0.5);
+  border-color: var(--btn-primary-border);
   color: #fff;
 }
 .btn-primary:hover { background: #215DB0; }

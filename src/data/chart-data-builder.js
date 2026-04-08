@@ -3,10 +3,9 @@
  *
  * Extracted from legacy-boot.js to be importable by both legacy code and React Chart.jsx.
  */
-import { spcStore } from "./spc-store.js";
 import { buildForecastView } from "../prediction/build-forecast-view.js";
-import { detectRuleViolations, getCapability } from "../helpers.js";
-import { setXDomainOverride, setForecastHorizon } from "../core/state.js";
+import { detectRuleViolations, getCapability } from "../core/state/selectors.js";
+import { setXDomainOverride, setForecastHorizon } from "../core/state/chart.js";
 import { DEFAULT_FORECAST_HORIZON } from "../prediction/constants.js";
 
 export function getChartPoints(slot, globalPoints) {
@@ -51,12 +50,17 @@ export function extendForecastToViewport(nextState, id, nextXMax) {
 /**
  * Build the full data payload a D3 chart needs to render.
  * @param {string} id — chart slot ID (e.g. "chart-1")
+ * @param {object} state — full app state (required)
  * @returns {object} — { points, limits, phases, forecast, toggles, selectedIndex, ... }
  */
-export function buildChartData(id) {
-  const state = spcStore.getState();
+export function buildChartData(id, state) {
   const slot = state.charts[id];
   if (!slot) return null;
+
+  // No chart type selected: render empty canvas
+  if (!slot.params?.chart_type) {
+    return null;
+  }
 
   const points = getChartPoints(slot, state.points);
   const hasChartValues = slot.chartValues && slot.chartValues.length > 0;

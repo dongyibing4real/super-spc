@@ -24,7 +24,7 @@ test("getFocused returns the slot matching focusedChartId", () => {
   const focused = getFocused(state);
   assert.ok(focused);
   assert.ok(focused.params);
-  assert.equal(focused.params.chart_type, "imr");
+  assert.equal(focused.params.chart_type, null);
 });
 
 test("getFocused falls back to primary when focusedChartId is invalid", () => {
