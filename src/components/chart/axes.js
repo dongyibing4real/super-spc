@@ -159,9 +159,9 @@ export function renderAxes(layer, scales, data, config) {
 
   // ── 2. Estimate label dimensions ──────────────────────────────────
   const sampleLabel = data.points[visibleMin]?.label?.replace('LOT-', '') ?? '';
-  const MONO_RATIO = 0.6; // char width / font size for IBM Plex Mono
+  const MONOSPACE_CHAR_WIDTH_RATIO = 0.6; // char width / font size for IBM Plex Mono
   const baseFontSize = sampleLabel.length > 10 ? 8 : sampleLabel.length > 6 ? 9 : 10;
-  const baseCharW = baseFontSize * MONO_RATIO;
+  const baseCharW = baseFontSize * MONOSPACE_CHAR_WIDTH_RATIO;
   const labelWidth = sampleLabel.length * baseCharW;
 
   // ── 3. Determine rotation from RAW density (before stride) ────────
@@ -170,7 +170,7 @@ export function renderAxes(layer, scales, data, config) {
   const rotate90 = pointSpacing < labelWidth * 0.2;
   const smallFont = rotate45 && pointSpacing < labelWidth * 0.35;
   const fontSize = smallFont ? Math.max(7, baseFontSize - 2) : baseFontSize;
-  const effectiveCharW = fontSize * MONO_RATIO;
+  const effectiveCharW = fontSize * MONOSPACE_CHAR_WIDTH_RATIO;
 
   // ── 4. Effective horizontal footprint per label ───────────────────
   //    Conservative estimates that guarantee no visual overlap AND readability.

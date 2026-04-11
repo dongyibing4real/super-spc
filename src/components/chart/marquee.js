@@ -11,10 +11,10 @@ const MARQUEE_THRESHOLD = 5; // px — minimum drag to activate marquee
  * @param {HTMLElement} container - DOM container element
  * @param {Selection} marqueeLayer - D3 selection for the marquee rectangle layer
  * @param {Function} getContext - () => { scales, sizedConfig, width, height, lastData }
- * @param {{ onSelectPoints: Function }} callbacks
+ * @param {{ onSelectPoints: Function }} options
  * @returns {{ destroy: Function, wasMarqueeJustFinished: Function }}
  */
-export function setupMarquee(svg, container, marqueeLayer, getContext, callbacks) {
+export function setupMarquee(svg, container, marqueeLayer, getContext, { onSelectPoints }) {
   let marqueeState = null;
   let marqueeJustFinished = false;
 
@@ -110,9 +110,9 @@ export function setupMarquee(svg, container, marqueeLayer, getContext, callbacks
         }
 
         if (selected.length > 0) {
-          callbacks.onSelectPoints?.(selected);
+          onSelectPoints?.(selected);
         } else {
-          callbacks.onSelectPoints?.(null);
+          onSelectPoints?.(null);
         }
       }
     }

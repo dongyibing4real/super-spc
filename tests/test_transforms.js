@@ -6,9 +6,9 @@
 
 import assert from "node:assert/strict";
 import {
-  transformPoints,
-  transformAnalysis,
-  buildDefaultContext,
+  mapRowsToChartPoints,
+  mapAnalysisToSlotFields,
+  buildInitialChartContext,
 } from "../src/data/transforms.js";
 
 let passed = 0;
@@ -27,9 +27,9 @@ function test(name, fn) {
 }
 
 // ---------------------------------------------------------------------------
-// transformPoints
+// mapRowsToChartPoints
 // ---------------------------------------------------------------------------
-console.log("\ntransformPoints");
+console.log("\nmapRowsToChartPoints");
 
 test("maps normal measurement array", () => {
   const measurements = [
@@ -38,7 +38,7 @@ test("maps normal measurement array", () => {
     { id: 3, value: 8.044, subgroup: "Hour 3", sequence_index: 2, metadata: {} },
   ];
 
-  const points = transformPoints(measurements);
+  const points = mapRowsToChartPoints(measurements);
   assert.equal(points.length, 3);
 
   assert.equal(points[0].id, "pt-0");
@@ -54,20 +54,20 @@ test("maps normal measurement array", () => {
 });
 
 test("returns empty array for empty input", () => {
-  const points = transformPoints([]);
+  const points = mapRowsToChartPoints([]);
   assert.deepEqual(points, []);
 });
 
 test("returns empty array for non-array input", () => {
-  assert.deepEqual(transformPoints(null), []);
-  assert.deepEqual(transformPoints(undefined), []);
+  assert.deepEqual(mapRowsToChartPoints(null), []);
+  assert.deepEqual(mapRowsToChartPoints(undefined), []);
 });
 
 test("falls back to pt-index when subgroup is null", () => {
   const measurements = [
     { id: 10, value: 5.0, subgroup: null, sequence_index: 7, metadata: {} },
   ];
-  const points = transformPoints(measurements);
+  const points = mapRowsToChartPoints(measurements);
   assert.equal(points[0].subgroupLabel, "pt-7");
 });
 
@@ -75,7 +75,7 @@ test("falls back to pt-index when subgroup is undefined", () => {
   const measurements = [
     { id: 11, value: 6.0, sequence_index: 3, metadata: {} },
   ];
-  const points = transformPoints(measurements);
+  const points = mapRowsToChartPoints(measurements);
   assert.equal(points[0].subgroupLabel, "pt-3");
 });
 
@@ -83,7 +83,7 @@ test("handles single point", () => {
   const measurements = [
     { id: 99, value: 1.23, subgroup: "S1", sequence_index: 0, metadata: {} },
   ];
-  const points = transformPoints(measurements);
+  const points = mapRowsToChartPoints(measurements);
   assert.equal(points.length, 1);
   assert.equal(points[0].primaryValue, 1.23);
   assert.equal(points[0].subgroupLabel, "S1");
@@ -98,7 +98,7 @@ test("uses column config for label and phase", () => {
     { name: "Batch", ordinal: 1, dtype: "text", role: "label" },
     { name: "Stage", ordinal: 2, dtype: "text", role: "phase" },
   ];
-  const points = transformPoints(measurements, columns);
+  const points = mapRowsToChartPoints(measurements, columns);
   assert.equal(points[0].label, "B1");
   assert.equal(points[0].phaseId, "Phase1");
 });
@@ -107,15 +107,15 @@ test("preserves raw data in point", () => {
   const measurements = [
     { id: 1, value: 8.0, subgroup: "A", sequence_index: 0, raw_data: { Temp: "21.5", Batch: "B1" } },
   ];
-  const points = transformPoints(measurements);
+  const points = mapRowsToChartPoints(measurements);
   assert.equal(points[0].raw.Temp, "21.5");
   assert.equal(points[0].raw.Batch, "B1");
 });
 
 // ---------------------------------------------------------------------------
-// transformAnalysis
+// mapAnalysisToSlotFields
 // ---------------------------------------------------------------------------
-console.log("\ntransformAnalysis");
+console.log("\nmapAnalysisToSlotFields");
 
 test("maps full analysis result with capability", () => {
   const analysisResult = {
@@ -139,7 +139,7 @@ test("maps full analysis result with capability", () => {
     created_at: "2026-03-27T10:00:00Z",
   };
 
-  const result = transformAnalysis(analysisResult, 8.165, 8.025);
+  const result = mapAnalysisToSlotFields(analysisResult, 8.165, 8.025);
 
   assert.equal(result.limits.center, 8.078);
   assert.equal(result.limits.ucl, 8.145);
@@ -174,7 +174,7 @@ test("returns null capability when not present", () => {
     created_at: "2026-03-27T12:00:00Z",
   };
 
-  const result = transformAnalysis(analysisResult);
+  const result = mapAnalysisToSlotFields(analysisResult);
   assert.equal(result.capability, null);
   assert.equal(result.limits.usl, null);
   assert.equal(result.limits.lsl, null);
@@ -195,7 +195,7 @@ test("maps violations array to frontend shape", () => {
     created_at: "2026-03-27T10:00:00Z",
   };
 
-  const result = transformAnalysis(analysisResult);
+  const result = mapAnalysisToSlotFields(analysisResult);
   assert.equal(result.violations.length, 2);
   assert.equal(result.violations[0].testId, "1");
   assert.deepEqual(result.violations[0].indices, [5, 12, 23]);
@@ -210,7 +210,7 @@ test("backward compat: handles old response without violations/sigma/zones", () 
     created_at: "2026-03-27T10:00:00Z",
   };
 
-  const result = transformAnalysis(analysisResult, 5.5, 3.5);
+  const result = mapAnalysisToSlotFields(analysisResult, 5.5, 3.5);
   assert.equal(result.limits.center, 4.5);
   assert.equal(result.capability.cp, 1.0);
   assert.equal(result.sigma, null);
@@ -219,13 +219,13 @@ test("backward compat: handles old response without violations/sigma/zones", () 
 });
 
 // ---------------------------------------------------------------------------
-// buildDefaultContext
+// buildInitialChartContext
 // ---------------------------------------------------------------------------
-console.log("\nbuildDefaultContext");
+console.log("\nbuildInitialChartContext");
 
 test("builds context from dataset metadata", () => {
   const meta = { name: "Etch Rate Stability" };
-  const ctx = buildDefaultContext(meta);
+  const ctx = buildInitialChartContext(meta);
 
   assert.equal(ctx.title, "Etch Rate Stability");
   assert.ok(ctx.metric && ctx.metric.id);
@@ -241,7 +241,7 @@ test("builds context from dataset metadata", () => {
 });
 
 test("falls back to Untitled Dataset when name is missing", () => {
-  const ctx = buildDefaultContext({});
+  const ctx = buildInitialChartContext({});
   assert.equal(ctx.title, "Untitled Dataset");
 });
 
@@ -252,7 +252,7 @@ test("uses column config for metric/subgroup/phase labels", () => {
     { name: "Batch", ordinal: 1, dtype: "text", role: "subgroup" },
     { name: "Stage", ordinal: 2, dtype: "text", role: "phase" },
   ];
-  const ctx = buildDefaultContext(meta, columns);
+  const ctx = buildInitialChartContext(meta, columns);
   assert.equal(ctx.title, "My Chart");
   assert.equal(ctx.metric.label, "Temperature");
   assert.equal(ctx.subgroup.label, "Batch");
@@ -260,7 +260,7 @@ test("uses column config for metric/subgroup/phase labels", () => {
 });
 
 test("defaults to generic labels when no columns provided", () => {
-  const ctx = buildDefaultContext({ name: "Test" });
+  const ctx = buildInitialChartContext({ name: "Test" });
   assert.equal(ctx.metric.label, "Value");
   assert.equal(ctx.subgroup.label, "Individual");
   assert.equal(ctx.phase.label, "Single phase");

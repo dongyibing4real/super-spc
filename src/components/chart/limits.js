@@ -172,7 +172,7 @@ function _renderPerPhaseLimits(layer, labelLayer, x, y, phases, data, config, L,
 /** Render edge labels (UCL/CL/LCL + sigma markers) at the right side of the chart. */
 function _renderEdgeLabels(labelLayer, y, sigma, data, config, R) {
   const edgeFontSize = config.edgeLabelFontSize || 10;
-  const MONO_RATIO = 0.6;
+  const MONOSPACE_CHAR_WIDTH_RATIO = 0.6;
   const pillPadH = 6;
 
   const yUCL = y(data.limits.ucl);
@@ -195,7 +195,7 @@ function _renderEdgeLabels(labelLayer, y, sigma, data, config, R) {
 
   // Pill backgrounds for UCL/CL/LCL
   edgeLabels.filter(d => d.pillFill).forEach(d => {
-    const pillW = d.text.length * edgeFontSize * MONO_RATIO + pillPadH * 2;
+    const pillW = d.text.length * edgeFontSize * MONOSPACE_CHAR_WIDTH_RATIO + pillPadH * 2;
     labelLayer.append('rect')
       .attr('x', R + 2).attr('y', d.y - 8)
       .attr('width', pillW).attr('height', 14)

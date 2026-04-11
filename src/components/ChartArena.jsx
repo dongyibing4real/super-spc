@@ -7,11 +7,7 @@ import { saveLayout } from "../store/actions.js";
 import { CHART_TYPE_LABELS } from "../constants.js";
 import { capClass } from "../helpers.js";
 import { getCapability } from "../core/state/selectors.js";
-import { buildForecastView } from "../prediction/build-forecast-view.js";
-import { getChartPoints } from "../data/chart-data-builder.js";
 import Chart from "./Chart.jsx";
-
-const FOCUSED_TAIL_WINDOW = 60;
 
 /* --- Chart pane (React) --- */
 
@@ -24,22 +20,6 @@ function ChartPane({ state, chartId }) {
   const caps = getCapability(state, chartId);
   const method = slot.context.chartType?.label || "";
   const metric = slot.context.metric?.label || "";
-  const points = getChartPoints(slot, state.points);
-  const lastIdx = Math.max(0, points.length - 1);
-  const xDefaultDomain = {
-    min: Math.max(0, lastIdx - (FOCUSED_TAIL_WINDOW - 1)),
-    max: lastIdx + (slot.forecast?.horizon || 6),
-  };
-  // buildForecastView is called for side-effects / consistency with legacy
-  buildForecastView({
-    points,
-    limits: slot.limits,
-    forecast: slot.forecast,
-    xDomainOverride: slot.overrides.x,
-    xDefaultDomain,
-    chartTypeId: slot.context.chartType?.id,
-  });
-
   const showTable = slot.showDataTable;
   const accentIdx = state.chartOrder.indexOf(chartId) % 8;
 
@@ -92,7 +72,7 @@ function ChartPane({ state, chartId }) {
           data-drag-handle={chartId}
           onContextMenu={handleTitlebarContextMenu}
         >
-          <span className="grip-icon">⠗</span>
+          <span className="grip-icon"> :: </span>
           <span className="method-dot"></span>
           <strong className="pane-method">{method}</strong>
           <span className="pane-metric">{metric}</span>
