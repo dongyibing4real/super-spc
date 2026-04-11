@@ -128,6 +128,16 @@
   flex: 1;
   overflow: hidden;
 }
+@media (max-width: 960px) {
+  .workspace-layout {
+    grid-template-columns: 140px minmax(0, 1fr) 220px;
+  }
+}
+@media (max-width: 720px) {
+  .workspace-layout {
+    grid-template-columns: 0px minmax(0, 1fr) 0px;
+  }
+}
 
 .workspace-main {
   padding: 8px;

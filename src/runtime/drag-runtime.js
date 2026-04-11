@@ -167,12 +167,14 @@ export function setupDragInteractions({
         const leftWrap = wraps[dividerDrag.col];
         const rightWrap = wraps[dividerDrag.col + 1];
         if (leftWrap && rightWrap) {
-          const totalPct = parseFloat(leftWrap.style.flex.split(" ")[2]) + parseFloat(rightWrap.style.flex.split(" ")[2]);
+          const leftWeight = parseFloat(leftWrap.style.flex.split(" ")[0]) || 1;
+          const rightWeight = parseFloat(rightWrap.style.flex.split(" ")[0]) || 1;
+          const totalWeight = leftWeight + rightWeight;
           const paneLeftEdge = leftWrap.getBoundingClientRect().left;
           const combinedWidth = leftWrap.getBoundingClientRect().width + rightWrap.getBoundingClientRect().width;
           const localRatio = Math.max(0.1, Math.min(0.9, (e.clientX - paneLeftEdge) / combinedWidth));
-          leftWrap.style.flex = `0 0 ${(totalPct * localRatio).toFixed(2)}%`;
-          rightWrap.style.flex = `0 0 ${(totalPct * (1 - localRatio)).toFixed(2)}%`;
+          leftWrap.style.flex = `${(totalWeight * localRatio).toFixed(4)} 1 0`;
+          rightWrap.style.flex = `${(totalWeight * (1 - localRatio)).toFixed(4)} 1 0`;
           dividerDrag.pendingRatio = localRatio;
         }
       } else {
@@ -180,12 +182,14 @@ export function setupDragInteractions({
         const topEl = rowEls[dividerDrag.row];
         const bottomEl = rowEls[dividerDrag.row + 1];
         if (topEl && bottomEl) {
+          const topWeight = parseFloat(topEl.style.flex.split(" ")[0]) || 1;
+          const bottomWeight = parseFloat(bottomEl.style.flex.split(" ")[0]) || 1;
+          const totalWeight = topWeight + bottomWeight;
           const topEdge = topEl.getBoundingClientRect().top;
           const combinedHeight = topEl.getBoundingClientRect().height + bottomEl.getBoundingClientRect().height;
           const localRatio = Math.max(0.1, Math.min(0.9, (e.clientY - topEdge) / combinedHeight));
-          const totalPct = parseFloat(topEl.style.flex.split(" ")[2]) + parseFloat(bottomEl.style.flex.split(" ")[2]);
-          topEl.style.flex = `0 0 ${(totalPct * localRatio).toFixed(2)}%`;
-          bottomEl.style.flex = `0 0 ${(totalPct * (1 - localRatio)).toFixed(2)}%`;
+          topEl.style.flex = `${(totalWeight * localRatio).toFixed(4)} 1 0`;
+          bottomEl.style.flex = `${(totalWeight * (1 - localRatio)).toFixed(4)} 1 0`;
           dividerDrag.pendingRatio = localRatio;
         }
       }

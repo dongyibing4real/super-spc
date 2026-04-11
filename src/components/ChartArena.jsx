@@ -208,22 +208,16 @@ function DataTable({ state, chartId }) {
 function RowGrid({ state }) {
   const { rows, colWeights, rowWeights } = state.chartLayout;
   if (!rows || rows.length === 0) return null;
-  const totalRowWeight = rowWeights.reduce((a, b) => a + b, 0);
-
   return (
     <>
       {rows.map((row, r) => {
-        const rowPct = (rowWeights[r] / totalRowWeight * 100).toFixed(2);
-        const totalColWeight = colWeights[r].reduce((a, b) => a + b, 0);
-
         return (
           <React.Fragment key={`row-${r}`}>
-            <div className="chart-row" style={{ flex: `0 0 ${rowPct}%` }}>
+            <div className="chart-row" style={{ flex: `${rowWeights[r]} 1 0` }}>
               {row.map((id, c) => {
-                const colPct = (colWeights[r][c] / totalColWeight * 100).toFixed(2);
                 return (
                   <React.Fragment key={id}>
-                    <div className="chart-pane-wrap" style={{ flex: `0 0 ${colPct}%` }}>
+                    <div className="chart-pane-wrap" style={{ flex: `${colWeights[r][c]} 1 0` }}>
                       <ChartPane state={state} chartId={id} />
                     </div>
                     {c < row.length - 1 && (
@@ -252,18 +246,13 @@ function RowGrid({ state }) {
 export function renderGhostRows(layout, incomingId) {
   const { rows, colWeights, rowWeights } = layout;
   if (!rows || rows.length === 0) return "";
-  const totalRowWeight = rowWeights.reduce((a, b) => a + b, 0);
 
   return rows.map((row, r) => {
-    const rowPct = (rowWeights[r] / totalRowWeight * 100).toFixed(2);
-    const totalColWeight = colWeights[r].reduce((a, b) => a + b, 0);
-
     const cells = row.map((id, c) => {
-      const colPct = (colWeights[r][c] / totalColWeight * 100).toFixed(2);
-      return `<div class="ghost-pane${id === incomingId ? " ghost-pane-incoming" : ""}" style="flex: 0 0 ${colPct}%"></div>`;
+      return `<div class="ghost-pane${id === incomingId ? " ghost-pane-incoming" : ""}" style="flex: ${colWeights[r][c]} 1 0"></div>`;
     }).join("");
 
-    return `<div class="ghost-row" style="flex: 0 0 ${rowPct}%">${cells}</div>`;
+    return `<div class="ghost-row" style="flex: ${rowWeights[r]} 1 0">${cells}</div>`;
   }).join("");
 }
 
