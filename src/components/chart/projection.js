@@ -147,9 +147,9 @@ export function renderProjectionShell(layer, scales, data, config) {
   };
   if (bounds.width < 8) return null;
 
-  const selected = !!config.forecastSelected;
+  const isLoading = config.forecastMode === "loading";
   const shell = layer.append('g')
-    .attr('class', `forecast-shell${selected ? ' is-selected' : ''}`);
+    .attr('class', `forecast-shell${isLoading ? ' is-loading' : ''}`);
 
   shell.append('rect')
     .attr('class', 'forecast-shell-hit')
@@ -159,16 +159,34 @@ export function renderProjectionShell(layer, scales, data, config) {
     .attr('height', bounds.height)
     .attr('rx', 3);
 
-  if (selected) {
-    const btnX = bounds.x1 - 14;
-    const btnY = bounds.top + 14;
-    const cancel = shell.append('g')
-      .attr('class', 'forecast-cancel')
-      .attr('transform', `translate(${btnX},${btnY})`);
+  // Cancel button (top-right) — shown in loading and active states
+  const btnX = bounds.x1 - 14;
+  const btnY = bounds.top + 14;
+  const cancel = shell.append('g')
+    .attr('class', 'forecast-cancel')
+    .attr('transform', `translate(${btnX},${btnY})`);
+  cancel.append('circle').attr('r', 9);
+  cancel.append('path')
+    .attr('d', 'M -3 -3 L 3 3 M 3 -3 L -3 3');
 
-    cancel.append('circle').attr('r', 9);
-    cancel.append('path')
-      .attr('d', 'M -3 -3 L 3 3 M 3 -3 L -3 3');
+  // Loading indicator — pulsing text
+  if (isLoading && bounds.width >= 40 && bounds.height >= 28) {
+    const cx = bounds.x0 + bounds.width / 2;
+    const cy = bounds.top + bounds.height / 2;
+    shell.append('text')
+      .attr('class', 'forecast-loading-label')
+      .attr('x', cx)
+      .attr('y', cy)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('fill', COLOR_WITHIN_LIMITS)
+      .attr('fill-opacity', 0.45)
+      .style('font-size', '11px')
+      .style('font-weight', '500')
+      .style('font-family', 'var(--font-mono)')
+      .style('letter-spacing', '0.06em')
+      .style('pointer-events', 'none')
+      .text('Fitting\u2026');
   }
 
   return bounds;
@@ -187,9 +205,12 @@ export function renderProjectionShell(layer, scales, data, config) {
 export function renderProjection(layer, defs, scales, data, config) {
   layer.selectAll('*').remove();
 
-  const { points, limits } = data;
+  const { points } = data;
   const result = data.forecast?.result;
   if (!result || result.projected.length === 0) return null;
+
+  // Use forecast-specific limits (last phase's limits when phases exist)
+  const limits = data.forecast?.limits ?? data.limits;
 
   const { x, y } = scales;
   const p = config.padding;

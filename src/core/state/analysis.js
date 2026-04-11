@@ -81,6 +81,15 @@ export function buildSuccessfulAnalysisSlots(state, analysisResults, baseContext
       chartValues: transformed.chartValues,
       chartLabels: transformed.chartLabels,
       phases: transformed.phases,
+      // Reset forecast on re-analysis — old model is stale
+      forecast: {
+        mode: "hidden",
+        horizon: state.charts[id]?.forecast?.horizon ?? 6,
+        timeBudget: state.charts[id]?.forecast?.timeBudget ?? 3,
+        result: null,
+        driftSummary: null,
+        visibleHorizon: state.charts[id]?.forecast?.horizon ?? 6,
+      },
     };
   });
   return slots;

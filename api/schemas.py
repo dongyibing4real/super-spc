@@ -159,3 +159,47 @@ class AnalysisResult(BaseModel):
     chart_values: list[float] = []
     chart_labels: list[str] = []
     created_at: str
+
+
+# --- Forecast ---
+
+class ForecastRequest(BaseModel):
+    horizon: int = Field(default=6, ge=1, description="Number of future points to forecast")
+    confidence_level: float = Field(default=0.95, gt=0, lt=1, description="Confidence level for prediction intervals")
+    value_column: str | None = Field(default=None, description="Column name for Y values (overrides dataset default)")
+    time_budget: int = Field(default=3, ge=1, le=120, description="FLAML fitting time budget in seconds")
+    values: list[float] | None = Field(default=None, description="Chart-specific values to forecast (overrides DB load)")
+    limits: dict | None = Field(default=None, description="UCL/LCL for OOC estimation, e.g. {ucl: 12.5, lcl: 7.5}")
+
+
+class ForecastPredictRequest(BaseModel):
+    horizon: int = Field(default=6, ge=1, description="Number of future points to forecast")
+    confidence_level: float = Field(default=0.95, gt=0, lt=1, description="Confidence level for prediction intervals")
+    cache_key: str | None = Field(default=None, description="Cache key from initial forecast (for per-chart model isolation)")
+
+
+class ForecastPointOut(BaseModel):
+    x: float
+    y: float
+
+
+class ForecastConfidenceOut(BaseModel):
+    x: float
+    upper: float
+    lower: float
+
+
+class DriftSummaryOut(BaseModel):
+    score: float
+    intent: str
+    ooc_estimate: int | None = None
+    label: str
+
+
+class ForecastResponse(BaseModel):
+    projected: list[ForecastPointOut]
+    confidence: list[ForecastConfidenceOut]
+    drift: DriftSummaryOut
+    model_name: str
+    fit_time_ms: int
+    cache_key: str | None = None

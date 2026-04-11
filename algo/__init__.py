@@ -48,6 +48,7 @@ from .presummarize import PresummarizeConfig, PresummarizeResult, compute_presum
 from .cusum_vmask import CUSUMVMaskConfig, CUSUMVMaskResult, compute_cusum_vmask
 from .hotelling_t2 import HotellingT2Config, HotellingT2Result, compute_hotelling_t2
 from .mewma import MEWMAConfig, MEWMAResult, compute_mewma
+from .forecast import ForecastConfig, ForecastResult, compute_forecast, predict_from_fitted
 
 __all__ = [
     # Core types
@@ -170,4 +171,9 @@ __all__ = [
     "MEWMAConfig",
     "MEWMAResult",
     "compute_mewma",
+    # Forecast
+    "ForecastConfig",
+    "ForecastResult",
+    "compute_forecast",
+    "predict_from_fitted",
 ]

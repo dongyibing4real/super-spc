@@ -3,10 +3,10 @@
  *
  * Extracted from legacy-boot.js to be importable by both legacy code and React Chart.jsx.
  */
-import { buildForecastView } from "../prediction/build-forecast-view.js";
 import { detectRuleViolations, getCapability } from "../core/state/selectors.js";
 import { setXDomainOverride, setForecastHorizon } from "../core/state/chart.js";
-import { DEFAULT_FORECAST_HORIZON } from "../prediction/constants.js";
+
+const DEFAULT_FORECAST_HORIZON = 6;
 
 export function getChartPoints(slot, globalPoints) {
   const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
@@ -38,7 +38,8 @@ export function ensureForecastVisible(nextState, chartId) {
 
 export function growForecastHorizonToFit(nextState, chartId, nextXMax) {
   const slot = nextState.charts[chartId];
-  if (!slot || slot.forecast?.mode !== "active") return nextState;
+  const mode = slot?.forecast?.mode;
+  if (!slot || (mode !== "active" && mode !== "loading")) return nextState;
   const points = getChartPoints(slot, nextState.points);
   const lastIdx = Math.max(0, points.length - 1);
   const requiredHorizon = Math.max(1, Math.ceil(Math.max(0, nextXMax - lastIdx)));
@@ -65,16 +66,37 @@ export function buildChartData(chartId, state) {
   const points = getChartPoints(slot, state.points);
   const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
   const lastIdx = Math.max(0, points.length - 1);
-  const xDefaultDomain = { min: 0, max: lastIdx };
 
-  const forecast = buildForecastView({
-    points,
-    limits: slot.limits,
-    forecast: slot.forecast,
-    xDomainOverride: slot.overrides.x,
-    xDefaultDomain,
-    chartTypeId: slot.context.chartType?.id,
-  });
+  // Forecast data comes from backend (stored in slot.forecast by API response)
+  const forecastState = slot.forecast || {};
+  const forecastMode = forecastState.mode || "hidden";
+  const forecastHorizon = forecastState.horizon ?? DEFAULT_FORECAST_HORIZON;
+
+  // Extend default x domain to include forecast horizon when forecast is active/loading
+  const xDefaultMax = (forecastMode === "active" || forecastMode === "loading")
+    ? lastIdx + forecastHorizon
+    : lastIdx;
+  const xDefaultDomain = { min: 0, max: xDefaultMax };
+
+  const visibleForecastSpace = Math.max(0, (slot.overrides.x?.max ?? xDefaultDomain.max) - lastIdx);
+  const visibleHorizon = Math.max(0, Math.min(forecastHorizon, visibleForecastSpace));
+  // Forecast limits: use last phase's limits if phases exist, otherwise overall.
+  // The forecast extends from the last data point, which belongs to the last phase.
+  const phases = slot.phases || [];
+  const lastPhase = phases.length > 0 ? phases[phases.length - 1] : null;
+  const forecastLimits = lastPhase?.limits
+    ? { ucl: lastPhase.limits.ucl, lcl: lastPhase.limits.lcl, center: lastPhase.limits.center }
+    : { ucl: slot.limits.ucl, lcl: slot.limits.lcl, center: slot.limits.center };
+
+  const forecast = {
+    mode: forecastState.mode || "hidden",
+    horizon: forecastState.horizon ?? DEFAULT_FORECAST_HORIZON,
+    visibleHorizon,
+    result: forecastState.result || null,
+    driftSummary: forecastState.driftSummary || null,
+    predicting: !!forecastState.predicting,
+    limits: forecastLimits,
+  };
 
   return {
     points,

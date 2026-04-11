@@ -98,11 +98,7 @@ export function createChart(container, options = {}) {
     config.onSelectPoint?.(null);
     config.onSelectPhase?.(null);
 
-    if (lastData?.forecast?.mode === 'active') {
-      const target = event.target;
-      if (target?.closest?.('.forecast-shell-hit') || target?.closest?.('.forecast-cancel')) return;
-      config.onSelectForecast?.(false);
-    }
+    // (forecast deselect removed — no longer tracked as separate state)
   });
 
   // ── ResizeObserver ────────────────────────────────────────────────
@@ -139,7 +135,7 @@ export function createChart(container, options = {}) {
       xDefaultDomain: data.toggles.xDefaultDomain ?? null,
       yDomainOverride: data.toggles.yDomainOverride ?? null,
       visibleForecastHorizon: data.forecast?.visibleHorizon ?? 0,
-      forecastSelected: !!data.forecast?.selected,
+      forecastMode: data.forecast?.mode ?? "hidden",
     };
     currentSizedConfig = sizedConfig;
     const scales = createScales(data, sizedConfig, seriesKey);
@@ -170,25 +166,42 @@ export function createChart(container, options = {}) {
     // Main series line
     renderSeries(layers.primary, scales, data.points, seriesKey, seriesType);
 
-    // Forecast prompt / shell
-    if (data.forecast?.mode === 'prompt') {
+    // Forecast prompt / shell / loading
+    const forecastMode = data.forecast?.mode;
+    if (forecastMode === 'prompt') {
       renderProjectionPrompt(layers.projectionUi, scales, data, sizedConfig);
       layers.projectionUi.selectAll('.forecast-prompt-hit, .forecast-prompt-callout')
         .style('cursor', 'pointer')
         .on('pointerdown', (event) => event.stopPropagation())
         .on('click', (event) => { event.preventDefault(); event.stopPropagation(); config.onActivateForecast?.(); });
-    } else if (data.forecast?.mode === 'active') {
+    } else if (forecastMode === 'loading' || forecastMode === 'active') {
       renderProjectionShell(layers.projectionUi, scales, data, sizedConfig);
-      layers.projectionUi.select('.forecast-shell-hit')
-        .style('cursor', 'pointer')
-        .on('pointerdown', (event) => event.stopPropagation())
-        .on('click', (event) => { event.preventDefault(); event.stopPropagation(); config.onSelectForecast?.(true); });
       layers.projectionUi.select('.forecast-cancel')
         .style('cursor', 'pointer')
         .on('pointerdown', (event) => event.stopPropagation())
         .on('click', (event) => { event.preventDefault(); event.stopPropagation(); config.onCancelForecast?.(); });
     } else {
       layers.projectionUi.selectAll('*').remove();
+    }
+
+    // Predicting indicator — subtle hint while re-predict is in flight
+    layers.projectionUi.selectAll('.forecast-predicting').remove();
+    if (data.forecast?.predicting && (forecastMode === 'active' || forecastMode === 'loading')) {
+      const p = sizedConfig.padding;
+      const indicatorX = sizedConfig.width - p.right - 8;
+      const indicatorY = p.top + 28;
+      layers.projectionUi.append('text')
+        .attr('class', 'forecast-predicting')
+        .attr('x', indicatorX)
+        .attr('y', indicatorY)
+        .attr('text-anchor', 'end')
+        .attr('fill', '#2D72D2')
+        .attr('fill-opacity', 0.6)
+        .style('font-size', '10px')
+        .style('font-family', 'var(--font-mono)')
+        .style('font-weight', '500')
+        .style('pointer-events', 'none')
+        .text('Predicting\u2026');
     }
 
     // Ghost zone projection

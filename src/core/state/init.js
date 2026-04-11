@@ -1,4 +1,4 @@
-import { DEFAULT_FORECAST_HORIZON } from "../../prediction/constants.js";
+const DEFAULT_FORECAST_HORIZON = 6;
 
 const DEFAULT_FINDINGS_STANDARDS = {
   cpkThreshold: 1.33,
@@ -70,9 +70,12 @@ export function createSlot(overrides = {}) {
     accentIdx: 0,
     _cascadeMemory: { lastIndividualType: null, lastSubgroupedType: null },
     forecast: {
-      mode: "hidden",   // hidden | prompt | active
-      selected: false,
+      mode: "hidden",   // hidden | prompt | loading | active
       horizon: DEFAULT_FORECAST_HORIZON,
+      timeBudget: 3,    // FLAML fitting time budget in seconds
+      result: null,     // { projected, confidence, driftScore, oocEstimate, modelName, fitTimeMs }
+      driftSummary: null,
+      visibleHorizon: DEFAULT_FORECAST_HORIZON,
     },
     ...overrides,
   };

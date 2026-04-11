@@ -40,3 +40,27 @@
   stroke-linecap: round;
 }
 
+/* Loading state — pulsing shell */
+.forecast-shell.is-loading .forecast-shell-hit {
+  fill: rgba(45,114,210,0.05);
+  stroke: rgba(45,114,210,0.35);
+  stroke-dasharray: 3 3;
+  animation: forecast-pulse 1.6s ease-in-out infinite;
+}
+.forecast-loading-label {
+  animation: ghost-glow 1.6s ease-in-out infinite;
+}
+@keyframes forecast-pulse {
+  0%, 100% { fill-opacity: 0.03; stroke-opacity: 0.25; }
+  50% { fill-opacity: 0.08; stroke-opacity: 0.5; }
+}
+
+/* Predicting indicator */
+.forecast-predicting {
+  animation: forecast-predicting-fade 1.2s ease-in-out infinite;
+}
+@keyframes forecast-predicting-fade {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+

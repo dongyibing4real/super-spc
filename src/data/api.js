@@ -87,3 +87,31 @@ export function updateColumnRoles(datasetId, columns) {
 export function fetchRawData(datasetId) {
   return request(`/api/datasets/${datasetId}/raw`);
 }
+
+/**
+ * POST /api/datasets/:id/forecast — full FLAML fit + predict
+ * @param {string} datasetId
+ * @param {{horizon?: number, confidence_level?: number, value_column?: string, time_budget?: number}} params
+ * @returns {Promise<{projected, confidence, drift, model_name, fit_time_ms}>}
+ */
+export function runForecast(datasetId, params) {
+  return request(`/api/datasets/${datasetId}/forecast`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}
+
+/**
+ * POST /api/datasets/:id/forecast/predict — re-predict with cached model
+ * @param {string} datasetId
+ * @param {{horizon?: number, confidence_level?: number}} params
+ * @returns {Promise<{projected, confidence, drift, model_name, fit_time_ms}>}
+ */
+export function predictForecast(datasetId, params) {
+  return request(`/api/datasets/${datasetId}/forecast/predict`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}

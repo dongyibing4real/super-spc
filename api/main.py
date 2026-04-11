@@ -14,6 +14,7 @@ from .database import close_db, get_session_factory, init_db
 from .models import Dataset, DatasetColumn, DataRow
 from .routes.analyze import router as analyze_router
 from .routes.datasets import router as datasets_router
+from .routes.forecast import router as forecast_router
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CSV_PATH = PROJECT_ROOT / "src" / "data" / "Socket Thickness.csv"
@@ -106,6 +107,7 @@ app.add_middleware(
 
 app.include_router(datasets_router)
 app.include_router(analyze_router)
+app.include_router(forecast_router)
 
 
 @app.get("/api/health")

@@ -281,21 +281,71 @@ export function activateForecast(state, chartId) {
   return updateSlot(state, chartId, {
     forecast: {
       ...slot.forecast,
-      mode: "active",
-      selected: true,
+      mode: "loading",
     },
   });
 }
 
-export function selectForecast(state, selected, chartId) {
+export function setForecastLoading(state, chartId) {
   if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
   const slot = state.charts[chartId];
-  if (!slot || slot.forecast?.mode !== "active") return state;
-  if (slot.forecast.selected === selected) return state;
+  if (!slot) return state;
   return updateSlot(state, chartId, {
     forecast: {
       ...slot.forecast,
-      selected,
+      mode: "loading",
+    },
+  });
+}
+
+export function setForecastResult(state, result, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[chartId];
+  if (!slot) return state;
+
+  const driftSummary = result ? {
+    score: result.drift?.score ?? 0,
+    intent: result.drift?.intent ?? "success",
+    oocEstimate: result.drift?.ooc_estimate ?? null,
+    label: result.drift?.label ?? "",
+  } : null;
+
+  return updateSlot(state, chartId, {
+    forecast: {
+      ...slot.forecast,
+      mode: result ? "active" : "hidden",
+      result: result ? {
+        projected: result.projected,
+        confidence: result.confidence,
+        driftScore: result.drift?.score ?? 0,
+        oocEstimate: result.drift?.ooc_estimate ?? null,
+      } : null,
+      driftSummary,
+      cacheKey: result?.cache_key ?? slot.forecast?.cacheKey ?? null,
+    },
+  });
+}
+
+export function setForecastPredicting(state, predicting, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[chartId];
+  if (!slot) return state;
+  return updateSlot(state, chartId, {
+    forecast: {
+      ...slot.forecast,
+      predicting: !!predicting,
+    },
+  });
+}
+
+export function setForecastTimeBudget(state, timeBudget, chartId) {
+  if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
+  const slot = state.charts[chartId];
+  if (!slot) return state;
+  return updateSlot(state, chartId, {
+    forecast: {
+      ...slot.forecast,
+      timeBudget: Math.max(1, Math.min(120, timeBudget)),
     },
   });
 }
@@ -303,14 +353,15 @@ export function selectForecast(state, selected, chartId) {
 export function setForecastPrompt(state, visible, chartId) {
   if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
   const slot = state.charts[chartId];
-  if (!slot || slot.forecast?.mode === "active") return state;
+  if (!slot) return state;
+  const currentMode = slot.forecast?.mode || "hidden";
+  if (currentMode === "active" || currentMode === "loading") return state;
   const nextMode = visible ? "prompt" : "hidden";
-  if ((slot.forecast?.mode || "hidden") === nextMode) return state;
+  if (currentMode === nextMode) return state;
   return updateSlot(state, chartId, {
     forecast: {
       ...slot.forecast,
       mode: nextMode,
-      selected: false,
     },
   });
 }
@@ -337,7 +388,8 @@ export function cancelForecast(state, chartId) {
     forecast: {
       ...slot.forecast,
       mode: "hidden",
-      selected: false,
+      result: null,
+      driftSummary: null,
     },
   });
 }
