@@ -951,8 +951,6 @@ function PrepPanel({ dataPrep, columns }) {
 /* ── TransformLedger ─────────────────────────────────────────────────── */
 
 function TransformLedger({ transforms }) {
-  if (transforms.length === 0) return null;
-
   const handleUndo = useCallback(() => {
     const state = spcStore.getState();
     if (state.dataPrep.transforms.length === 0) return;
@@ -966,6 +964,8 @@ function TransformLedger({ transforms }) {
     }
     spcStore.setState(next);
   }, []);
+
+  if (transforms.length === 0) return null;
 
   return (
     <div className="prep-ledger">
