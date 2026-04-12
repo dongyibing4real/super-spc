@@ -4,6 +4,7 @@ import { getFocused } from './selectors.js';
 import { collectChartIds } from './layout.js';
 import { CHART_TYPE_LABELS } from '../../constants.js';
 import type { ChartSlot, ForecastState, SPCState } from '../../types/state.ts';
+import type { ForecastPointOut, ForecastConfidenceOut } from '../../types/api.ts';
 
 export function selectPoint(state: SPCState, index: number | null, chartId: string | null = null): SPCState {
   if (index == null) {
@@ -248,12 +249,12 @@ export function removeChart(state: SPCState, chartId: string): SPCState {
 
 export function setXDomainOverride(state: SPCState, min: number, max: number, chartId?: string): SPCState {
   if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
-  return updateSlot(state, chartId, { overrides: { ...state.charts[chartId].overrides, x: { min, max } as unknown as [number, number] } });
+  return updateSlot(state, chartId, { overrides: { ...state.charts[chartId].overrides, x: { min, max } } });
 }
 
 export function setYDomainOverride(state: SPCState, yMin: number, yMax: number, chartId?: string): SPCState {
   if (!chartId) chartId = state.focusedChartId || state.chartOrder[0];
-  return updateSlot(state, chartId, { overrides: { ...state.charts[chartId].overrides, y: { yMin, yMax } as unknown as [number, number] } });
+  return updateSlot(state, chartId, { overrides: { ...state.charts[chartId].overrides, y: { yMin, yMax } } });
 }
 
 export function resetAxis(state: SPCState, axis: "x" | "y", chartId?: string): SPCState {
@@ -289,10 +290,12 @@ export function setForecastLoading(state: SPCState, chartId?: string): SPCState 
 }
 
 interface ForecastAPIResult {
-  projected: number[];
-  confidence: { lower: number[]; upper: number[] };
+  projected: ForecastPointOut[];
+  confidence: ForecastConfidenceOut[];
   drift?: { score?: number; intent?: string; ooc_estimate?: number | null; label?: string };
-  cache_key?: string;
+  model_name?: string;
+  fit_time_ms?: number;
+  cache_key?: string | null;
 }
 
 export function setForecastResult(state: SPCState, result: ForecastAPIResult | null, chartId?: string): SPCState {
@@ -318,9 +321,9 @@ export function setForecastResult(state: SPCState, result: ForecastAPIResult | n
         oocEstimate: result.drift?.ooc_estimate ?? null,
       } : null,
       driftSummary,
-      cacheKey: result?.cache_key ?? (slot.forecast as ForecastState & { cacheKey?: string })?.cacheKey ?? null,
+      cacheKey: result?.cache_key ?? slot.forecast.cacheKey ?? null,
     },
-  } as Partial<ChartSlot>);
+  });
 }
 
 export function setForecastPredicting(state: SPCState, predicting: boolean, chartId?: string): SPCState {

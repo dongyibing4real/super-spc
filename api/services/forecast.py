@@ -78,6 +78,7 @@ def _cache_put(key: str, entry: _CacheEntry) -> None:
     """Insert entry, evicting as needed. Must be called with _cache_lock held."""
     _evict_expired()
     _model_cache[key] = entry
+    _model_cache.move_to_end(key)
     # Evict oldest entries until under count and memory limits
     while len(_model_cache) > _MAX_CACHE or _total_memory() > _MAX_MEMORY_BYTES:
         if len(_model_cache) <= 1:

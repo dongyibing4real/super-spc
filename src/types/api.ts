@@ -83,12 +83,31 @@ export interface AnalysisResult {
   created_at: string;
 }
 
+export interface ForecastPointOut {
+  x: number;
+  y: number;
+}
+
+export interface ForecastConfidenceOut {
+  x: number;
+  upper: number;
+  lower: number;
+}
+
+export interface ForecastDriftOut {
+  score: number;
+  intent: string;
+  ooc_estimate: number | null;
+  label: string;
+}
+
 export interface ForecastOut {
-  projected: number[];
-  confidence: { lower: number[]; upper: number[] };
-  drift: { score: number; direction: string };
+  projected: ForecastPointOut[];
+  confidence: ForecastConfidenceOut[];
+  drift: ForecastDriftOut;
   model_name: string;
   fit_time_ms: number;
+  cache_key: string | null;
 }
 
 export interface CreateDatasetRequest {

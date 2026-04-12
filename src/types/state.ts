@@ -2,6 +2,8 @@
  * Frontend state shape types — mirrors createInitialState() in core/state/init.ts.
  */
 
+import type { ForecastPointOut, ForecastConfidenceOut } from './api.ts';
+
 export interface ChartParams {
   chart_type: string | null;
   sigma_method: string;
@@ -81,22 +83,28 @@ export interface SlotPhase {
 }
 
 export interface ForecastResult {
-  projected: number[];
-  confidence: { lower: number[]; upper: number[] };
+  projected: ForecastPointOut[];
+  confidence: ForecastConfidenceOut[];
   driftScore: number;
-  oocEstimate: number;
-  modelName: string;
-  fitTimeMs: number;
+  oocEstimate: number | null;
 }
 
 export type ForecastMode = "hidden" | "prompt" | "loading" | "active";
+
+export interface DriftSummary {
+  score: number;
+  intent: string;
+  oocEstimate: number | null;
+  label: string;
+}
 
 export interface ForecastState {
   mode: ForecastMode;
   horizon: number;
   timeBudget: number;
   result: ForecastResult | null;
-  driftSummary: string | null;
+  driftSummary: DriftSummary | null;
+  cacheKey: string | null;
   visibleHorizon: number;
 }
 
@@ -113,7 +121,7 @@ export interface ChartSlot {
   violations: Violation[];
   sigma: SlotSigma | null;
   zones: SlotZones | null;
-  overrides: { x: [number, number] | null; y: [number, number] | null };
+  overrides: { x: { min: number; max: number } | null; y: { yMin: number; yMax: number } | null };
   chartValues: number[];
   chartLabels: string[];
   phases: SlotPhase[];
@@ -154,12 +162,13 @@ export interface ChartToggles {
 }
 
 export interface UIState {
-  notice: { title: string; body: string; level?: string } | null;
-  contextMenu: unknown | null;
+  notice: { title: string; body: string; tone?: string } | null;
+  contextMenu: { x: number; y: number; axis: string | null; target: string; role: string } | null;
   layersExpanded: boolean;
   pendingNewChart: Record<string, unknown> | null;
   themePreference: "system" | "light" | "dark";
   themeResolved: "light" | "dark";
+  shortcutOverlay: boolean;
 }
 
 export interface PipelineState {
