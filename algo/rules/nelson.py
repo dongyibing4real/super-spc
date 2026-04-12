@@ -10,7 +10,6 @@ import numpy as np
 
 from ..common.types import ZoneBreakdown
 
-
 # ---------------------------------------------------------------------------
 # Test 1: Point beyond control limits
 # ---------------------------------------------------------------------------

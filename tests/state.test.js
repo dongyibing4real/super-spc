@@ -1,9 +1,9 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { createInitialState, createSlot } from "../src/core/state/init.js";
 import {
-  activateForecast, cancelForecast, resetAxis, selectForecast, selectPoint,
+  activateForecast, cancelForecast, resetAxis, selectPoint,
   setForecastHorizon, setForecastPrompt, setXDomainOverride, setYDomainOverride,
   toggleChartOption, togglePointExclusion,
 } from "../src/core/state/chart.js";
@@ -257,20 +257,20 @@ test("createSlot includes empty phases array", () => {
 
 test("createSlot initializes forecast state", () => {
   const slot = createSlot();
-  assert.deepEqual(slot.forecast, {
-    mode: "hidden",
-    selected: false,
-    horizon: 6,
-  });
+  assert.equal(slot.forecast.mode, "hidden");
+  assert.equal(slot.forecast.horizon, 6);
+  assert.equal(slot.forecast.timeBudget, 3);
+  assert.equal(slot.forecast.result, null);
+  assert.equal(slot.forecast.driftSummary, null);
+  assert.equal(slot.forecast.visibleHorizon, 6);
 });
 
-test("activateForecast preserves x override and selects the forecast", () => {
+test("activateForecast sets loading mode and preserves x override", () => {
   let s = createInitialState();
   s = setXDomainOverride(s, 3, 19);
   const next = activateForecast(s);
 
-  assert.equal(next.charts["chart-1"].forecast.mode, "active");
-  assert.equal(next.charts["chart-1"].forecast.selected, true);
+  assert.equal(next.charts["chart-1"].forecast.mode, "loading");
   assert.deepEqual(next.charts["chart-1"].overrides.x, { min: 3, max: 19 });
 });
 
@@ -281,23 +281,15 @@ test("cancelForecast hides the forecast without clearing x override", () => {
   const next = cancelForecast(s);
 
   assert.equal(next.charts["chart-1"].forecast.mode, "hidden");
-  assert.equal(next.charts["chart-1"].forecast.selected, false);
+  assert.equal(next.charts["chart-1"].forecast.result, null);
+  assert.equal(next.charts["chart-1"].forecast.driftSummary, null);
   assert.deepEqual(next.charts["chart-1"].overrides.x, { min: 4, max: 22 });
 });
 
-test("setForecastPrompt ignores active forecasts", () => {
+test("setForecastPrompt ignores loading forecasts", () => {
   const s = activateForecast(createInitialState());
   const next = setForecastPrompt(s, true);
-  assert.equal(next.charts["chart-1"].forecast.mode, "active");
-});
-
-test("selectForecast only affects active forecasts", () => {
-  const hidden = selectForecast(createInitialState(), true);
-  assert.equal(hidden.charts["chart-1"].forecast.selected, false);
-
-  const active = activateForecast(createInitialState());
-  const deselected = selectForecast(active, false);
-  assert.equal(deselected.charts["chart-1"].forecast.selected, false);
+  assert.equal(next.charts["chart-1"].forecast.mode, "loading");
 });
 
 test("setForecastHorizon stores a positive integer horizon", () => {

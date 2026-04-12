@@ -1,15 +1,15 @@
 """FLAML-based time series forecasting."""
 from __future__ import annotations
 
-import time
 import logging
+import time
 
 import numpy as np
 import pandas as pd
 from flaml.automl.automl import AutoML
 
-from .models import ForecastConfig, ForecastResult
 from .drift import compute_drift_score, estimate_ooc
+from .models import ForecastConfig, ForecastResult
 
 logger = logging.getLogger(__name__)
 

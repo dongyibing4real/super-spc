@@ -6,7 +6,6 @@ import pytest
 
 from algo.cusum import CUSUMConfig, CUSUMResult, compute_cusum
 
-
 # ---------------------------------------------------------------------------
 # Configuration defaults and validation
 # ---------------------------------------------------------------------------

@@ -7,7 +7,6 @@ import pytest
 from algo.common.enums import SigmaMethod
 from algo.levey_jennings import LeveyJenningsConfig, LeveyJenningsResult, compute_levey_jennings
 
-
 # ---------------------------------------------------------------------------
 # Known-answer test
 # ---------------------------------------------------------------------------

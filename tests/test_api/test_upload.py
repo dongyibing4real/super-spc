@@ -5,10 +5,6 @@ import csv
 import io
 from pathlib import Path
 
-import pytest
-
-from tests.test_api.conftest import SEED_DATASET_ID
-
 CSV_PATH = Path(__file__).resolve().parent.parent.parent / "src" / "data" / "Socket Thickness.csv"
 
 
@@ -108,7 +104,6 @@ def test_upload_real_csv(client):
 
 def test_upload_invalid_csv(client):
     """Upload a CSV with no numeric columns -> 400."""
-    csv_content = b"name,color\nalice,blue\nbob,red\n"
     # Client-side parsing would detect no numeric column, but here we
     # send payload without a value role to test the API validation.
     payload = {

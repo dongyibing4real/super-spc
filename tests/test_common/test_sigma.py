@@ -19,7 +19,6 @@ from algo.common.sigma import (
     sigma_poisson,
 )
 
-
 # ---------------------------------------------------------------------------
 # sigma_from_ranges
 # ---------------------------------------------------------------------------
@@ -127,7 +126,7 @@ class TestSigmaFromMovingRange:
         # For span=2: abs(diff) of each pair; for span>2: range within span window
         # We test that span=3 produces a valid result with n_used = len-span+1
         assert result.sigma_hat > 0
-        assert result.n_used == len(values) - span + 1 if False else True
+        assert result.n_used == len(values) - 3 + 1
 
     def test_method_tag(self):
         result = sigma_from_moving_range(np.array([1.0, 2.0, 3.0]), span=2)

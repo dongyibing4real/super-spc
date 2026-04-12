@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-import pytest_asyncio
 
 from api.schemas import AnalysisRequest
 from api.services.analysis import run_analysis
@@ -23,7 +22,7 @@ async def test_moving_range_analysis(seeded_db):
 
     # Control limits should bracket the data
     assert all(u > result.zones.cl for u in result.limits.ucl)
-    assert all(l < result.zones.cl for l in result.limits.lcl)
+    assert all(val < result.zones.cl for val in result.limits.lcl)
     assert len(result.limits.ucl) == 20
     assert len(result.limits.cl) == 20
     assert len(result.limits.lcl) == 20
@@ -52,7 +51,7 @@ async def test_levey_jennings_analysis(seeded_db):
 @pytest.mark.asyncio
 async def test_range_sigma_subgrouped(seeded_db):
     """Range method groups by subgroup column."""
-    request = AnalysisRequest(sigma_method="range", k_sigma=3.0)
+    request = AnalysisRequest(sigma_method="range", k_sigma=3.0, subgroup_column="subgroup")
     result = await run_analysis(seeded_db, SEED_DATASET_ID, request)
 
     assert result.sigma.method == "range"

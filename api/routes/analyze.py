@@ -14,7 +14,6 @@ from ..schemas import (
     AnalysisResult,
     CapabilityOut,
     LimitsOut,
-    RuleViolationOut,
     SigmaOut,
     ZonesOut,
 )
@@ -37,7 +36,7 @@ async def analyze_dataset(
     try:
         return await run_analysis(session, dataset_id, request)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{dataset_id}/analysis", response_model=AnalysisResult)

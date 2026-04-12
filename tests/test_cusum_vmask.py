@@ -8,12 +8,12 @@ import math
 import numpy as np
 import pytest
 
+from algo.cusum.cusum import CUSUMConfig, compute_cusum
 from algo.cusum_vmask import (
     CUSUMVMaskConfig,
     CUSUMVMaskResult,
     compute_cusum_vmask,
 )
-from algo.cusum.cusum import CUSUMConfig, compute_cusum
 
 
 class TestCUSUMVMaskCumulativeSums:

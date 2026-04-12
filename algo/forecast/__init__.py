@@ -5,9 +5,9 @@ Provides automated model selection (ARIMA, ETS, Theta, etc.)
 with prediction intervals and drift scoring for SPC charts.
 """
 
-from .models import ForecastConfig, ForecastResult
 from .compute import compute_forecast, predict_from_fitted
 from .drift import compute_drift_score, estimate_ooc
+from .models import ForecastConfig, ForecastResult
 
 __all__ = [
     "ForecastConfig",

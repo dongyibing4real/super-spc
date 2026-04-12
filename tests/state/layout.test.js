@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import assert from "node:assert/strict";
 import { createInitialState, migrateTreeToRows } from "../../src/core/state/init.js";
 import { addChart } from "../../src/core/state/chart.js";

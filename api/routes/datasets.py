@@ -11,7 +11,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
-from ..models import Analysis, Dataset, DatasetColumn, DataRow
+from ..models import Analysis, DataRow, Dataset, DatasetColumn
 from ..schemas import (
     ColumnOut,
     CreateDatasetRequest,

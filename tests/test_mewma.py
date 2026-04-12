@@ -8,8 +8,6 @@ import pytest
 from scipy.stats import chi2
 
 from algo.mewma import MEWMAConfig, MEWMAResult, compute_mewma
-from algo.hotelling_t2 import compute_hotelling_t2
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers

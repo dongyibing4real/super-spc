@@ -1,0 +1,366 @@
+import React, { useMemo } from "react";
+import { useStore } from "zustand";
+import { spcStore } from "../store/spc-store.js";
+import { deriveWorkspace, getFocused } from "../core/state/selectors.js";
+import { toneClass } from "../helpers.js";
+import type { SPCState, ChartSlot } from "../types/state.js";
+
+interface RuleBreakdownItem {
+  testId: string;
+  count: number;
+  description?: string;
+}
+
+interface BreakdownData {
+  inControl: number;
+  oocCount: number;
+  ruleBreakdown: RuleBreakdownItem[];
+}
+
+function fmtVal(v: number | null | undefined): string {
+  return v != null ? Number(v).toFixed(3) : "-";
+}
+
+interface BreakdownProps {
+  breakdown: BreakdownData | null;
+}
+
+function Breakdown({ breakdown }: BreakdownProps): React.JSX.Element | null {
+  if (!breakdown) return null;
+  const { inControl, oocCount, ruleBreakdown } = breakdown;
+  const nelsonRules: RuleBreakdownItem[] = ruleBreakdown.filter((r: RuleBreakdownItem) => r.testId !== "1");
+  return (
+    <div className="rail-section breakdown-stats">
+      <p className="eyebrow">Status</p>
+      <ul className="evidence-list">
+        <li>
+          <span>In Control</span>
+          <strong className="positive">{inControl}</strong>
+        </li>
+        <li>
+          <span>Beyond Limits</span>
+          <strong className={oocCount > 0 ? "danger" : ""}>{oocCount}</strong>
+        </li>
+      </ul>
+      {nelsonRules.length > 0 && (
+        <>
+          <p className="eyebrow" style={{ marginTop: 6 }}>
+            Nelson Tests
+          </p>
+          <ul className="evidence-list">
+            {nelsonRules.map((r: RuleBreakdownItem) => (
+              <li key={r.testId}>
+                <span>R{r.testId}</span>
+                <strong className="warning">
+                  {r.count} pt{r.count !== 1 ? "s" : ""}
+                </strong>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+interface WorkspaceSignal {
+  statusTone: string;
+  title: string;
+  confidence: string;
+}
+
+interface WorkspacePoint {
+  label: string;
+}
+
+interface WorkspaceSelectedPoints {
+  count: number;
+  oocCount: number;
+  excludedCount: number;
+  mean: number | null;
+  stdDev: number | null;
+  min: number | null;
+  max: number | null;
+  range: number | null;
+  inControl: number;
+  ruleBreakdown: RuleBreakdownItem[];
+}
+
+interface WorkspacePhase {
+  index: number;
+  label: string;
+  oocCount: number;
+  pointCount: number;
+  ucl: number | null;
+  center: number | null;
+  lcl: number | null;
+  range: number | null;
+  sigma: number | null;
+  inControl: number;
+  ruleBreakdown: RuleBreakdownItem[];
+}
+
+interface EvidenceItem {
+  label: string;
+  value: string;
+  resolved: boolean;
+  category: string;
+}
+
+interface RuleAtPoint {
+  testId: string;
+  description: string;
+}
+
+interface WhyTriggeredItem {
+  description?: string;
+  count?: number;
+}
+
+interface Workspace {
+  signal: WorkspaceSignal;
+  selectedPoint: WorkspacePoint | null;
+  hasPointSelection: boolean;
+  pointBreakdown: BreakdownData | null;
+  selectedPoints: WorkspaceSelectedPoints | null;
+  rulesAtPoint: RuleAtPoint[];
+  whyTriggered: (string | WhyTriggeredItem)[];
+  evidence: EvidenceItem[];
+  selectedPhase: WorkspacePhase | null;
+}
+
+export default function EvidenceRail(): React.JSX.Element {
+  const focusedChartId = useStore(spcStore, (s: SPCState) => s.focusedChartId);
+  const selectedPointIndex = useStore(spcStore, (s: SPCState) => s.selectedPointIndex);
+  const selectedPointIndices = useStore(spcStore, (s: SPCState) => s.selectedPointIndices);
+  const points = useStore(spcStore, (s: SPCState) => s.points);
+  const transforms = useStore(spcStore, (s: SPCState) => s.transforms);
+  const pipeline = useStore(spcStore, (s: SPCState) => s.pipeline);
+  const charts = useStore(spcStore, (s: SPCState) => s.charts);
+  const chartOrder = useStore(spcStore, (s: SPCState) => s.chartOrder);
+
+  const workspace: Workspace = useMemo(
+    () => deriveWorkspace(spcStore.getState()) as Workspace,
+    [focusedChartId, selectedPointIndex, selectedPointIndices, points, transforms, pipeline, charts, chartOrder]
+  );
+
+  const {
+    signal,
+    selectedPoint,
+    hasPointSelection,
+    pointBreakdown,
+    selectedPoints,
+    rulesAtPoint,
+    whyTriggered,
+    evidence,
+    selectedPhase,
+  } = workspace;
+
+  const tone: string = toneClass(signal.statusTone);
+  const chartEvidence: EvidenceItem[] = evidence.filter((e: EvidenceItem) => e.category === "chart");
+  const focusedSlot = getFocused(spcStore.getState()) as ChartSlot | null;
+  const chartLabel: string = focusedSlot?.context?.chartType?.label || "-";
+
+  return (
+    <aside className="evidence-rail">
+      {/* --- POINT TIER (only when user explicitly selected a point) --- */}
+      {hasPointSelection && selectedPoint && (
+        <>
+          <div className="rail-tier-label">
+            <span className="eyebrow">Point</span>
+            <span className="rail-tier-badge">{selectedPoint.label}</span>
+          </div>
+
+          <div className={`rail-section signal-hero ${tone}`}>
+            <p className="eyebrow">Signal</p>
+            <h3>{signal.title}</h3>
+            <div className="signal-meta">
+              <span className={`status-chip ${tone}`}>
+                <span className="sdot"></span>
+                {signal.confidence}
+              </span>
+              {rulesAtPoint.length > 0 && (
+                <div className="rule-tags">
+                  {rulesAtPoint.map((r: RuleAtPoint) => (
+                    <span
+                      key={r.testId}
+                      className="rule-tag"
+                      title={r.description}
+                    >
+                      R{r.testId}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <Breakdown breakdown={pointBreakdown} />
+        </>
+      )}
+
+      {/* --- SELECTION TIER (multi-point marquee) --- */}
+      {selectedPoints && (
+        <>
+          <div className="rail-tier-label">
+            <span className="eyebrow">Selection</span>
+            <span className="rail-tier-badge selection-badge">
+              {selectedPoints.count} pts
+            </span>
+          </div>
+
+          <div className="rail-section signal-hero selection-hero">
+            <p className="eyebrow">Selected Points</p>
+            <h3>{selectedPoints.count} Points</h3>
+            <div className="signal-meta">
+              <span
+                className={`status-chip ${selectedPoints.oocCount > 0 ? "critical" : "positive"}`}
+              >
+                <span className="sdot"></span>
+                {selectedPoints.oocCount > 0
+                  ? `${selectedPoints.oocCount} OOC`
+                  : "All In Control"}
+              </span>
+              {selectedPoints.excludedCount > 0 && (
+                <span className="selection-excluded-count">
+                  {selectedPoints.excludedCount} excl
+                </span>
+              )}
+            </div>
+          </div>
+
+          <Breakdown breakdown={selectedPoints as BreakdownData} />
+
+          <div className="rail-section selection-stats">
+            <p className="eyebrow">Summary Statistics</p>
+            <ul className="evidence-list">
+              <li>
+                <span>Mean</span>
+                <strong>{fmtVal(selectedPoints.mean)}</strong>
+              </li>
+              <li>
+                <span>Std Dev</span>
+                <strong>{fmtVal(selectedPoints.stdDev)}</strong>
+              </li>
+              <li>
+                <span>Min</span>
+                <strong>{fmtVal(selectedPoints.min)}</strong>
+              </li>
+              <li>
+                <span>Max</span>
+                <strong>{fmtVal(selectedPoints.max)}</strong>
+              </li>
+              <li>
+                <span>Range</span>
+                <strong>{fmtVal(selectedPoints.range)}</strong>
+              </li>
+            </ul>
+          </div>
+        </>
+      )}
+
+      {/* --- PHASE TIER --- */}
+      {selectedPhase && (
+        <>
+          <div className="rail-tier-label">
+            <span className="eyebrow">Phase</span>
+            <span className="rail-tier-badge phase-badge">
+              {selectedPhase.index + 1}
+            </span>
+          </div>
+
+          <div className="rail-section signal-hero phase-hero">
+            <p className="eyebrow">Selected Phase</p>
+            <h3>{selectedPhase.label}</h3>
+            <div className="signal-meta">
+              <span
+                className={`status-chip ${selectedPhase.oocCount > 0 ? "critical" : "positive"}`}
+              >
+                <span className="sdot"></span>
+                {selectedPhase.oocCount > 0
+                  ? `${selectedPhase.oocCount} OOC`
+                  : "In Control"}
+              </span>
+              <span className="phase-point-count">
+                {selectedPhase.pointCount} pts
+              </span>
+            </div>
+          </div>
+
+          <Breakdown breakdown={selectedPhase as BreakdownData} />
+
+          <div className="rail-section phase-limits">
+            <p className="eyebrow">Control Limits</p>
+            <ul className="evidence-list">
+              <li className="limit-ucl">
+                <span>UCL</span>
+                <strong>{fmtVal(selectedPhase.ucl)}</strong>
+              </li>
+              <li className="limit-cl">
+                <span>CL</span>
+                <strong>{fmtVal(selectedPhase.center)}</strong>
+              </li>
+              <li className="limit-lcl">
+                <span>LCL</span>
+                <strong>{fmtVal(selectedPhase.lcl)}</strong>
+              </li>
+            </ul>
+          </div>
+
+          <div className="rail-section phase-stats">
+            <p className="eyebrow">Spread</p>
+            <ul className="evidence-list">
+              <li>
+                <span>Range</span>
+                <strong>{fmtVal(selectedPhase.range)}</strong>
+              </li>
+              <li>
+                <span>1&#963;</span>
+                <strong>{fmtVal(selectedPhase.sigma)}</strong>
+              </li>
+            </ul>
+          </div>
+        </>
+      )}
+
+      {/* --- CHART TIER --- */}
+      <div className="rail-tier-label">
+        <span className="eyebrow">Chart</span>
+        <span className="rail-tier-badge">{chartLabel}</span>
+      </div>
+
+      <div className="rail-section">
+        <p className="eyebrow">Violations</p>
+        <ul className="rail-list">
+          {whyTriggered.map((item: string | WhyTriggeredItem, i: number) =>
+            typeof item === "string" ? (
+              <li key={i}>{item}</li>
+            ) : (
+              <li key={(item as WhyTriggeredItem).description || i}>
+                {(item as WhyTriggeredItem).description} -{" "}
+                <strong className="violation-count">
+                  {(item as WhyTriggeredItem).count} point{(item as WhyTriggeredItem).count !== 1 ? "s" : ""}
+                </strong>{" "}
+                flagged.
+              </li>
+            )
+          )}
+        </ul>
+      </div>
+
+      <div className="rail-section">
+        <p className="eyebrow">Method</p>
+        <ul className="evidence-list">
+          {chartEvidence.map((item: EvidenceItem) => (
+            <li
+              key={item.label}
+              className={item.resolved ? "" : "unresolved"}
+            >
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </aside>
+  );
+}

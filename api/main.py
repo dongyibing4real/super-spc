@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 
 from .database import close_db, get_session_factory, init_db
-from .models import Dataset, DatasetColumn, DataRow
+from .models import DataRow, Dataset, DatasetColumn
 from .routes.analyze import router as analyze_router
 from .routes.datasets import router as datasets_router
 from .routes.forecast import router as forecast_router
@@ -92,14 +93,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_DEFAULT_ORIGINS = [
+    "http://localhost:4173",
+    "http://localhost:5173",
+    "http://127.0.0.1:4173",
+    "http://127.0.0.1:5173",
+]
+
+_origins_env = os.environ.get("SPC_CORS_ORIGINS")
+_cors_origins = [o.strip() for o in _origins_env.split(",") if o.strip()] if _origins_env else _DEFAULT_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:4173",
-        "http://localhost:5173",
-        "http://127.0.0.1:4173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -36,7 +36,7 @@ def sigma_from_ranges(
     """
     ranges = np.asarray(ranges, dtype=float)
     subgroup_sizes = np.asarray(subgroup_sizes, dtype=int)
-    unbiased = np.array([r / d2(int(n)) for r, n in zip(ranges, subgroup_sizes)])
+    unbiased = np.array([r / d2(int(n)) for r, n in zip(ranges, subgroup_sizes, strict=True)])
     return SigmaResult(
         sigma_hat=float(np.mean(unbiased)),
         method=SigmaMethod.RANGE,
@@ -65,7 +65,7 @@ def sigma_from_stddevs(
     """
     stddevs = np.asarray(stddevs, dtype=float)
     subgroup_sizes = np.asarray(subgroup_sizes, dtype=int)
-    unbiased = np.array([s / c4(int(n)) for s, n in zip(stddevs, subgroup_sizes)])
+    unbiased = np.array([s / c4(int(n)) for s, n in zip(stddevs, subgroup_sizes, strict=True)])
     return SigmaResult(
         sigma_hat=float(np.mean(unbiased)),
         method=SigmaMethod.STDDEV,

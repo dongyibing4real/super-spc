@@ -12,7 +12,7 @@ import numpy as np
 from ..common.enums import ScalingMethod
 from ..common.sigma import sigma_from_moving_range
 from ..common.types import ControlLimits
-from ..common.validators import validate_positive, validate_1d_array, validate_non_empty
+from ..common.validators import validate_1d_array, validate_non_empty, validate_positive
 from ..constants.tables import d2, d3
 
 
@@ -102,7 +102,7 @@ def compute_short_run(
 
     # --- Transform values ---
     transformed = np.empty_like(values)
-    for i, (val, prod) in enumerate(zip(values, product_ids)):
+    for i, (val, prod) in enumerate(zip(values, product_ids, strict=True)):
         target, sigma = product_stats[str(prod)]
         if config.scaling == ScalingMethod.CENTERED:
             transformed[i] = val - target

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import attrs
-import numpy as np
 
 
 @attrs.define(slots=True)

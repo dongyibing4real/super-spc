@@ -8,12 +8,12 @@ import math
 import numpy as np
 import pytest
 
+from algo.common.enums import SigmaMethod
 from algo.presummarize import (
     PresummarizeConfig,
     PresummarizeResult,
     compute_presummarize,
 )
-from algo.common.enums import SigmaMethod
 
 
 class TestPresummarizeHandCalculation:

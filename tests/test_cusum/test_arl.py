@@ -2,10 +2,8 @@
 Tests for algo/cusum/arl.py (CUSUM Average Run Length via Gauss-Legendre quadrature).
 """
 import numpy as np
-import pytest
 
 from algo.cusum.arl import compute_arl, compute_arl_table
-
 
 # ---------------------------------------------------------------------------
 # compute_arl: basic sanity checks

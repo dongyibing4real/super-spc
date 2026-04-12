@@ -7,10 +7,8 @@ stddev within method, config validation, and output structure.
 import numpy as np
 import pytest
 
-from algo.common.enums import WithinMethod, BetweenMethod
-from algo.three_way import ThreeWayConfig, ThreeWayResult, compute_three_way
-from algo.constants.tables import d2
-
+from algo.common.enums import BetweenMethod, WithinMethod
+from algo.three_way import ThreeWayConfig, compute_three_way
 
 # ---------------------------------------------------------------------------
 # Known-answer test
@@ -72,7 +70,7 @@ class TestThreeWayNegativeBetween:
 
     def test_sigma_between_never_negative(self):
         """sigma_between must always be >= 0."""
-        rng = np.random.default_rng(99)
+        np.random.default_rng(99)
         for seed in range(10):
             rng2 = np.random.default_rng(seed)
             subgroups = [rng2.normal(0, 3.0, size=5) for _ in range(8)]

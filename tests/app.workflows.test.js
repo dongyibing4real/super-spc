@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { createInitialState, createSlot } from "../src/core/state/init.js";
@@ -78,8 +78,8 @@ test("applyColumnRolesToChartParams fills missing chart params but preserves exi
 
   assert.deepEqual(next.columnConfig.columns, columns);
   assert.equal(next.charts["chart-1"].params.value_column, "reading");
-  // IMR is an individual chart type — subgroup_column is null for individual-only types
-  assert.equal(next.charts["chart-1"].params.subgroup_column, null);
+  // subgroup_column is populated from column roles regardless of chart type
+  assert.equal(next.charts["chart-1"].params.subgroup_column, "lot");
   assert.equal(next.charts["chart-1"].params.phase_column, "phase");
   assert.equal(next.charts["chart-2"].params.value_column, "existing_metric");
 });

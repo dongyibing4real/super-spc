@@ -8,7 +8,6 @@ from algo.common.enums import SigmaMethod
 from algo.constants.tables import d2, d3
 from algo.imr import IMRConfig, IMRResult, compute_imr
 
-
 # ---------------------------------------------------------------------------
 # Known-answer test
 # ---------------------------------------------------------------------------

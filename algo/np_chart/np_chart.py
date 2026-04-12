@@ -5,7 +5,6 @@ import attrs
 import numpy as np
 
 from algo.common.attribute import compute_p_bar
-from algo.common.sigma import sigma_binomial
 from algo.common.types import ControlLimits
 from algo.common.validators import validate_positive
 

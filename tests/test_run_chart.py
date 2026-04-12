@@ -3,8 +3,6 @@ Tests for the Run Chart algorithm.
 """
 from __future__ import annotations
 
-import math
-
 import numpy as np
 import pytest
 
@@ -148,6 +146,6 @@ class TestRunChartStatistics:
         assert result.p_value < 0.05
 
     def test_invalid_center_method(self):
-        data = np.array([1.0, 2.0, 3.0])
+        np.array([1.0, 2.0, 3.0])
         with pytest.raises(ValueError, match="center_method"):
             RunChartConfig(center_method="mode")

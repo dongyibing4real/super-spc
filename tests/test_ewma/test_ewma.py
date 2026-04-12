@@ -6,7 +6,6 @@ import pytest
 
 from algo.ewma import EWMAConfig, EWMAResult, compute_ewma
 
-
 # ---------------------------------------------------------------------------
 # Configuration defaults and validation
 # ---------------------------------------------------------------------------

@@ -7,7 +7,6 @@ import pytest
 from algo.constants.tables import d2, d3
 from algo.xbar_r import XBarRConfig, XBarRResult, compute_xbar_r
 
-
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------

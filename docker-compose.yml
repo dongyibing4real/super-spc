@@ -1,0 +1,11 @@
+services:
+  super-spc:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - spc-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  spc-data:

@@ -16,7 +16,7 @@ from __future__ import annotations
 import attrs
 import numpy as np
 
-from algo.common.validators import validate_positive, validate_range
+from algo.common.validators import validate_positive
 
 
 def _validate_sigma(instance: object, attribute: attrs.Attribute, value: float) -> None:

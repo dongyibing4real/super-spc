@@ -8,10 +8,9 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from api.models import Base, Dataset, DataRow, DatasetColumn
+from api.models import Base, DataRow, Dataset, DatasetColumn
 from api.schemas import AnalysisRequest
 from api.services.analysis import run_analysis
-
 
 DATASET_ID = "chart-dispatch-001"
 SUBGROUPED_DATASET_ID = "chart-dispatch-002"
@@ -234,7 +233,7 @@ async def test_no_violations_with_empty_tests(seeded_db):
 @pytest.mark.asyncio
 async def test_xbar_r_chart(subgrouped_db):
     """XBar-R chart produces subgrouped results."""
-    request = AnalysisRequest(chart_type="xbar_r", k_sigma=3.0)
+    request = AnalysisRequest(chart_type="xbar_r", k_sigma=3.0, subgroup_column="subgroup")
     result = await run_analysis(subgrouped_db, SUBGROUPED_DATASET_ID, request)
 
     assert result.sigma.method == "range"
@@ -249,7 +248,7 @@ async def test_xbar_r_chart(subgrouped_db):
 @pytest.mark.asyncio
 async def test_xbar_s_chart(subgrouped_db):
     """XBar-S chart produces subgrouped results."""
-    request = AnalysisRequest(chart_type="xbar_s", k_sigma=3.0)
+    request = AnalysisRequest(chart_type="xbar_s", k_sigma=3.0, subgroup_column="subgroup")
     result = await run_analysis(subgrouped_db, SUBGROUPED_DATASET_ID, request)
 
     assert result.sigma.method == "stddev"
@@ -344,7 +343,7 @@ async def test_unsupported_chart_type(seeded_db):
 @pytest.mark.asyncio
 async def test_r_chart(subgrouped_db):
     """R chart produces per-subgroup range values."""
-    request = AnalysisRequest(chart_type="r", k_sigma=3.0)
+    request = AnalysisRequest(chart_type="r", k_sigma=3.0, subgroup_column="subgroup")
     result = await run_analysis(subgrouped_db, SUBGROUPED_DATASET_ID, request)
 
     assert result.sigma.sigma_hat > 0
@@ -359,7 +358,7 @@ async def test_r_chart(subgrouped_db):
 @pytest.mark.asyncio
 async def test_s_chart(subgrouped_db):
     """S chart produces per-subgroup standard deviation values."""
-    request = AnalysisRequest(chart_type="s", k_sigma=3.0)
+    request = AnalysisRequest(chart_type="s", k_sigma=3.0, subgroup_column="subgroup")
     result = await run_analysis(subgrouped_db, SUBGROUPED_DATASET_ID, request)
 
     assert result.sigma.sigma_hat > 0
@@ -413,7 +412,7 @@ async def test_t_chart(seeded_db):
 @pytest.mark.asyncio
 async def test_three_way_chart(subgrouped_db):
     """Three-Way chart produces between-subgroup results."""
-    request = AnalysisRequest(chart_type="three_way", k_sigma=3.0)
+    request = AnalysisRequest(chart_type="three_way", k_sigma=3.0, subgroup_column="subgroup")
     result = await run_analysis(subgrouped_db, SUBGROUPED_DATASET_ID, request)
 
     assert result.sigma.sigma_hat > 0
@@ -425,7 +424,7 @@ async def test_three_way_chart(subgrouped_db):
 async def test_three_way_with_stddev(subgrouped_db):
     """Three-Way chart with within_method=stddev."""
     request = AnalysisRequest(
-        chart_type="three_way", within_method="stddev", k_sigma=3.0,
+        chart_type="three_way", within_method="stddev", k_sigma=3.0, subgroup_column="subgroup",
     )
     result = await run_analysis(subgrouped_db, SUBGROUPED_DATASET_ID, request)
 
@@ -497,6 +496,7 @@ async def test_presummarize_chart(subgrouped_db):
         target=10.3,
         sigma=0.2,
         k_sigma=3.0,
+        subgroup_column="subgroup",
     )
     result = await run_analysis(subgrouped_db, SUBGROUPED_DATASET_ID, request)
 
@@ -615,8 +615,9 @@ async def test_multivariate_requires_raw_data(seeded_db):
 def client(seeded_db: AsyncSession):
     """FastAPI TestClient with seeded session."""
     from fastapi.testclient import TestClient
-    from api.main import app
+
     from api.database import get_db
+    from api.main import app
 
     async def override_get_db():
         yield seeded_db
