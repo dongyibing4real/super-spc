@@ -1,7 +1,7 @@
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
 import WorkspaceView from "../views/WorkspaceView.jsx";
-import DataPrepView from "../views/DataPrepView.jsx";
+import DataPrepView from "../views/data-prep/DataPrepView.jsx";
 import FindingsView from "../views/FindingsView.jsx";
 import MethodLabView from "../views/MethodLabView.jsx";
 import { LoadingState, ErrorState, EmptyState } from "./Notice.jsx";

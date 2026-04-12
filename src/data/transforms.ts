@@ -1,35 +1,46 @@
 /**
- * transforms.js — Maps API responses to the frontend state shape.
- *
- * API types:
- *   DataRowOut: { id, sequence_index, metadata, raw_data }
- *   AnalysisResult: { id, dataset_id, sigma, limits, zones, capability, created_at }
- *
- * Frontend state shape: see state.js createInitialState()
+ * transforms.ts — Maps API responses to the frontend state shape.
  */
 
+import type { AnalysisResult, ColumnOut, DataRowOut } from "../types/api.ts";
+import type {
+  ChartContext,
+  ChartLimits,
+  ChartPoint,
+  SlotCapability,
+  SlotPhase,
+  SlotSigma,
+  SlotZones,
+  Violation,
+} from "../types/state.ts";
+
+export interface SlotFields {
+  limits: ChartLimits;
+  capability: SlotCapability | null;
+  sigma: SlotSigma | null;
+  zones: SlotZones | null;
+  violations: Violation[];
+  phases: SlotPhase[];
+  chartValues: number[];
+  chartLabels: string[];
+}
+
 /**
- * Map DataRowOut[] → point[]
+ * Map DataRowOut[] → ChartPoint[]
  *
  * Uses column config to determine which raw data fields map to which roles.
  * No hardcoded field names — everything is driven by the columns parameter.
- * Value and subgroup are derived from raw_data using column roles (not stored on the row).
- *
- * @param {Array<{id: number, sequence_index: number, metadata: object, raw_data: object}>} rows
- * @param {Array<{name: string, ordinal: number, dtype: string, role: string|null}>} [columns]
- * @returns {Array<{id: string, label: string, subgroupLabel: string, phaseId: string|null, primaryValue: number, excluded: boolean, annotation: null, raw: object}>}
  */
-export function mapRowsToChartPoints(rows, columns) {
+export function mapRowsToChartPoints(rows: DataRowOut[] | null | undefined, columns?: ColumnOut[]): ChartPoint[] {
   if (!Array.isArray(rows)) return [];
 
-  // Find column roles from the columns config
   const valueCol = columns?.find((c) => c.role === "value")?.name;
   const subgroupCol = columns?.find((c) => c.role === "subgroup")?.name;
   const labelCol = columns?.find((c) => c.role === "label")?.name;
   const phaseCol = columns?.find((c) => c.role === "phase")?.name;
 
   return rows.map((m) => {
-    const raw = m.raw_data || m.metadata || {};
+    const raw = (m.raw_data || m.metadata || {}) as Record<string, string>;
     const rawValue = valueCol ? raw[valueCol] : null;
     const value = rawValue != null ? parseFloat(rawValue) : 0;
     const subgroup = subgroupCol ? (raw[subgroupCol] ?? null) : null;
@@ -48,27 +59,26 @@ export function mapRowsToChartPoints(rows, columns) {
 }
 
 /**
- * Map AnalysisResult → { limits, capability, sigma, zones, violations, dispersion }
- *
- * @param {{id: number, dataset_id: number, sigma: object, limits: {ucl: number[], cl: number[], lcl: number[], k_sigma: number}, zones: object, capability: {cp: number, cpk: number, pp: number, ppk: number}|null, violations: Array|undefined, created_at: string}} analysisResult
- * @param {number|null} usl - Upper spec limit (not in API response, passed separately)
- * @param {number|null} lsl - Lower spec limit (not in API response, passed separately)
- * @returns {{limits: object, capability: object|null, sigma: object|null, zones: object|null, violations: Array}}
+ * Map AnalysisResult → SlotFields
  */
-export function mapAnalysisToSlotFields(analysisResult, usl = null, lsl = null) {
+export function mapAnalysisToSlotFields(
+  analysisResult: AnalysisResult,
+  usl: number | null = null,
+  lsl: number | null = null,
+): SlotFields {
   const apiLimits = analysisResult.limits;
 
-  const limits = {
+  const limits: ChartLimits = {
     center: apiLimits.cl[0],
     ucl: apiLimits.ucl[0],
     lcl: apiLimits.lcl[0],
-    usl: usl,
-    lsl: lsl,
+    usl,
+    lsl,
     version: analysisResult.id,
     scope: "Dataset",
   };
 
-  let capability = null;
+  let capability: SlotCapability | null = null;
   if (analysisResult.capability) {
     capability = {
       cp: analysisResult.capability.cp,
@@ -77,13 +87,11 @@ export function mapAnalysisToSlotFields(analysisResult, usl = null, lsl = null) 
     };
   }
 
-  // Pass through sigma info
-  const sigma = analysisResult.sigma
+  const sigma: SlotSigma | null = analysisResult.sigma
     ? { sigma_hat: analysisResult.sigma.sigma_hat, method: analysisResult.sigma.method, n_used: analysisResult.sigma.n_used }
     : null;
 
-  // Pass through zone boundaries
-  const zones = analysisResult.zones
+  const zones: SlotZones | null = analysisResult.zones
     ? {
         zone_a_upper: analysisResult.zones.zone_a_upper,
         zone_b_upper: analysisResult.zones.zone_b_upper,
@@ -93,8 +101,7 @@ export function mapAnalysisToSlotFields(analysisResult, usl = null, lsl = null) 
       }
     : null;
 
-  // Map rule violations
-  const violations = Array.isArray(analysisResult.violations)
+  const violations: Violation[] = Array.isArray(analysisResult.violations)
     ? analysisResult.violations.map((v) => ({
         testId: String(v.test_id),
         indices: Array.isArray(v.point_indices) ? v.point_indices : [],
@@ -102,8 +109,7 @@ export function mapAnalysisToSlotFields(analysisResult, usl = null, lsl = null) 
       }))
     : [];
 
-  // Extract per-phase results when present
-  const phases = Array.isArray(analysisResult.phases)
+  const phases: SlotPhase[] = Array.isArray(analysisResult.phases)
     ? analysisResult.phases.map((p) => ({
         id: p.phase_id,
         start: p.start_index,
@@ -122,14 +128,15 @@ export function mapAnalysisToSlotFields(analysisResult, usl = null, lsl = null) 
   return { limits, capability, sigma, zones, violations, phases, chartValues, chartLabels };
 }
 
+interface DatasetMeta {
+  name?: string;
+  chartType?: { id: string; label: string; detail: string };
+}
+
 /**
  * Build the context object from dataset metadata and column config.
- *
- * @param {{name: string, [key: string]: any}} datasetMeta
- * @param {Array<{name: string, ordinal: number, dtype: string, role: string|null}>} [columns]
- * @returns {object}
  */
-export function buildInitialChartContext(datasetMeta, columns) {
+export function buildInitialChartContext(datasetMeta: DatasetMeta, columns?: ColumnOut[]): ChartContext {
   const valueCol = columns?.find((c) => c.role === "value");
   const subgroupCol = columns?.find((c) => c.role === "subgroup");
   const phaseCol = columns?.find((c) => c.role === "phase");

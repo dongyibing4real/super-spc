@@ -1,4 +1,4 @@
-import RecipeRail from "../components/RecipeRail.jsx";
+import RecipeRail from "../components/recipe-rail/RecipeRail.jsx";
 import ChartArena from "../components/ChartArena.jsx";
 import EvidenceRail from "../components/EvidenceRail.jsx";
 

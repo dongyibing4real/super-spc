@@ -1,6 +1,16 @@
+import type {
+  ChartContext,
+  ChartLayout,
+  ChartLimits,
+  ChartParams,
+  ChartSlot,
+  FindingsStandards,
+  SPCState,
+} from "../../types/state.ts";
+
 const DEFAULT_FORECAST_HORIZON = 6;
 
-const DEFAULT_FINDINGS_STANDARDS = {
+const DEFAULT_FINDINGS_STANDARDS: FindingsStandards = {
   cpkThreshold: 1.33,
   cpkMarginal: 1.0,
   maxOocPercent: 2.0,
@@ -10,7 +20,7 @@ const DEFAULT_FINDINGS_STANDARDS = {
   zoneDeviation: 0.2,
 };
 
-function restoreFindingsStandards() {
+function restoreFindingsStandards(): FindingsStandards {
   try {
     const raw = localStorage.getItem("spc-findings-standards");
     if (raw) return { ...DEFAULT_FINDINGS_STANDARDS, ...JSON.parse(raw) };
@@ -19,7 +29,7 @@ function restoreFindingsStandards() {
 }
 
 /* ---Default empty state for initial load ---*/
-const DEFAULT_CONTEXT = {
+const DEFAULT_CONTEXT: ChartContext = {
   title: "",
   metric: { id: "value", label: "Value", unit: "" },
   subgroup: { id: "default", label: "Individual", detail: "n=1" },
@@ -33,12 +43,12 @@ const DEFAULT_CONTEXT = {
   status: "Loading"
 };
 
-const DEFAULT_LIMITS = {
+const DEFAULT_LIMITS: ChartLimits = {
   center: 0, ucl: 0, lcl: 0, usl: null, lsl: null,
   version: "", scope: "Dataset"
 };
 
-export const DEFAULT_PARAMS = {
+export const DEFAULT_PARAMS: ChartParams = {
   chart_type: null,
   sigma_method: "moving_range",
   k_sigma: 3.0,
@@ -52,7 +62,7 @@ export const DEFAULT_PARAMS = {
   target: null,
 };
 
-export function createSlot(overrides = {}) {
+export function createSlot(overrides: Partial<ChartSlot> = {}): ChartSlot {
   return {
     params: { ...DEFAULT_PARAMS },
     context: { ...DEFAULT_CONTEXT },
@@ -66,14 +76,16 @@ export function createSlot(overrides = {}) {
     chartLabels: [],
     phases: [],
     selectedPointIndex: null,
+    selectedPointIndices: null,
+    selectedPhaseIndex: null,
     showDataTable: false,
     accentIdx: 0,
     _cascadeMemory: { lastIndividualType: null, lastSubgroupedType: null },
     forecast: {
-      mode: "hidden",   // hidden | prompt | loading | active
+      mode: "hidden",
       horizon: DEFAULT_FORECAST_HORIZON,
-      timeBudget: 3,    // FLAML fitting time budget in seconds
-      result: null,     // { projected, confidence, driftScore, oocEstimate, modelName, fitTimeMs }
+      timeBudget: 3,
+      result: null,
       driftSummary: null,
       visibleHorizon: DEFAULT_FORECAST_HORIZON,
     },
@@ -81,7 +93,7 @@ export function createSlot(overrides = {}) {
   };
 }
 
-export function updateSlot(state, id, updates) {
+export function updateSlot(state: SPCState, id: string, updates: Partial<ChartSlot>): SPCState {
   return {
     ...state,
     charts: {
@@ -93,17 +105,30 @@ export function updateSlot(state, id, updates) {
 
 /* --- Tree helpers (kept temporarily for migration only) --- */
 
-function _collect(node) {
+interface TreeNode {
+  type?: string;
+  chartId?: string;
+  children?: TreeNode[];
+}
+
+function _collect(node: TreeNode | null): string[] {
   if (!node) return [];
-  if (node.type === "pane") return [node.chartId];
-  return node.children.flatMap(_collect);
+  if (node.type === "pane") return [node.chartId!];
+  return (node.children || []).flatMap(_collect);
+}
+
+interface LegacyLayout {
+  rows?: string[][];
+  colWeights?: number[][];
+  rowWeights?: number[];
+  tree?: TreeNode;
+  slots?: string[];
 }
 
 /** Migrate legacy tree layout to row-grid on load */
-export function migrateTreeToRows(layout) {
-  if (layout.rows && layout.colWeights) return layout;
+export function migrateTreeToRows(layout: LegacyLayout): ChartLayout {
+  if (layout.rows && layout.colWeights) return layout as ChartLayout;
   if (layout.rows) {
-    // Has rows but no weights ---add default weights
     return { rows: layout.rows, colWeights: layout.rows.map(r => r.map(() => 1)), rowWeights: layout.rows.map(() => 1) };
   }
   if (layout.tree) {
@@ -117,7 +142,7 @@ export function migrateTreeToRows(layout) {
   return { rows: [], colWeights: [], rowWeights: [] };
 }
 
-export function createInitialState() {
+export function createInitialState(): SPCState {
   return {
     route: "workspace",
     loading: true,
@@ -142,6 +167,8 @@ export function createInitialState() {
       lastSuccessfulAt: null
     },
     selectedPointIndex: 0,
+    selectedPointIndices: null,
+    selectedPhaseIndex: null,
     chartToggles: {
       overlay: true,
       specLimits: true,
@@ -195,6 +222,6 @@ export function createInitialState() {
       loading: false,
     },
     activeChipEditor: null,
-    methodLabCharts: [],   // chart IDs selected for Method Lab comparison (empty = all)
+    methodLabCharts: [],
   };
 }
