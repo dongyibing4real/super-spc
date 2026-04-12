@@ -36,13 +36,13 @@ That tradeoff is less necessary now. With modern frontend tooling, a practical P
 
 ## Features
 
-### Interactive Charts
+### Rich Interaction & Auto Prediction
 
 - Maximize chart interactivity: `marquee selection`, axis `pan/zoom`, and selectable phase regions
 - A rich evidence rail on the right side for selected point details and method context
-- A configurable forecast area for projecting series behavior in place (in progress)
+- A configurable forecast area for projecting series behavior in place (based on AutoML tool "FLAML")
 
-![Rule violations highlighted with colored rings on an IMR chart](docs/assets/hero.gif)
+![forcast](docs/assets/forcast.gif)
 
 ### Multi-Chart Workspace
 
