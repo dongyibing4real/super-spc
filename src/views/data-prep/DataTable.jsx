@@ -111,29 +111,23 @@ export default function DataTable({ dataPrep, columns }) {
 
   if (!dataPrep.selectedDatasetId) {
     return (
-      <div className="prep-center">
-        <div className="prep-table-wrap">
-          <div className="prep-empty">Select a dataset to view its data.</div>
-        </div>
+      <div className="prep-table-wrap">
+        <div className="prep-empty">Select a dataset to view its data.</div>
       </div>
     );
   }
   if (dataPrep.loading) {
     return (
-      <div className="prep-center">
-        <div className="prep-table-wrap">
-          <div className="prep-empty">Loading&hellip;</div>
-        </div>
+      <div className="prep-table-wrap">
+        <div className="prep-empty">Loading&hellip;</div>
       </div>
     );
   }
   if (dataPrep.error) {
     return (
-      <div className="prep-center">
-        <div className="prep-table-wrap">
-          <div className="prep-empty" style={{ color: "var(--red)" }}>
-            {dataPrep.error}
-          </div>
+      <div className="prep-table-wrap">
+        <div className="prep-empty" style={{ color: "var(--red)" }}>
+          {dataPrep.error}
         </div>
       </div>
     );
@@ -182,7 +176,6 @@ export default function DataTable({ dataPrep, columns }) {
     selectedVisibleCount > 0 && selectedVisibleCount < visibleRows.length;
 
   return (
-    <div className="prep-center">
       <div className="prep-table-area">
         <div className="prep-table-wrap">
           <table className="prep-table">
@@ -273,6 +266,5 @@ export default function DataTable({ dataPrep, columns }) {
           </div>
         </div>
       </div>
-    </div>
   );
 }

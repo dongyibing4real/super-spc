@@ -22,8 +22,10 @@ export default function DataPrepView() {
       </div>
       <div className="dataprep-grid">
         <DatasetManager datasets={datasets} dataPrep={dataPrep} />
-        <TransformPanel dataPrep={dataPrep} columns={columns} datasets={datasets} />
-        <DataTable dataPrep={dataPrep} columns={columns} />
+        <div className="prep-center">
+          <TransformPanel dataPrep={dataPrep} columns={columns} datasets={datasets} />
+          <DataTable dataPrep={dataPrep} columns={columns} />
+        </div>
         <DatasetMetadata dataPrep={dataPrep} columns={columns} />
       </div>
     </section>
