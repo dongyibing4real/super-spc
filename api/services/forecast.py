@@ -5,8 +5,11 @@ import asyncio
 import hashlib
 import json
 import logging
+import sys
 import threading
+import time
 from collections import OrderedDict
+from dataclasses import dataclass, field
 
 import numpy as np
 from sqlalchemy import select
@@ -26,12 +29,74 @@ from ..schemas import (
 
 logger = logging.getLogger(__name__)
 
-# In-memory LRU cache for fitted models.
-# Key: (dataset_id, value_column, data_hash)
-# Value: (automl_instance, train_values, col_name, limits)
+# Cache configuration
 _MAX_CACHE = 16
-_model_cache: OrderedDict[str, tuple] = OrderedDict()
+_TTL_SECONDS = 3600  # 1 hour
+_MAX_MEMORY_BYTES = 512 * 1024 * 1024  # 512 MB
+
+
+@dataclass
+class _CacheEntry:
+    automl: object
+    values: np.ndarray
+    col_name: str
+    limits: dict | None
+    created_at: float = field(default_factory=time.monotonic)
+
+    @property
+    def memory_bytes(self) -> int:
+        size = self.values.nbytes
+        size += sys.getsizeof(self.automl) if self.automl else 0
+        size += 1024  # overhead for limits, strings, etc.
+        return size
+
+    @property
+    def is_expired(self) -> bool:
+        return (time.monotonic() - self.created_at) > _TTL_SECONDS
+
+    def as_tuple(self) -> tuple:
+        return (self.automl, self.values, self.col_name, self.limits)
+
+
+_model_cache: OrderedDict[str, _CacheEntry] = OrderedDict()
 _cache_lock = threading.Lock()
+
+
+def _evict_expired() -> None:
+    """Remove all expired entries. Must be called with _cache_lock held."""
+    expired = [k for k, v in _model_cache.items() if v.is_expired]
+    for k in expired:
+        del _model_cache[k]
+
+
+def _total_memory() -> int:
+    """Total memory used by all cache entries. Must be called with _cache_lock held."""
+    return sum(e.memory_bytes for e in _model_cache.values())
+
+
+def _cache_put(key: str, entry: _CacheEntry) -> None:
+    """Insert entry, evicting as needed. Must be called with _cache_lock held."""
+    _evict_expired()
+    _model_cache[key] = entry
+    # Evict oldest entries until under count and memory limits
+    while len(_model_cache) > _MAX_CACHE or _total_memory() > _MAX_MEMORY_BYTES:
+        if len(_model_cache) <= 1:
+            break
+        evicted_key, _ = _model_cache.popitem(last=False)
+        logger.debug("Evicted forecast cache entry: %s", evicted_key)
+
+
+def _cache_get(key: str) -> _CacheEntry | None:
+    """Get entry if it exists and is not expired. Must be called with _cache_lock held."""
+    entry = _model_cache.get(key)
+    if entry is None:
+        return None
+    if entry.is_expired:
+        del _model_cache[key]
+        return None
+    # Move to end (LRU)
+    _model_cache.move_to_end(key)
+    return entry
 
 
 def _cache_key(dataset_id: str, value_column: str, data_hash: str) -> str:
@@ -171,9 +236,7 @@ async def run_forecast(
     # Cache the fitted model for fast horizon re-predictions
     key = _cache_key(dataset_id, col_name, _data_hash(values))
     with _cache_lock:
-        _model_cache[key] = (automl_instance, values, col_name, limits)
-        if len(_model_cache) > _MAX_CACHE:
-            _model_cache.popitem(last=False)
+        _cache_put(key, _CacheEntry(automl=automl_instance, values=values, col_name=col_name, limits=limits))
 
     return _to_response(result, cache_key=key)
 
@@ -193,10 +256,10 @@ async def predict_horizon(
     cached = None
     if key:
         with _cache_lock:
-            cached = _model_cache.get(key)
+            cached = _cache_get(key)
 
-    if cached is not None and cached[0] is not None:
-        automl_instance, train_values, _, limits = cached
+    if cached is not None and cached.automl is not None:
+        automl_instance, train_values, _, limits = cached.as_tuple()
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None, lambda: predict_from_fitted(
@@ -223,8 +286,6 @@ async def predict_horizon(
     # Cache for future horizon adjustments
     fallback_key = _cache_key(dataset_id, col_name, _data_hash(values))
     with _cache_lock:
-        _model_cache[fallback_key] = (automl_instance, values, col_name, limits)
-        if len(_model_cache) > _MAX_CACHE:
-            _model_cache.popitem(last=False)
+        _cache_put(fallback_key, _CacheEntry(automl=automl_instance, values=values, col_name=col_name, limits=limits))
 
     return _to_response(result, cache_key=fallback_key)

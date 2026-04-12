@@ -1,10 +1,12 @@
+import { lazy, Suspense } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
-import WorkspaceView from "../views/WorkspaceView.jsx";
-import DataPrepView from "../views/data-prep/DataPrepView.jsx";
-import FindingsView from "../views/FindingsView.jsx";
-import MethodLabView from "../views/MethodLabView.jsx";
 import { LoadingState, ErrorState, EmptyState } from "./Notice.jsx";
+
+const WorkspaceView = lazy(() => import("../views/WorkspaceView.jsx"));
+const DataPrepView = lazy(() => import("../views/data-prep/DataPrepView.jsx"));
+const FindingsView = lazy(() => import("../views/FindingsView.jsx"));
+const MethodLabView = lazy(() => import("../views/MethodLabView.jsx"));
 
 export default function Router() {
   const route = useStore(spcStore, (s) => s.route);
@@ -17,14 +19,20 @@ export default function Router() {
   if (error) return <ErrorState error={error} />;
   if (pointsLen === 0 && !activeDatasetId) return <EmptyState />;
 
+  let view;
   switch (route) {
     case "dataprep":
-      return <DataPrepView />;
+      view = <DataPrepView />;
+      break;
     case "methodlab":
-      return <MethodLabView />;
+      view = <MethodLabView />;
+      break;
     case "findings":
-      return <FindingsView />;
+      view = <FindingsView />;
+      break;
     default:
-      return <WorkspaceView />;
+      view = <WorkspaceView />;
   }
+
+  return <Suspense fallback={<LoadingState />}>{view}</Suspense>;
 }
