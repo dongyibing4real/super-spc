@@ -9,68 +9,67 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from algo import (
-    evaluate_rules,
-    RuleConfig,
-    compute_imr,
-    IMRConfig,
-    compute_xbar_r,
-    XBarRConfig,
-    compute_xbar_s,
-    XBarSConfig,
-    compute_levey_jennings,
-    LeveyJenningsConfig,
-    compute_ewma,
-    EWMAConfig,
-    compute_cusum,
-    CUSUMConfig,
-    p_chart,
-    PChartConfig,
-    np_chart,
-    NPChartConfig,
-    c_chart,
     CChartConfig,
-    u_chart,
-    UChartConfig,
-    laney_p_chart,
-    LaneyPConfig,
-    laney_u_chart,
-    LaneyUConfig,
-    compute_r_chart,
-    RChartConfig,
-    compute_s_chart,
-    SChartConfig,
-    compute_mr_chart,
-    MRChartConfig,
-    compute_run_chart,
-    RunChartConfig,
-    compute_g_chart,
-    GChartConfig,
-    compute_t_chart,
-    TChartConfig,
-    compute_three_way,
-    ThreeWayConfig,
-    compute_short_run,
-    ShortRunConfig,
-    compute_presummarize,
-    PresummarizeConfig,
-    compute_cusum_vmask,
+    CUSUMConfig,
     CUSUMVMaskConfig,
-    compute_hotelling_t2,
+    EWMAConfig,
+    GChartConfig,
     HotellingT2Config,
-    compute_mewma,
+    IMRConfig,
+    LaneyPConfig,
+    LaneyUConfig,
+    LeveyJenningsConfig,
     MEWMAConfig,
+    MRChartConfig,
+    NPChartConfig,
+    PChartConfig,
+    PresummarizeConfig,
+    RChartConfig,
+    RuleConfig,
+    RunChartConfig,
+    SChartConfig,
+    ShortRunConfig,
+    TChartConfig,
+    ThreeWayConfig,
+    UChartConfig,
+    XBarRConfig,
+    XBarSConfig,
+    c_chart,
+    compute_cusum,
+    compute_cusum_vmask,
+    compute_ewma,
+    compute_g_chart,
+    compute_hotelling_t2,
+    compute_imr,
+    compute_levey_jennings,
+    compute_mewma,
+    compute_mr_chart,
+    compute_presummarize,
+    compute_r_chart,
+    compute_run_chart,
+    compute_s_chart,
+    compute_short_run,
+    compute_t_chart,
+    compute_three_way,
+    compute_xbar_r,
+    compute_xbar_s,
+    evaluate_rules,
+    laney_p_chart,
+    laney_u_chart,
+    np_chart,
+    p_chart,
+    u_chart,
 )
+from algo.capability import compute_capability
 from algo.common.enums import BetweenMethod, ScalingMethod, SigmaMethod, WithinMethod
 from algo.common.sigma import (
     sigma_from_levey_jennings,
-    sigma_from_median_moving_range,
     sigma_from_moving_range,
     sigma_from_ranges,
     sigma_from_stddevs,
 )
 from algo.common.types import ControlLimits, ZoneBreakdown
 from algo.common.zones import compute_zones
-from algo.capability import compute_capability
 
 from ..models import Analysis, DataRow, DatasetColumn
 from ..schemas import (
@@ -83,7 +82,6 @@ from ..schemas import (
     SigmaOut,
     ZonesOut,
 )
-
 
 VALID_CHART_TYPES = {
     "imr", "xbar_r", "xbar_s", "r", "s", "mr",
@@ -1129,8 +1127,6 @@ async def run_analysis(
         "zone_a_lower": first_zone_breakdown.zone_a_lower,
     })
     capability_json = json.dumps(first_capability.model_dump()) if first_capability else None
-
-    phases_json = json.dumps([p.model_dump() for p in phases]) if len(phases) > 1 else None
 
     analysis = Analysis(
         dataset_id=dataset_id,

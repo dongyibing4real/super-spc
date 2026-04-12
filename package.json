@@ -8,11 +8,23 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js",
-    "test": "node tests/state.test.js && node tests/forecast-view.test.js && node tests/forecast-prediction.test.js && node tests/app.workflows.test.js && node tests/prep-runtime.test.js && node tests/drag-runtime.test.js && node tests/state/chart.test.js && node tests/state/layout.test.js && node tests/state/data-prep.test.js && node tests/state/findings.test.js && node tests/state/ui.test.js && node tests/state/columns.test.js && node tests/state/selectors.test.js && node tests/middleware/audit.test.js && node tests/middleware/notice.test.js"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write \"src/**/*.{js,jsx,css}\"",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,css}\""
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
     "playwright": "^1.58.2",
-    "vite": "^8.0.3"
+    "prettier": "^3.8.2",
+    "vite": "^8.0.3",
+    "vitest": "^4.1.4"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.1",

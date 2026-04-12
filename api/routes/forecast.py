@@ -30,12 +30,12 @@ async def forecast_dataset(
     try:
         return await run_forecast(session, dataset_id, request)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except MemoryError:
-        raise HTTPException(status_code=413, detail="Dataset too large for forecasting")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MemoryError as exc:
+        raise HTTPException(status_code=413, detail="Dataset too large for forecasting") from exc
     except Exception as exc:
         logger.exception("Forecast failed for dataset %s", dataset_id)
-        raise HTTPException(status_code=500, detail=f"Forecast computation failed: {type(exc).__name__}")
+        raise HTTPException(status_code=500, detail=f"Forecast computation failed: {type(exc).__name__}") from exc
 
 
 @router.post(
@@ -59,9 +59,9 @@ async def forecast_predict(
     try:
         return await predict_horizon(session, dataset_id, request)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except MemoryError:
-        raise HTTPException(status_code=413, detail="Dataset too large for forecasting")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MemoryError as exc:
+        raise HTTPException(status_code=413, detail="Dataset too large for forecasting") from exc
     except Exception as exc:
         logger.exception("Forecast predict failed for dataset %s", dataset_id)
-        raise HTTPException(status_code=500, detail=f"Forecast computation failed: {type(exc).__name__}")
+        raise HTTPException(status_code=500, detail=f"Forecast computation failed: {type(exc).__name__}") from exc

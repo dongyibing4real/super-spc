@@ -1,9 +1,8 @@
 /**
  * test_transforms.js — Unit tests for src/data/transforms.js
- *
- * Run: node tests/test_transforms.js
  */
 
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   mapRowsToChartPoints,
@@ -11,34 +10,22 @@ import {
   buildInitialChartContext,
 } from "../src/data/transforms.js";
 
-let passed = 0;
-let failed = 0;
-
-function test(name, fn) {
-  try {
-    fn();
-    passed++;
-    console.log(`  PASS  ${name}`);
-  } catch (err) {
-    failed++;
-    console.error(`  FAIL  ${name}`);
-    console.error(`        ${err.message}`);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // mapRowsToChartPoints
 // ---------------------------------------------------------------------------
-console.log("\nmapRowsToChartPoints");
 
 test("maps normal measurement array", () => {
+  const columns = [
+    { name: "Thickness", ordinal: 0, dtype: "numeric", role: "value" },
+    { name: "Hour", ordinal: 1, dtype: "text", role: "subgroup" },
+  ];
   const measurements = [
-    { id: 1, value: 8.042, subgroup: "Hour 1", sequence_index: 0, metadata: {} },
-    { id: 2, value: 8.046, subgroup: "Hour 2", sequence_index: 1, metadata: {} },
-    { id: 3, value: 8.044, subgroup: "Hour 3", sequence_index: 2, metadata: {} },
+    { sequence_index: 0, raw_data: { Thickness: "8.042", Hour: "Hour 1" } },
+    { sequence_index: 1, raw_data: { Thickness: "8.046", Hour: "Hour 2" } },
+    { sequence_index: 2, raw_data: { Thickness: "8.044", Hour: "Hour 3" } },
   ];
 
-  const points = mapRowsToChartPoints(measurements);
+  const points = mapRowsToChartPoints(measurements, columns);
   assert.equal(points.length, 3);
 
   assert.equal(points[0].id, "pt-0");
@@ -80,10 +67,14 @@ test("falls back to pt-index when subgroup is undefined", () => {
 });
 
 test("handles single point", () => {
-  const measurements = [
-    { id: 99, value: 1.23, subgroup: "S1", sequence_index: 0, metadata: {} },
+  const columns = [
+    { name: "value", ordinal: 0, dtype: "numeric", role: "value" },
+    { name: "subgroup", ordinal: 1, dtype: "text", role: "subgroup" },
   ];
-  const points = mapRowsToChartPoints(measurements);
+  const measurements = [
+    { sequence_index: 0, raw_data: { value: "1.23", subgroup: "S1" } },
+  ];
+  const points = mapRowsToChartPoints(measurements, columns);
   assert.equal(points.length, 1);
   assert.equal(points[0].primaryValue, 1.23);
   assert.equal(points[0].subgroupLabel, "S1");
@@ -115,7 +106,6 @@ test("preserves raw data in point", () => {
 // ---------------------------------------------------------------------------
 // mapAnalysisToSlotFields
 // ---------------------------------------------------------------------------
-console.log("\nmapAnalysisToSlotFields");
 
 test("maps full analysis result with capability", () => {
   const analysisResult = {
@@ -221,7 +211,6 @@ test("backward compat: handles old response without violations/sigma/zones", () 
 // ---------------------------------------------------------------------------
 // buildInitialChartContext
 // ---------------------------------------------------------------------------
-console.log("\nbuildInitialChartContext");
 
 test("builds context from dataset metadata", () => {
   const meta = { name: "Etch Rate Stability" };
@@ -265,9 +254,3 @@ test("defaults to generic labels when no columns provided", () => {
   assert.equal(ctx.subgroup.label, "Individual");
   assert.equal(ctx.phase.label, "Single phase");
 });
-
-// ---------------------------------------------------------------------------
-// Summary
-// ---------------------------------------------------------------------------
-console.log(`\nResults: ${passed} passed, ${failed} failed, ${passed + failed} total`);
-if (failed > 0) process.exit(1);

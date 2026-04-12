@@ -52,7 +52,7 @@ async def test_levey_jennings_analysis(seeded_db):
 @pytest.mark.asyncio
 async def test_range_sigma_subgrouped(seeded_db):
     """Range method groups by subgroup column."""
-    request = AnalysisRequest(sigma_method="range", k_sigma=3.0)
+    request = AnalysisRequest(sigma_method="range", k_sigma=3.0, subgroup_column="subgroup")
     result = await run_analysis(seeded_db, SEED_DATASET_ID, request)
 
     assert result.sigma.method == "range"

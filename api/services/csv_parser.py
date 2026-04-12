@@ -6,7 +6,6 @@ import io
 from dataclasses import dataclass, field
 from datetime import datetime
 
-
 VALUE_COLUMN_NAMES = {"thickness", "value", "measurement", "result", "reading"}
 SUBGROUP_COLUMN_NAMES = {"hour", "subgroup", "batch", "sample", "group"}
 

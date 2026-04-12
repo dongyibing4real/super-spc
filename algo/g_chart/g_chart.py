@@ -9,7 +9,7 @@ import numpy as np
 from scipy.stats import chi2, norm
 
 from ..common.types import ControlLimits
-from ..common.validators import validate_positive, validate_1d_array, validate_non_empty
+from ..common.validators import validate_1d_array, validate_non_empty, validate_positive
 
 
 @attrs.define(slots=True)

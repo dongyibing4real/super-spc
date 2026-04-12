@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from algo.forecast import ForecastConfig, ForecastResult, compute_forecast, predict_from_fitted
+
 from ..models import Analysis, DataRow, DatasetColumn
 from ..schemas import (
     DriftSummaryOut,

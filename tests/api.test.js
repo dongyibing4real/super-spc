@@ -1,11 +1,11 @@
-import test from "node:test";
+import { test, afterAll } from "vitest";
 import assert from "node:assert/strict";
 
 import {
   fetchDatasets,
-  fetchPoints,
+  fetchRows,
   runAnalysis,
-  uploadCsv,
+  createDataset,
   deleteDataset,
 } from "../src/data/api.js";
 
@@ -39,7 +39,7 @@ function mockFetchReject(error) {
 
 // Restore real fetch (if any) after all tests.
 const originalFetch = globalThis.fetch;
-test.after(() => { globalThis.fetch = originalFetch; });
+afterAll(() => { globalThis.fetch = originalFetch; });
 
 // ---------------------------------------------------------------------------
 // fetchDatasets
@@ -56,16 +56,16 @@ test("fetchDatasets calls GET /api/datasets and returns parsed JSON", async () =
 });
 
 // ---------------------------------------------------------------------------
-// fetchPoints
+// fetchRows
 // ---------------------------------------------------------------------------
 
-test("fetchPoints calls GET /api/datasets/:id/points", async () => {
-  const points = [{ id: 1, value: 3.5, subgroup: 1, sequence_index: 0, metadata: {} }];
-  const calls = mockFetch(fakeResponse(points));
+test("fetchRows calls GET /api/datasets/:id/rows", async () => {
+  const rows = [{ id: 1, sequence_index: 0, raw_data: { value: "3.5" } }];
+  const calls = mockFetch(fakeResponse(rows));
 
-  const result = await fetchPoints(42);
-  assert.deepEqual(result, points);
-  assert.equal(calls[0].url, "/api/datasets/42/points");
+  const result = await fetchRows(42);
+  assert.deepEqual(result, rows);
+  assert.equal(calls[0].url, "/api/datasets/42/rows");
 });
 
 // ---------------------------------------------------------------------------
@@ -87,23 +87,21 @@ test("runAnalysis sends POST with JSON body to /api/datasets/:id/analyze", async
 });
 
 // ---------------------------------------------------------------------------
-// uploadCsv
+// createDataset
 // ---------------------------------------------------------------------------
 
-test("uploadCsv sends POST with FormData to /api/datasets/upload", async () => {
-  const uploaded = { id: 7, name: "data.csv", created_at: "2026-01-01", point_count: 50, metadata: {} };
-  const calls = mockFetch(fakeResponse(uploaded));
+test("createDataset sends POST with JSON body to /api/datasets", async () => {
+  const created = { id: 7, name: "data.csv", created_at: "2026-01-01", point_count: 50, metadata: {} };
+  const calls = mockFetch(fakeResponse(created));
 
-  // Minimal File-like object (node:test doesn't have File/FormData by default,
-  // but Node 18+ exposes them on globalThis).
-  const file = new Blob(["a,b\n1,2"], { type: "text/csv" });
-  const result = await uploadCsv(file);
+  const payload = { name: "Test", columns: [], rows: [] };
+  const result = await createDataset(payload);
 
-  assert.deepEqual(result, uploaded);
-  assert.equal(calls[0].url, "/api/datasets/upload");
+  assert.deepEqual(result, created);
+  assert.equal(calls[0].url, "/api/datasets");
   assert.equal(calls[0].opts.method, "POST");
-  // Body should be FormData instance
-  assert.ok(calls[0].opts.body instanceof FormData);
+  assert.equal(calls[0].opts.headers["Content-Type"], "application/json");
+  assert.deepEqual(JSON.parse(calls[0].opts.body), payload);
 });
 
 // ---------------------------------------------------------------------------
@@ -155,7 +153,7 @@ test("network error propagates from fetch", async () => {
   mockFetchReject(err);
 
   await assert.rejects(
-    () => fetchPoints(1),
+    () => fetchRows(1),
     (thrown) => {
       assert.equal(thrown, err);
       return true;

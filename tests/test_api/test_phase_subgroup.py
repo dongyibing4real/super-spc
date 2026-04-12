@@ -121,7 +121,7 @@ def test_split_by_phase_contiguous():
 @pytest.mark.asyncio
 async def test_phase_independent_limits(phase_db):
     """Two phases with different means → different CL values."""
-    request = AnalysisRequest(chart_type="imr", k_sigma=3.0, nelson_tests=[])
+    request = AnalysisRequest(chart_type="imr", k_sigma=3.0, nelson_tests=[], phase_column="Phase")
     result = await run_analysis(phase_db, PHASE_DATASET_ID, request)
 
     # Should have two phases
@@ -147,7 +147,7 @@ async def test_phase_independent_limits(phase_db):
 @pytest.mark.asyncio
 async def test_phase_top_level_limits_concatenated(phase_db):
     """Top-level limit arrays should be the concatenation of per-phase arrays."""
-    request = AnalysisRequest(chart_type="imr", k_sigma=3.0, nelson_tests=[])
+    request = AnalysisRequest(chart_type="imr", k_sigma=3.0, nelson_tests=[], phase_column="Phase")
     result = await run_analysis(phase_db, PHASE_DATASET_ID, request)
 
     # Top-level arrays should have 20 elements (10 per phase)
@@ -224,6 +224,7 @@ async def test_ewma_with_subgroups(ewma_subgroup_db):
         k_sigma=3.0,
         lambda_=0.2,
         nelson_tests=[],
+        subgroup_column="subgroup",
     )
     result = await run_analysis(ewma_subgroup_db, EWMA_SUBGROUP_DATASET_ID, request)
 
@@ -280,6 +281,7 @@ async def test_cusum_with_subgroups(cusum_subgroup_db):
         chart_type="cusum",
         k_sigma=3.0,
         nelson_tests=[],
+        subgroup_column="subgroup",
     )
     result = await run_analysis(cusum_subgroup_db, CUSUM_SUBGROUP_DATASET_ID, request)
 

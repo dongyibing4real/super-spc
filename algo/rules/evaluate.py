@@ -6,9 +6,8 @@ from __future__ import annotations
 import numpy as np
 
 from ..common.types import ControlLimits, ZoneBreakdown
-from .models import RuleConfig, RuleViolation
 from . import nelson, westgard
-
+from .models import RuleConfig, RuleViolation
 
 _NELSON_DESCRIPTIONS = {
     1: "Point beyond control limits (Test 1)",
@@ -66,10 +65,6 @@ def evaluate_rules(
         mask: np.ndarray | None = None
 
         if test_num == 1:
-            # Use scalar limits (first element) if limits are arrays
-            ucl = limits.ucl[0] if limits.ucl.ndim > 0 else float(limits.ucl)
-            lcl = limits.lcl[0] if limits.lcl.ndim > 0 else float(limits.lcl)
-            # Use full arrays for proper per-point evaluation
             mask = nelson.test_beyond_limits(values, ucl=limits.ucl, lcl=limits.lcl)
         elif test_num == 2:
             n = params.get("n", 9)
