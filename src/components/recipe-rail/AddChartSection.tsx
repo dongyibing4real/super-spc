@@ -3,16 +3,21 @@ import { getFocused } from "../../core/state/selectors.js";
 import { collectChartIds } from "../../core/state/layout.js";
 import { DEFAULT_PARAMS } from "../../core/state/init.js";
 import { PendingChartCard } from "./ChartCards.jsx";
+import type { RecipeRailState } from "./RecipeRail.jsx";
 
-export default function AddChartSection({ state }) {
+interface AddChartSectionProps {
+  state: RecipeRailState;
+}
+
+export default function AddChartSection({ state }: AddChartSectionProps) {
   if (state.ui.pendingNewChart) {
     return <PendingChartCard state={state} />;
   }
 
-  const handleOpenAddChart = () => {
+  const handleOpenAddChart = (): void => {
     const s = spcStore.getState();
     // Check workspace capacity
-    const arenaEl = document.querySelector(".chart-arena");
+    const arenaEl = document.querySelector(".chart-arena") as HTMLElement | null;
     if (arenaEl) {
       const maxPerRow = Math.floor(arenaEl.clientWidth / 250);
       const maxRows = Math.floor(arenaEl.clientHeight / 180);
@@ -22,9 +27,9 @@ export default function AddChartSection({ state }) {
           ...s,
           ui: {
             ...s.ui,
-            notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." },
+            notice: { tone: "warning", title: "Workspace is full", body: "Close a chart to add another." } as Record<string, string>,
           },
-        });
+        } as typeof s);
         return;
       }
     }

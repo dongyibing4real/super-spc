@@ -1,25 +1,41 @@
 import { createSlot } from './init.js';
+import type { SPCState, ChartLayout } from '../../types/state.js';
 
-/** Get all chart IDs visible in the current layout */
-export function collectChartIds(layout) {
-  if (!layout?.rows) {
-    // Legacy fallback ---auto-migrate
-    if (layout?.tree) return _collect(layout.tree);
-    if (layout?.slots) return [...layout.slots];
-    return [];
-  }
-  return layout.rows.flat();
-}
+type DropZone = "center" | "left" | "right" | "top" | "bottom";
 
 /* --- Tree helpers (kept temporarily for migration only) --- */
-function _collect(node) {
+interface TreeNode {
+  type?: string;
+  chartId?: string;
+  children?: TreeNode[];
+}
+
+interface LegacyLayout {
+  rows?: string[][];
+  tree?: TreeNode | null;
+  slots?: string[];
+}
+
+/** Get all chart IDs visible in the current layout */
+export function collectChartIds(layout: ChartLayout | LegacyLayout): string[] {
+  if ((layout as ChartLayout)?.rows) {
+    return (layout as ChartLayout).rows.flat();
+  }
+  // Legacy fallback ---auto-migrate
+  const legacy = layout as LegacyLayout;
+  if (legacy?.tree) return _collect(legacy.tree);
+  if (legacy?.slots) return [...legacy.slots];
+  return [];
+}
+
+function _collect(node: TreeNode | null | undefined): string[] {
   if (!node) return [];
-  if (node.type === "pane") return [node.chartId];
-  return node.children.flatMap(_collect);
+  if (node.type === "pane") return [node.chartId!];
+  return (node.children || []).flatMap(_collect);
 }
 
 /** Insert a chart at a position relative to a target chart */
-export function insertChart(state, chartId, targetId, zone) {
+export function insertChart(state: SPCState, chartId: string, targetId: string, zone: DropZone): SPCState {
   const rows = state.chartLayout.rows.map(r => [...r]);
   const colWeights = state.chartLayout.colWeights.map(r => [...r]);
   const rowWeights = [...state.chartLayout.rowWeights];
@@ -82,7 +98,7 @@ export function insertChart(state, chartId, targetId, zone) {
 }
 
 /** Compute a preview of the grid after a drag-drop ---does NOT modify state */
-export function computeGridPreview(layout, draggingId, targetId, zone) {
+export function computeGridPreview(layout: ChartLayout, draggingId: string, targetId: string, zone: DropZone): ChartLayout {
   const { rows, colWeights, rowWeights } = layout;
   if (!draggingId || !targetId || draggingId === targetId) return layout;
 
@@ -94,12 +110,12 @@ export function computeGridPreview(layout, draggingId, targetId, zone) {
   }
 
   // Remove dragging from current position, keeping weights in sync
-  const pRows = [];
-  const pColW = [];
-  const pRowW = [];
+  const pRows: string[][] = [];
+  const pColW: number[][] = [];
+  const pRowW: number[] = [];
   for (let r = 0; r < rows.length; r++) {
-    const filtered = [];
-    const filteredW = [];
+    const filtered: string[] = [];
+    const filteredW: number[] = [];
     for (let c = 0; c < rows[r].length; c++) {
       if (rows[r][c] !== draggingId) {
         filtered.push(rows[r][c]);
@@ -127,7 +143,7 @@ export function computeGridPreview(layout, draggingId, targetId, zone) {
 }
 
 /** Set column weight ratio between two adjacent panes in a row */
-export function setColWeight(state, rowIndex, leftCol, ratio) {
+export function setColWeight(state: SPCState, rowIndex: number, leftCol: number, ratio: number): SPCState {
   const colWeights = state.chartLayout.colWeights.map(r => [...r]);
   const total = colWeights[rowIndex][leftCol] + colWeights[rowIndex][leftCol + 1];
   colWeights[rowIndex][leftCol] = total * ratio;
@@ -136,7 +152,7 @@ export function setColWeight(state, rowIndex, leftCol, ratio) {
 }
 
 /** Set row weight ratio between two adjacent rows */
-export function setRowWeight(state, topRow, ratio) {
+export function setRowWeight(state: SPCState, topRow: number, ratio: number): SPCState {
   const rowWeights = [...state.chartLayout.rowWeights];
   const total = rowWeights[topRow] + rowWeights[topRow + 1];
   rowWeights[topRow] = total * ratio;

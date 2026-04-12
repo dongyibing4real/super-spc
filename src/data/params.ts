@@ -1,13 +1,19 @@
 /**
  * params.js — Param-domain functions that transform chart params into UI context.
  */
+import type { ChartParams, ChartContext, ContextField } from "../types/state.js";
 import { CHART_TYPE_LABELS, SIGMA_METHOD_LABELS } from "../constants.js";
 
-export function applyParamsToContext(context, params) {
+interface ColumnInfo {
+  name: string;
+  dtype: string;
+}
+
+export function applyParamsToContext(context: ChartContext, params: ChartParams): ChartContext {
   const chartLabel = params.chart_type
     ? (CHART_TYPE_LABELS[params.chart_type] || params.chart_type)
     : "Select\u2026";
-  const result = {
+  const result: ChartContext = {
     ...context,
     chartType: {
       id: params.chart_type || null,
@@ -41,15 +47,15 @@ export function applyParamsToContext(context, params) {
  * Returns a Set of chart type keys that are invalid given current params and columns.
  * Used by recipe-rail to disable unselectable <option> elements.
  */
-export function getDisabledChartTypes(params, columns) {
-  const disabled = new Set();
+export function getDisabledChartTypes(params: ChartParams, columns: ColumnInfo[]): Set<string> {
+  const disabled = new Set<string>();
 
   if (!params.value_column) {
     return new Set(Object.keys(CHART_TYPE_LABELS));
   }
   // Subgroup-required charts are NOT disabled when subgroup is null.
   // reconcileParams handles cascading; the UI shows a warning chip instead.
-  const numericCount = columns.filter((c) => c.dtype === "numeric").length;
+  const numericCount = columns.filter((c: ColumnInfo) => c.dtype === "numeric").length;
   if (numericCount < 2) {
     disabled.add("hotelling_t2");
     disabled.add("mewma");

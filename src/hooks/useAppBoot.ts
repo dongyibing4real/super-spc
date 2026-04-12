@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 import { spcStore } from "../store/spc-store.js";
 import { bootApp } from "../store/actions.js";
 
-export default function useAppBoot() {
-  const bootedRef = useRef(false);
+export default function useAppBoot(): void {
+  const bootedRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!bootedRef.current) {
@@ -14,7 +14,7 @@ export default function useAppBoot() {
 
   // Unsaved changes guard
   useEffect(() => {
-    const handler = (e) => {
+    const handler = (e: BeforeUnloadEvent): void => {
       if (spcStore.getState().dataPrep.unsavedChanges) {
         e.preventDefault();
       }

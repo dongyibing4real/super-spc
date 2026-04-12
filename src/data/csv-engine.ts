@@ -6,21 +6,43 @@
  */
 import Papa from 'papaparse';
 
+type ColumnDtype = 'numeric' | 'datetime' | 'text';
+type ColumnRole = 'value' | 'subgroup' | 'phase' | 'label' | null;
+
+export interface CSVColumn {
+  name: string;
+  ordinal: number;
+  dtype: ColumnDtype;
+  role: ColumnRole;
+}
+
+export interface CSVParseResult {
+  columns: CSVColumn[];
+  rows: Record<string, string>[];
+  errors: Papa.ParseError[];
+  delimiter: string;
+}
+
+export interface CSVPreviewResult {
+  columns: CSVColumn[];
+  rows: Record<string, string>[];
+}
+
 // SPC-specific column name conventions
-const VALUE_NAMES = new Set([
+const VALUE_NAMES: Set<string> = new Set([
   'thickness', 'value', 'measurement', 'result', 'reading',
   'weight', 'length', 'width', 'height', 'diameter',
   'temperature', 'pressure', 'concentration',
 ]);
-const SUBGROUP_NAMES = new Set([
+const SUBGROUP_NAMES: Set<string> = new Set([
   'hour', 'subgroup', 'batch', 'sample', 'group',
   'lot', 'shift', 'operator', 'machine', 'cavity', 'stream',
 ]);
-const PHASE_NAMES = new Set(['phase', 'period', 'stage', 'run']);
-const LABEL_NAMES = new Set(['label', 'id', 'name', 'serial', 'part']);
+const PHASE_NAMES: Set<string> = new Set(['phase', 'period', 'stage', 'run']);
+const LABEL_NAMES: Set<string> = new Set(['label', 'id', 'name', 'serial', 'part']);
 
 // Datetime patterns for detection
-const DATE_PATTERNS = [
+const DATE_PATTERNS: RegExp[] = [
   /^\d{4}-\d{2}-\d{2}$/,                          // YYYY-MM-DD
   /^\d{1,2}\/\d{1,2}\/\d{4}$/,                    // M/D/YYYY
   /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/,     // YYYY-MM-DD HH:MM:SS
@@ -29,10 +51,8 @@ const DATE_PATTERNS = [
 
 /**
  * Detect column dtype by sampling values.
- * @param {string[]} values - Raw string values from the column
- * @returns {'numeric' | 'datetime' | 'text'}
  */
-export function detectDtype(values) {
+export function detectDtype(values: string[]): ColumnDtype {
   const sample = values.slice(0, 50);
   let total = 0, numericCount = 0, dateCount = 0;
 
@@ -61,11 +81,8 @@ export function detectDtype(values) {
 
 /**
  * Suggest SPC role for a column based on its name.
- * @param {string} name - Column name
- * @param {string} dtype - Detected dtype
- * @returns {'value' | 'subgroup' | 'phase' | 'label' | null}
  */
-export function suggestRole(name, dtype) {
+export function suggestRole(name: string, _dtype: ColumnDtype): ColumnRole {
   const lower = name.trim().toLowerCase();
   if (VALUE_NAMES.has(lower)) return 'value';
   if (SUBGROUP_NAMES.has(lower)) return 'subgroup';
@@ -79,91 +96,82 @@ export function suggestRole(name, dtype) {
  *
  * Returns raw string values for server storage (round-trip safe)
  * and column metadata with dtype/role suggestions.
- *
- * @param {File} file - The CSV file to parse
- * @returns {Promise<{columns: Array, rows: Array<Object>, errors: Array, delimiter: string}>}
  */
-export function parseCSV(file) {
+export function parseCSV(file: File): Promise<CSVParseResult> {
   return new Promise((resolve, reject) => {
-    const config = {
-      header: true,
-      dynamicTyping: false,  // Keep raw strings for round-trip fidelity
-      skipEmptyLines: true,
-      complete(results) {
-        if (!results.meta.fields || results.meta.fields.length === 0) {
-          reject(new Error('CSV has no headers'));
-          return;
-        }
-        if (results.data.length === 0) {
-          reject(new Error('CSV has no data rows'));
-          return;
-        }
+    const completeHandler = (results: Papa.ParseResult<Record<string, string>>): void => {
+      if (!results.meta.fields || results.meta.fields.length === 0) {
+        reject(new Error('CSV has no headers'));
+        return;
+      }
+      if (results.data.length === 0) {
+        reject(new Error('CSV has no data rows'));
+        return;
+      }
 
-        const fields = results.meta.fields;
-        let valueSuggested = false;
+      const fields = results.meta.fields;
+      let valueSuggested = false;
 
-        const columns = fields.map((name, ordinal) => {
-          const colValues = results.data.map(row => row[name] ?? '');
-          const dtype = detectDtype(colValues);
-          let role = suggestRole(name, dtype);
+      const columns: CSVColumn[] = fields.map((name: string, ordinal: number) => {
+        const colValues = results.data.map((row: Record<string, string>) => row[name] ?? '');
+        const dtype = detectDtype(colValues);
+        let role = suggestRole(name, dtype);
 
-          // Only suggest one value column
-          if (role === 'value') {
-            if (valueSuggested) role = null;
-            else valueSuggested = true;
-          }
-
-          return { name, ordinal, dtype, role };
-        });
-
-        // If no value column suggested by name, pick first numeric
-        if (!valueSuggested) {
-          const firstNumeric = columns.find(c => c.dtype === 'numeric');
-          if (firstNumeric) firstNumeric.role = 'value';
+        // Only suggest one value column
+        if (role === 'value') {
+          if (valueSuggested) role = null;
+          else valueSuggested = true;
         }
 
-        resolve({
-          columns,
-          rows: results.data,
-          errors: results.errors,
-          delimiter: results.meta.delimiter,
-        });
-      },
-      error(err) {
-        reject(err);
-      },
+        return { name, ordinal, dtype, role };
+      });
+
+      // If no value column suggested by name, pick first numeric
+      if (!valueSuggested) {
+        const firstNumeric = columns.find(c => c.dtype === 'numeric');
+        if (firstNumeric) firstNumeric.role = 'value';
+      }
+
+      resolve({
+        columns,
+        rows: results.data,
+        errors: results.errors,
+        delimiter: results.meta.delimiter,
+      });
+    };
+
+    const errorHandler = (err: Error): void => {
+      reject(err);
     };
 
     // Try Web Worker, fall back to main thread
+    const baseConfig = { header: true, dynamicTyping: false as const, skipEmptyLines: true, complete: completeHandler, error: errorHandler };
     try {
-      Papa.parse(file, { ...config, worker: true });
+      (Papa.parse as unknown as (input: File, config: Record<string, unknown>) => void)(file, { ...baseConfig, worker: true });
     } catch {
-      Papa.parse(file, { ...config, worker: false });
+      (Papa.parse as unknown as (input: File, config: Record<string, unknown>) => void)(file, { ...baseConfig, worker: false });
     }
   });
 }
 
 /**
  * Parse only the first N rows for preview.
- * @param {File} file
- * @param {number} previewRows
- * @returns {Promise<{columns: Array, rows: Array<Object>}>}
  */
-export function previewCSV(file, previewRows = 100) {
+export function previewCSV(file: File, previewRows: number = 100): Promise<CSVPreviewResult> {
   return new Promise((resolve, reject) => {
-    Papa.parse(file, {
+    Papa.parse<Record<string, string>>(file, {
       header: true,
       dynamicTyping: false,
       skipEmptyLines: true,
       preview: previewRows,
-      complete(results) {
+      complete(results: Papa.ParseResult<Record<string, string>>) {
         if (!results.meta.fields || results.meta.fields.length === 0) {
           reject(new Error('CSV has no headers'));
           return;
         }
         const fields = results.meta.fields;
-        const columns = fields.map((name, ordinal) => {
-          const colValues = results.data.map(row => row[name] ?? '');
+        const columns: CSVColumn[] = fields.map((name: string, ordinal: number) => {
+          const colValues = results.data.map((row: Record<string, string>) => row[name] ?? '');
           const dtype = detectDtype(colValues);
           const role = suggestRole(name, dtype);
           return { name, ordinal, dtype, role };

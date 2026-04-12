@@ -8,55 +8,75 @@ import { CHART_TYPE_LABELS } from "../constants.js";
 import { capClass } from "../helpers.js";
 import { getCapability } from "../core/state/selectors.js";
 import Chart from "./Chart.jsx";
+import type { SPCState, ChartSlot, ChartLayout, ChartToggles, ChartPoint, ColumnConfig, Violation } from "../types/state.js";
+
+/* --- Shared arena state subset used by pane sub-components --- */
+
+interface ArenaState {
+  charts: Record<string, ChartSlot>;
+  chartOrder: string[];
+  chartLayout: ChartLayout;
+  focusedChartId: string;
+  points: ChartPoint[];
+  selectedPointIndex: number | null;
+  columnConfig: ColumnConfig;
+  chartToggles: ChartToggles;
+  ui: { contextMenu: unknown | null };
+}
 
 /* --- Chart pane (React) --- */
 
-function ChartPane({ state, chartId }) {
-  const slot = state.charts[chartId];
+interface ChartPaneProps {
+  state: ArenaState;
+  chartId: string;
+}
+
+function ChartPane({ state, chartId }: ChartPaneProps): React.JSX.Element | null {
+  const slot: ChartSlot | undefined = state.charts[chartId];
   if (!slot) return null;
 
-  const isFocused = state.focusedChartId === chartId;
-  const isOnly = state.chartOrder.length <= 1;
-  const caps = getCapability(state, chartId);
-  const method = slot.context.chartType?.label || "";
-  const metric = slot.context.metric?.label || "";
-  const showTable = slot.showDataTable;
-  const accentIdx = state.chartOrder.indexOf(chartId) % 8;
+  const isFocused: boolean = state.focusedChartId === chartId;
+  const isOnly: boolean = state.chartOrder.length <= 1;
+  const caps = getCapability(state as unknown as SPCState, chartId) as { cpk?: number; ppk?: number };
+  const method: string = slot.context.chartType?.label || "";
+  const metric: string = slot.context.metric?.label || "";
+  const showTable: boolean = slot.showDataTable;
+  const accentIdx: number = state.chartOrder.indexOf(chartId) % 8;
 
-  const handlePaneClick = () => {
+  const handlePaneClick = (): void => {
     if (!isFocused) {
-      spcStore.setState((s) => focusChart(s, chartId));
+      spcStore.setState((s: SPCState) => focusChart(s, chartId));
     }
   };
 
-  const handleRemoveChart = (e) => {
+  const handleRemoveChart = (e: React.MouseEvent<HTMLButtonElement>): void => {
     e.stopPropagation();
-    spcStore.setState((s) => removeChart(s, chartId));
+    spcStore.setState((s: SPCState) => removeChart(s, chartId));
     saveLayout();
   };
 
-  const handleToggleTable = (e) => {
+  const handleToggleTable = (e: React.MouseEvent<HTMLButtonElement>): void => {
     e.stopPropagation();
-    spcStore.setState((s) => togglePaneDataTable(s, chartId));
+    spcStore.setState((s: SPCState) => togglePaneDataTable(s, chartId));
   };
 
-  const handleContextMenu = (e) => {
+  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>): void => {
     e.preventDefault();
-    const root = document.getElementById("app") || document.documentElement;
-    const rootRect = root.getBoundingClientRect();
-    const x = e.clientX - rootRect.left;
-    const y = e.clientY - rootRect.top;
-    spcStore.setState((s) => openContextMenu(s, x, y, { target: "canvas" }));
+    const root: HTMLElement = document.getElementById("app") || document.documentElement;
+    const rootRect: DOMRect = root.getBoundingClientRect();
+    const x: number = e.clientX - rootRect.left;
+    const y: number = e.clientY - rootRect.top;
+    spcStore.setState((s: SPCState) => openContextMenu(s, x, y, { target: "canvas" }));
   };
 
-  const handleTitlebarContextMenu = (e) => {
+  const handleTitlebarContextMenu = (e: React.MouseEvent<HTMLDivElement>): void => {
     e.preventDefault();
     e.stopPropagation();
-    const root = document.getElementById("app") || document.documentElement;
-    const rootRect = root.getBoundingClientRect();
-    const x = e.clientX - rootRect.left;
-    const y = e.clientY - rootRect.top;
-    spcStore.setState((s) => openContextMenu(s, x, y, { target: "canvas" }));
+    const root: HTMLElement = document.getElementById("app") || document.documentElement;
+    const rootRect: DOMRect = root.getBoundingClientRect();
+    const x: number = e.clientX - rootRect.left;
+    const y: number = e.clientY - rootRect.top;
+    spcStore.setState((s: SPCState) => openContextMenu(s, x, y, { target: "canvas" }));
   };
 
   return (
@@ -84,7 +104,7 @@ function ChartPane({ state, chartId }) {
               </span>
               <span className="cap-item">
                 <span className="cap-label">Ppk</span>
-                <span className={`cap-value ${capClass(caps.ppk)}`}>{caps.ppk}</span>
+                <span className={`cap-value ${capClass(caps.ppk as number)}`}>{caps.ppk}</span>
               </span>
             </div>
           ) : null}
@@ -120,29 +140,34 @@ function ChartPane({ state, chartId }) {
 
 /* --- Data table (React) --- */
 
-function DataTable({ state, chartId }) {
-  const focusedSlot = state.charts[chartId || state.focusedChartId];
-  const violations = focusedSlot?.violations || [];
-  const violatedIndices = new Set();
-  violations.forEach((v) => v.indices.forEach((i) => violatedIndices.add(i)));
+interface DataTableProps {
+  state: ArenaState;
+  chartId: string;
+}
+
+function DataTable({ state, chartId }: DataTableProps): React.JSX.Element {
+  const focusedSlot: ChartSlot | undefined = state.charts[chartId || state.focusedChartId];
+  const violations: Violation[] = focusedSlot?.violations || [];
+  const violatedIndices = new Set<number>();
+  violations.forEach((v: Violation) => v.indices.forEach((i: number) => violatedIndices.add(i)));
 
   const cols = state.columnConfig.columns || [];
-  const hasRawData = state.points[0]?.raw && Object.keys(state.points[0].raw).length > 0;
-  const rawColumns = hasRawData
+  const hasRawData: boolean = !!(state.points[0]?.raw && Object.keys(state.points[0].raw).length > 0);
+  const rawColumns: string[] = hasRawData
     ? cols.filter((c) => c.role !== "value").map((c) => c.name)
     : [];
 
   const valueCol = cols.find((c) => c.role === "value");
-  const valueName = valueCol?.name || "Value";
+  const valueName: string = valueCol?.name || "Value";
   const subgroupCol = cols.find((c) => c.role === "subgroup");
-  const subgroupName = subgroupCol?.name || "Subgroup";
+  const subgroupName: string = subgroupCol?.name || "Subgroup";
 
   if (state.points.length === 0) {
     return <div className="pane-data-table"><div className="empty-table">No data loaded.</div></div>;
   }
 
-  const handleRowClick = (index) => {
-    spcStore.setState((s) => selectPoint(s, index));
+  const handleRowClick = (index: number): void => {
+    spcStore.setState((s: SPCState) => selectPoint(s, index));
   };
 
   return (
@@ -154,18 +179,18 @@ function DataTable({ state, chartId }) {
               <th>#</th>
               <th>{valueName}</th>
               <th>{subgroupName}</th>
-              {rawColumns.map((col) => (
+              {rawColumns.map((col: string) => (
                 <th key={col}>{col}</th>
               ))}
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {state.points.map((p, i) => {
-              const isViolated = violatedIndices.has(i);
-              const isExcluded = p.excluded;
-              const isSelected = i === state.selectedPointIndex;
-              const cls = [
+            {state.points.map((p: ChartPoint, i: number) => {
+              const isViolated: boolean = violatedIndices.has(i);
+              const isExcluded: boolean = p.excluded;
+              const isSelected: boolean = i === state.selectedPointIndex;
+              const cls: string = [
                 isViolated ? "row-violated" : "",
                 isExcluded ? "row-excluded" : "",
                 isSelected ? "row-selected" : "",
@@ -181,7 +206,7 @@ function DataTable({ state, chartId }) {
                   <td className="mono">{i + 1}</td>
                   <td className="mono">{p.primaryValue.toFixed(4)}</td>
                   <td className="mono">{p.subgroupLabel}</td>
-                  {rawColumns.map((col) => (
+                  {rawColumns.map((col: string) => (
                     <td key={col} className="mono">{p.raw?.[col] ?? ""}</td>
                   ))}
                   <td>
@@ -205,16 +230,20 @@ function DataTable({ state, chartId }) {
 
 /* --- Row grid (React) --- */
 
-function RowGrid({ state }) {
+interface RowGridProps {
+  state: ArenaState;
+}
+
+function RowGrid({ state }: RowGridProps): React.JSX.Element | null {
   const { rows, colWeights, rowWeights } = state.chartLayout;
   if (!rows || rows.length === 0) return null;
   return (
     <>
-      {rows.map((row, r) => {
+      {rows.map((row: string[], r: number) => {
         return (
           <React.Fragment key={`row-${r}`}>
             <div className="chart-row" style={{ flex: `${rowWeights[r]} 1 0` }}>
-              {row.map((id, c) => {
+              {row.map((id: string, c: number) => {
                 return (
                   <React.Fragment key={id}>
                     <div className="chart-pane-wrap" style={{ flex: `${colWeights[r][c]} 1 0` }}>
@@ -243,12 +272,12 @@ function RowGrid({ state }) {
 
 /* --- Ghost layout renderer (template-string, NOT React) --- */
 
-export function renderGhostRows(layout, incomingId) {
+export function renderGhostRows(layout: ChartLayout, incomingId: string): string {
   const { rows, colWeights, rowWeights } = layout;
   if (!rows || rows.length === 0) return "";
 
-  return rows.map((row, r) => {
-    const cells = row.map((id, c) => {
+  return rows.map((row: string[], r: number) => {
+    const cells: string = row.map((id: string, c: number) => {
       return `<div class="ghost-pane${id === incomingId ? " ghost-pane-incoming" : ""}" style="flex: ${colWeights[r][c]} 1 0"></div>`;
     }).join("");
 
@@ -258,31 +287,31 @@ export function renderGhostRows(layout, incomingId) {
 
 /* --- Data table renderer (template-string, NOT React) --- */
 
-export function renderDataTable(state, chartId) {
+export function renderDataTable(state: ArenaState, chartId: string): string {
   if (state.points.length === 0) return '<div class="empty-table">No data loaded.</div>';
 
-  const focusedSlot = state.charts[chartId || state.focusedChartId];
-  const violations = focusedSlot?.violations || [];
-  const violatedIndices = new Set();
-  violations.forEach(v => v.indices.forEach(i => violatedIndices.add(i)));
+  const focusedSlot: ChartSlot | undefined = state.charts[chartId || state.focusedChartId];
+  const violations: Violation[] = focusedSlot?.violations || [];
+  const violatedIndices = new Set<number>();
+  violations.forEach((v: Violation) => v.indices.forEach((i: number) => violatedIndices.add(i)));
 
   const cols = state.columnConfig.columns || [];
-  const hasRawData = state.points[0]?.raw && Object.keys(state.points[0].raw).length > 0;
-  const rawColumns = hasRawData
-    ? cols.filter(c => c.role !== "value").map(c => c.name)
+  const hasRawData: boolean = !!(state.points[0]?.raw && Object.keys(state.points[0].raw).length > 0);
+  const rawColumns: string[] = hasRawData
+    ? cols.filter((c) => c.role !== "value").map((c) => c.name)
     : [];
 
-  const rows = state.points.map((p, i) => {
-    const isViolated = violatedIndices.has(i);
-    const isExcluded = p.excluded;
-    const isSelected = i === state.selectedPointIndex;
-    const cls = [
+  const rows: string = state.points.map((p: ChartPoint, i: number) => {
+    const isViolated: boolean = violatedIndices.has(i);
+    const isExcluded: boolean = p.excluded;
+    const isSelected: boolean = i === state.selectedPointIndex;
+    const cls: string = [
       isViolated ? "row-violated" : "",
       isExcluded ? "row-excluded" : "",
       isSelected ? "row-selected" : "",
     ].filter(Boolean).join(" ");
 
-    const rawCells = rawColumns.map(col => `<td class="mono">${p.raw?.[col] ?? ""}</td>`).join("");
+    const rawCells: string = rawColumns.map((col: string) => `<td class="mono">${p.raw?.[col] ?? ""}</td>`).join("");
 
     return `<tr class="${cls}" data-index="${i}">
       <td class="mono">${i + 1}</td>
@@ -293,10 +322,10 @@ export function renderDataTable(state, chartId) {
     </tr>`;
   }).join("");
 
-  const valueCol = cols.find(c => c.role === "value");
-  const valueName = valueCol?.name || "Value";
-  const subgroupCol = cols.find(c => c.role === "subgroup");
-  const subgroupName = subgroupCol?.name || "Subgroup";
+  const valueCol = cols.find((c) => c.role === "value");
+  const valueName: string = valueCol?.name || "Value";
+  const subgroupCol = cols.find((c) => c.role === "subgroup");
+  const subgroupName: string = subgroupCol?.name || "Subgroup";
 
   return `
     <div class="data-table-container">
@@ -306,7 +335,7 @@ export function renderDataTable(state, chartId) {
             <th>#</th>
             <th>${valueName}</th>
             <th>${subgroupName}</th>
-            ${rawColumns.map(col => `<th>${col}</th>`).join("")}
+            ${rawColumns.map((col: string) => `<th>${col}</th>`).join("")}
             <th>Status</th>
           </tr>
         </thead>
@@ -318,18 +347,18 @@ export function renderDataTable(state, chartId) {
 
 /* --- Main ChartArena component --- */
 
-export default function ChartArena() {
-  const charts = useStore(spcStore, (s) => s.charts);
-  const chartOrder = useStore(spcStore, (s) => s.chartOrder);
-  const chartLayout = useStore(spcStore, (s) => s.chartLayout);
-  const focusedChartId = useStore(spcStore, (s) => s.focusedChartId);
-  const points = useStore(spcStore, (s) => s.points);
-  const selectedPointIndex = useStore(spcStore, (s) => s.selectedPointIndex);
-  const columnConfig = useStore(spcStore, (s) => s.columnConfig);
-  const chartToggles = useStore(spcStore, (s) => s.chartToggles);
-  const contextMenu = useStore(spcStore, (s) => s.ui.contextMenu);
+export default function ChartArena(): React.JSX.Element {
+  const charts = useStore(spcStore, (s: SPCState) => s.charts);
+  const chartOrder = useStore(spcStore, (s: SPCState) => s.chartOrder);
+  const chartLayout = useStore(spcStore, (s: SPCState) => s.chartLayout);
+  const focusedChartId = useStore(spcStore, (s: SPCState) => s.focusedChartId);
+  const points = useStore(spcStore, (s: SPCState) => s.points);
+  const selectedPointIndex = useStore(spcStore, (s: SPCState) => s.selectedPointIndex);
+  const columnConfig = useStore(spcStore, (s: SPCState) => s.columnConfig);
+  const chartToggles = useStore(spcStore, (s: SPCState) => s.chartToggles);
+  const contextMenu = useStore(spcStore, (s: SPCState) => s.ui.contextMenu);
 
-  const state = {
+  const state: ArenaState = {
     charts,
     chartOrder,
     chartLayout,

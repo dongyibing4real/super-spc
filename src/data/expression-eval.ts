@@ -7,25 +7,28 @@
  * No eval() — compiles expression to a safe JS function via whitelist.
  */
 
-const ALLOWED_FUNCTIONS = new Set([
+type RowAccessor = (row: Record<string, number | string | null>) => number;
+
+export interface CompileResult {
+  fn: RowAccessor | null;
+  error: string | null;
+}
+
+const ALLOWED_FUNCTIONS: Set<string> = new Set([
   'round', 'abs', 'log', 'sqrt', 'pow', 'min', 'max',
   'floor', 'ceil', 'exp',
 ]);
 
-const BLOCKED_TOKENS = /\b(import|require|fetch|window|document|eval|Function|setTimeout|setInterval|alert|prompt|confirm)\b/;
-const BLOCKED_CHARS = /[`;{}\\]/;
+const BLOCKED_TOKENS: RegExp = /\b(import|require|fetch|window|document|eval|Function|setTimeout|setInterval|alert|prompt|confirm)\b/;
+const BLOCKED_CHARS: RegExp = /[`;{}\\]/;
 
 /**
  * Compile a simple arithmetic expression into a reusable function.
  *
  * Column references use bracket syntax: [ColumnName]
  * Example: "[Thickness] * 25.4 + round([Offset])"
- *
- * @param {string} expression - The expression string
- * @param {string[]} columnNames - Valid column names for validation
- * @returns {{ fn: (row: Object) => number, error: string|null }}
  */
-export function compileExpression(expression, columnNames) {
+export function compileExpression(expression: string, columnNames: string[]): CompileResult {
   if (!expression || !expression.trim()) {
     return { fn: null, error: 'Expression is empty' };
   }
@@ -39,9 +42,9 @@ export function compileExpression(expression, columnNames) {
   }
 
   // Extract and validate column references
-  const colRefs = [];
+  const colRefs: string[] = [];
   const colPattern = /\[([^\]]+)\]/g;
-  let match;
+  let match: RegExpExecArray | null;
   while ((match = colPattern.exec(expression)) !== null) {
     const colName = match[1];
     if (!columnNames.includes(colName)) {
@@ -56,7 +59,7 @@ export function compileExpression(expression, columnNames) {
 
   // Build the function body:
   // 1. Replace [ColName] with row['ColName']
-  let body = expression.replace(colPattern, (_, name) => `__row__[${JSON.stringify(name)}]`);
+  let body = expression.replace(colPattern, (_: string, name: string) => `__row__[${JSON.stringify(name)}]`);
 
   // 2. Replace function names with Math.xxx
   for (const fname of ALLOWED_FUNCTIONS) {
@@ -78,10 +81,10 @@ export function compileExpression(expression, columnNames) {
   // 4. Compile to function
   try {
     // Using Function constructor with strict whitelist — the body has been validated above
-    const fn = new Function('__row__', `"use strict"; return (${body});`);
+    const fn = new Function('__row__', `"use strict"; return (${body});`) as RowAccessor;
 
     // Test with a dummy row to catch syntax errors
-    const testRow = {};
+    const testRow: Record<string, number> = {};
     for (const c of colRefs) testRow[c] = 1;
     const testResult = fn(testRow);
     if (typeof testResult !== 'number' || isNaN(testResult)) {
@@ -90,6 +93,6 @@ export function compileExpression(expression, columnNames) {
 
     return { fn, error: null };
   } catch (err) {
-    return { fn: null, error: `Syntax error: ${err.message}` };
+    return { fn: null, error: `Syntax error: ${(err as Error).message}` };
   }
 }

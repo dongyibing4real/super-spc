@@ -24,22 +24,27 @@
 
 import { INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "../../constants.js";
 import { updateSlot } from "./init.js";
+import type { SPCState, ChartParams, CascadeMemory } from "../../types/state.js";
+import type { ColumnOut } from "../../types/api.js";
 
-const DEFAULT_CASCADE_MEMORY = {
+const DEFAULT_CASCADE_MEMORY: CascadeMemory = {
   lastIndividualType: null,
   lastSubgroupedType: null,
 };
 
-/**
- * @param {object}  oldParams       Current complete params object
- * @param {object}  patch           The user's intended change (e.g. { chart_type: "xbar_r" })
- * @param {Array}   columns         Column config array with { name, dtype, role }
- * @param {object}  [cascadeMemory] Previous cascade memory (lastIndividualType, lastSubgroupedType)
- * @returns {{ params: object, cascadeMemory: object }}
- */
-export function reconcileParams(oldParams, patch, columns, cascadeMemory) {
-  const p = { ...oldParams, ...patch };
-  const mem = { ...(cascadeMemory || DEFAULT_CASCADE_MEMORY) };
+interface ReconcileResult {
+  params: ChartParams;
+  cascadeMemory: CascadeMemory;
+}
+
+export function reconcileParams(
+  oldParams: ChartParams,
+  patch: Partial<ChartParams>,
+  columns: ColumnOut[],
+  cascadeMemory?: CascadeMemory
+): ReconcileResult {
+  const p: ChartParams = { ...oldParams, ...patch };
+  const mem: CascadeMemory = { ...(cascadeMemory || DEFAULT_CASCADE_MEMORY) };
   const colNames = new Set(columns.map((c) => c.name));
 
   // -- Step 2: value cleared → reset everything -------------------------
@@ -51,7 +56,7 @@ export function reconcileParams(oldParams, patch, columns, cascadeMemory) {
 
   // -- Step 3: chart_type changed → fix subgroup ------------------------
   if ("chart_type" in patch) {
-    if (INDIVIDUAL_ONLY.has(p.chart_type)) {
+    if (INDIVIDUAL_ONLY.has(p.chart_type!)) {
       // Save previous type for cascade memory if it was subgroup-required
       if (oldParams.chart_type && SUBGROUP_REQUIRED.has(oldParams.chart_type)) {
         mem.lastSubgroupedType = oldParams.chart_type;
@@ -72,11 +77,11 @@ export function reconcileParams(oldParams, patch, columns, cascadeMemory) {
 
   // -- Step 4: subgroup_column changed → fix chart_type -----------------
   if ("subgroup_column" in patch) {
-    if (!p.subgroup_column && SUBGROUP_REQUIRED.has(p.chart_type)) {
+    if (!p.subgroup_column && SUBGROUP_REQUIRED.has(p.chart_type!)) {
       // Clearing subgroup on a chart that needs it: cascade to individual
       mem.lastSubgroupedType = p.chart_type;
       p.chart_type = mem.lastIndividualType || "imr";
-    } else if (p.subgroup_column && INDIVIDUAL_ONLY.has(p.chart_type)) {
+    } else if (p.subgroup_column && INDIVIDUAL_ONLY.has(p.chart_type!)) {
       // Setting subgroup on an individual chart: cascade to subgrouped
       mem.lastIndividualType = p.chart_type;
       p.chart_type = mem.lastSubgroupedType || "xbar_r";
@@ -87,7 +92,7 @@ export function reconcileParams(oldParams, patch, columns, cascadeMemory) {
   // -- Step 5: validate column references still exist -------------------
   if (p.subgroup_column && !colNames.has(p.subgroup_column)) {
     p.subgroup_column = null;
-    if (SUBGROUP_REQUIRED.has(p.chart_type)) {
+    if (SUBGROUP_REQUIRED.has(p.chart_type!)) {
       mem.lastSubgroupedType = p.chart_type;
       p.chart_type = mem.lastIndividualType || "imr";
     }
@@ -106,7 +111,7 @@ export function reconcileParams(oldParams, patch, columns, cascadeMemory) {
 
 /** Set recipe-level params (chart_type, value_column, subgroup_column, phase_column)
  *  with reconciliation. Only call this for params that affect recipe validity. */
-export function setRecipeParams(state, id, patch) {
+export function setRecipeParams(state: SPCState, id: string, patch: Partial<ChartParams>): SPCState {
   const slot = state.charts[id];
   if (!slot) return state;
   const cols = state.columnConfig?.columns || [];

@@ -1,12 +1,64 @@
+import type { ScaleLinear } from 'd3-scale';
 import { scaleLinear } from 'd3-scale';
+
+export interface ChartScales {
+  x: ScaleLinear<number, number>;
+  y: ScaleLinear<number, number>;
+  sigma: SigmaValues;
+  yTicks: number[];
+  yMin: number;
+  yMax: number;
+  xMin: number;
+  xMax: number;
+}
+
+export interface SigmaValues {
+  value: number;
+  s1u: number;
+  s2u: number;
+  s1l: number;
+  s2l: number;
+}
+
+interface ChartLimitsData {
+  ucl: number;
+  lcl: number;
+  center: number;
+  usl?: number | null;
+  lsl?: number | null;
+  target?: number | null;
+}
+
+interface PhaseData {
+  limits?: { ucl: number; lcl: number; center: number };
+}
+
+interface PointData {
+  [key: string]: unknown;
+}
+
+interface ScaleInputData {
+  points: PointData[];
+  limits: ChartLimitsData;
+  phases?: PhaseData[];
+}
+
+interface ScaleConfig {
+  width: number;
+  height: number;
+  padding: { top: number; right: number; bottom: number; left: number };
+  xDomainOverride?: { min: number; max: number } | null;
+  xDefaultDomain?: { min: number; max: number } | null;
+  yDomainOverride?: { yMin: number; yMax: number } | null;
+}
 
 /**
  * Compute y-axis range from data — encompasses all points, limits, and spec limits
  * with some headroom so nothing sits right at the edge.
  */
-function computeYRange(data, seriesKey) {
-  const values = data.points.map(p => p[seriesKey]).filter(v => v != null);
-  const limitsArr = [data.limits.ucl, data.limits.lcl, data.limits.center];
+function computeYRange(data: ScaleInputData, seriesKey: string): { yMin: number; yMax: number } {
+  const values = data.points.map((p: PointData) => p[seriesKey] as number).filter((v: number) => v != null);
+  const limitsArr: number[] = [data.limits.ucl, data.limits.lcl, data.limits.center];
   if (data.limits.usl != null) limitsArr.push(data.limits.usl);
   if (data.limits.lsl != null) limitsArr.push(data.limits.lsl);
   if (data.limits.target != null) limitsArr.push(data.limits.target);
@@ -14,14 +66,14 @@ function computeYRange(data, seriesKey) {
   // When phases exist, include ALL phases' UCL/LCL in the y-range so the axis
   // adapts to the highest and lowest limits across all phases (JMP convention).
   if (data.phases && data.phases.length > 1) {
-    data.phases.forEach(ph => {
+    data.phases.forEach((ph: PhaseData) => {
       if (ph.limits) {
         limitsArr.push(ph.limits.ucl, ph.limits.lcl, ph.limits.center);
       }
     });
   }
 
-  const allValues = [...values, ...limitsArr].filter(v => Number.isFinite(v));
+  const allValues = [...values, ...limitsArr].filter((v: number) => Number.isFinite(v));
   if (allValues.length === 0) return { yMin: 0, yMax: 1 };
   const dataMin = Math.min(...allValues);
   const dataMax = Math.max(...allValues);
@@ -41,9 +93,9 @@ function computeYRange(data, seriesKey) {
  * Nice step candidates in the 1-2-5 progression.
  * Same sequence used by the x-axis niceStride — unified philosophy.
  */
-const NICE_SEQUENCE = [1, 2, 5];
+const NICE_SEQUENCE: number[] = [1, 2, 5];
 
-function computeYTicks(yMin, yMax, targetCount = 6) {
+function computeYTicks(yMin: number, yMax: number, targetCount: number = 6): number[] {
   const range = yMax - yMin;
   if (range <= 0) return [yMin];
 
@@ -52,7 +104,7 @@ function computeYTicks(yMin, yMax, targetCount = 6) {
   // Find a "nice" step size (1, 2, 5 × 10^n)
   const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
   const residual = rawStep / magnitude;
-  let niceStep;
+  let niceStep: number;
   if (residual <= 1.5) niceStep = 1 * magnitude;
   else if (residual <= 3.5) niceStep = 2 * magnitude;
   else if (residual <= 7.5) niceStep = 5 * magnitude;
@@ -72,9 +124,9 @@ function computeYTicks(yMin, yMax, targetCount = 6) {
   return ticks;
 }
 
-function generateTicks(yMin, yMax, step) {
+function generateTicks(yMin: number, yMax: number, step: number): number[] {
   const start = Math.ceil(yMin / step) * step;
-  const ticks = [];
+  const ticks: number[] = [];
   for (let v = start; v <= yMax + step * 0.01; v += step) {
     ticks.push(parseFloat(v.toFixed(6)));
   }
@@ -84,13 +136,8 @@ function generateTicks(yMin, yMax, step) {
 /**
  * Create D3 scales for the chart coordinate system.
  * Supports domain overrides for JMP-style axis pan/scale.
- *
- * @param {object} data - Chart data (points, limits)
- * @param {object} config - Chart config (width, height, padding, xDomainOverride, yDomainOverride)
- * @param {string} [seriesKey='primaryValue'] - Which value key to use for y-range
- * @returns {{ x: Function, y: Function, sigma: object, yTicks: number[], yMin: number, yMax: number, xMin: number, xMax: number }}
  */
-export function createScales(data, config, seriesKey = 'primaryValue') {
+export function createScales(data: ScaleInputData, config: ScaleConfig, seriesKey: string = 'primaryValue'): ChartScales {
   const { width, height, padding } = config;
   const n = data.points.length;
 
@@ -122,7 +169,7 @@ export function createScales(data, config, seriesKey = 'primaryValue') {
 
   // Sigma calculations from limits
   const sigmaVal = (data.limits.ucl - data.limits.center) / 3;
-  const sigma = {
+  const sigma: SigmaValues = {
     value: sigmaVal,
     s1u: data.limits.center + sigmaVal,
     s2u: data.limits.center + 2 * sigmaVal,

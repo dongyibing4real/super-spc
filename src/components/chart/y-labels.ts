@@ -1,37 +1,52 @@
+import type { Selection } from 'd3-selection';
+
 /**
  * JMP-style y-axis label: function(measurement) depending on chart type.
  * e.g., "Average of Thickness" for X-Bar, "Range of Thickness" for R chart.
  */
-const CHART_Y_LABELS = {
-  imr:            (m) => m,
-  mr:             (m) => `Moving Range of ${m}`,
-  xbar_r:         (m) => `Average of ${m}`,
-  xbar_s:         (m) => `Average of ${m}`,
-  r:              (m) => `Range of ${m}`,
-  s:              (m) => `Std Dev of ${m}`,
-  p:              (_) => 'Proportion',
-  np:             (_) => 'Count',
-  c:              (_) => 'Count',
-  u:              (_) => 'Rate',
-  laney_p:        (_) => 'Proportion',
-  laney_u:        (_) => 'Rate',
-  cusum:          (m) => `Cumulative Sum of ${m}`,
-  cusum_vmask:    (m) => `Cumulative Sum of ${m}`,
-  ewma:           (m) => `EWMA of ${m}`,
-  levey_jennings: (m) => m,
-  hotelling_t2:   (_) => 'T\u00B2 Statistic',
-  mewma:          (_) => 'MEWMA Statistic',
-  g:              (_) => 'Count Between Events',
-  t:              (_) => 'Time Between Events',
-  run:            (m) => m,
-  short_run:      (m) => m,
-  three_way:      (m) => m,
-  presummarize:   (m) => `Average of ${m}`,
+const CHART_Y_LABELS: Record<string, (m: string) => string> = {
+  imr:            (m: string) => m,
+  mr:             (m: string) => `Moving Range of ${m}`,
+  xbar_r:         (m: string) => `Average of ${m}`,
+  xbar_s:         (m: string) => `Average of ${m}`,
+  r:              (m: string) => `Range of ${m}`,
+  s:              (m: string) => `Std Dev of ${m}`,
+  p:              (_: string) => 'Proportion',
+  np:             (_: string) => 'Count',
+  c:              (_: string) => 'Count',
+  u:              (_: string) => 'Rate',
+  laney_p:        (_: string) => 'Proportion',
+  laney_u:        (_: string) => 'Rate',
+  cusum:          (m: string) => `Cumulative Sum of ${m}`,
+  cusum_vmask:    (m: string) => `Cumulative Sum of ${m}`,
+  ewma:           (m: string) => `EWMA of ${m}`,
+  levey_jennings: (m: string) => m,
+  hotelling_t2:   (_: string) => 'T\u00B2 Statistic',
+  mewma:          (_: string) => 'MEWMA Statistic',
+  g:              (_: string) => 'Count Between Events',
+  t:              (_: string) => 'Time Between Events',
+  run:            (m: string) => m,
+  short_run:      (m: string) => m,
+  three_way:      (m: string) => m,
+  presummarize:   (m: string) => `Average of ${m}`,
 };
 
-export function getYAxisLabel(chartTypeId, metricLabel) {
+export function getYAxisLabel(chartTypeId: string, metricLabel: string): string {
   const fn = CHART_Y_LABELS[chartTypeId];
   return fn ? fn(metricLabel) : metricLabel;
+}
+
+interface AxisTitleData {
+  subgroup?: { id?: string; label?: string };
+  metric?: { label?: string };
+  chartType?: { id?: string };
+}
+
+interface AxisTitleConfig {
+  padding: { top: number; right: number; bottom: number; left: number };
+  width: number;
+  height: number;
+  showAxisTitles: boolean;
 }
 
 /**
@@ -39,7 +54,12 @@ export function getYAxisLabel(chartTypeId, metricLabel) {
  *   X-axis: subgroup variable name (JMP convention)
  *   Y-axis: function(measurement) (JMP convention)
  */
-export function renderAxisTitles(xTitleLayer, yTitleLayer, data, config) {
+export function renderAxisTitles(
+  xTitleLayer: Selection<SVGGElement, unknown, null, undefined>,
+  yTitleLayer: Selection<SVGGElement, unknown, null, undefined>,
+  data: AxisTitleData,
+  config: AxisTitleConfig
+): void {
   const p = config.padding;
   const W = config.width;
   const H = config.height;

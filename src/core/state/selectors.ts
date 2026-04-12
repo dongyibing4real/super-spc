@@ -1,39 +1,62 @@
 import { SIGMA_METHOD_LABELS } from '../../constants.js';
 import { capClass } from '../../helpers.js';
+import type { SPCState, ChartSlot, ChartPoint, Violation } from '../../types/state.js';
 
-export function getFailedTransformCount(state) {
-  return state.transforms.filter((step) => step.status === "failed").length;
+interface TransformStep {
+  status?: string;
+  active?: boolean;
+  [key: string]: unknown;
 }
 
-export function getCapability(state, id = null) {
+export function getFailedTransformCount(state: SPCState): number {
+  return (state.transforms as TransformStep[]).filter((step) => step.status === "failed").length;
+}
+
+interface CapabilityResult {
+  cpk: number | null;
+  ppk: number | null;
+  cp: number | null;
+}
+
+export function getCapability(state: SPCState, id: string | null = null): CapabilityResult {
   if (!id) id = state.focusedChartId || state.chartOrder[0];
   return state.charts[id]?.capability || { cpk: null, ppk: null, cp: null };
 }
 
-export function detectRuleViolations(state, id = null) {
+export function detectRuleViolations(state: SPCState, id: string | null = null): Map<number, string[]> {
   if (!id) id = state.focusedChartId || state.chartOrder[0];
-  const violations = new Map();
+  const violations = new Map<number, string[]>();
   const stateViolations = state.charts[id]?.violations || [];
   stateViolations.forEach(v => {
     v.indices.forEach(idx => {
       if (!violations.has(idx)) violations.set(idx, []);
-      violations.get(idx).push(v.testId);
+      violations.get(idx)!.push(v.testId);
     });
   });
   return violations;
 }
 
 /** Helper to read the first chart slot (chartOrder[0]). */
-export function getFirstChart(state) {
+export function getFirstChart(state: SPCState): ChartSlot {
   return state.charts[state.chartOrder[0]];
 }
 
 /** Helper to read the focused chart slot */
-export function getFocused(state) {
+export function getFocused(state: SPCState): ChartSlot {
   return state.charts[state.focusedChartId] || getFirstChart(state);
 }
 
-function getSelectedPoint(state) {
+interface SelectedPointInfo {
+  primaryValue: number;
+  label: string;
+  subgroupLabel: string;
+  excluded: boolean;
+  annotation: string | null;
+  raw: Record<string, string>;
+  phaseId?: string | null;
+}
+
+function getSelectedPoint(state: SPCState): SelectedPointInfo | undefined {
   const focused = getFocused(state);
   const hasChartValues = focused.chartValues && focused.chartValues.length > 0;
   if (hasChartValues) {
@@ -48,15 +71,22 @@ function getSelectedPoint(state) {
       raw: {},
     } : undefined;
   }
-  return state.points[state.selectedPointIndex];
+  const pt = state.points[state.selectedPointIndex!];
+  return pt as SelectedPointInfo | undefined;
 }
 
-function getPhaseLabel(state, phaseId) {
+function getPhaseLabel(state: SPCState, phaseId: string | null): string {
   const phases = getFirstChart(state).phases || [];
-  return phases.find((phase) => phase.id === phaseId)?.label || phaseId;
+  return (phases.find((phase) => phase.id === phaseId) as Record<string, unknown> | undefined)?.label as string || phaseId || "";
 }
 
-function buildSignalNarrative(state, point) {
+interface SignalNarrative {
+  title: string;
+  confidence: string;
+  statusTone: string;
+}
+
+function buildSignalNarrative(state: SPCState, point: SelectedPointInfo | undefined): SignalNarrative {
   if (!point) {
     return { title: "Select a point to inspect.", confidence: "Pending", statusTone: "neutral" };
   }
@@ -64,7 +94,7 @@ function buildSignalNarrative(state, point) {
   const primary = getFocused(state);
   const violations = primary.violations || [];
   const hasChartValues = primary.chartValues && primary.chartValues.length > 0;
-  const idx = hasChartValues ? (primary.selectedPointIndex ?? 0) : state.selectedPointIndex;
+  const idx = hasChartValues ? (primary.selectedPointIndex ?? 0) : state.selectedPointIndex!;
   const pointViolations = violations.filter(v => v.indices.includes(idx));
 
   if (pointViolations.length > 0) {
@@ -99,7 +129,12 @@ function buildSignalNarrative(state, point) {
   };
 }
 
-function buildWhyTriggered(state, point) {
+interface WhyTriggeredItem {
+  description: string;
+  count: number;
+}
+
+function buildWhyTriggered(state: SPCState, point: SelectedPointInfo | undefined): (string | WhyTriggeredItem)[] {
   const violations = getFocused(state).violations || [];
   if (violations.length === 0) {
     return ["No rule violations detected in this dataset."];
@@ -107,24 +142,29 @@ function buildWhyTriggered(state, point) {
 
   // Group by rule: violations fire once per phase, so deduplicate by testId
   // and sum the flagged point counts across all phases.
-  const byRule = new Map();
+  const byRule = new Map<string, { description: string; count: number }>();
   for (const v of violations) {
     if (!byRule.has(v.testId)) {
       byRule.set(v.testId, { description: v.description, count: 0 });
     }
-    byRule.get(v.testId).count += v.indices.length;
+    byRule.get(v.testId)!.count += v.indices.length;
   }
   return [...byRule.values()]
     .sort((a, b) => b.count - a.count)
     .map(r => ({ description: r.description, count: r.count }));
 }
 
+interface RuleAtPoint {
+  testId: string;
+  description: string;
+}
+
 /** Rules (deduplicated by testId) that fired at a specific point index. */
-function buildRulesAtPoint(state, idx) {
+function buildRulesAtPoint(state: SPCState, idx: number | null): RuleAtPoint[] {
   if (idx == null) return [];
   const violations = getFocused(state).violations || [];
-  const seen = new Set();
-  const result = [];
+  const seen = new Set<string>();
+  const result: RuleAtPoint[] = [];
   for (const v of violations) {
     if (v.indices.includes(Number(idx)) && !seen.has(v.testId)) {
       seen.add(v.testId);
@@ -134,7 +174,14 @@ function buildRulesAtPoint(state, idx) {
   return result;
 }
 
-function buildEvidence(state, point) {
+interface EvidenceItem {
+  label: string;
+  value: string;
+  resolved: boolean;
+  category: string;
+}
+
+function buildEvidence(state: SPCState, point: SelectedPointInfo | undefined): EvidenceItem[] {
   const primary = getFocused(state);
   const sigma = primary.sigma;
 
@@ -184,8 +231,8 @@ function buildEvidence(state, point) {
   ];
 }
 
-function buildRecommendations(state, point) {
-  const checks = [];
+function buildRecommendations(state: SPCState, point: SelectedPointInfo | undefined): string[] {
+  const checks: string[] = [];
   const violations = getFocused(state).violations || [];
 
   if (violations.some(v => v.testId === "1")) {
@@ -207,7 +254,13 @@ function buildRecommendations(state, point) {
   return checks;
 }
 
-function buildComparisonStrip(state) {
+interface CompareCard {
+  label: string;
+  value: string;
+  tone: string;
+}
+
+function buildComparisonStrip(state: SPCState): CompareCard[] {
   const focused = getFocused(state);
   const violations = focused.violations || [];
   const violationCount = violations.reduce((sum, v) => sum + v.indices.length, 0);
@@ -222,14 +275,21 @@ function buildComparisonStrip(state) {
   ];
 }
 
+interface ViolationBreakdown {
+  total: number;
+  oocCount: number;
+  inControl: number;
+  ruleBreakdown: { testId: string; description: string; count: number }[];
+}
+
 /**
  * Build violation breakdown for a set of point indices.
  * Returns: { inControl, oocCount, ruleBreakdown: [{testId, description, count}] }
  */
-function _buildViolationBreakdown(violations, indices) {
+function _buildViolationBreakdown(violations: Violation[], indices: number[]): ViolationBreakdown {
   const indexSet = new Set(indices);
-  const oocIndices = new Set();
-  const ruleMap = new Map(); // testId -> { description, indices: Set }
+  const oocIndices = new Set<number>();
+  const ruleMap = new Map<string, { testId: string; description: string; pts: Set<number> }>();
 
   for (const v of violations) {
     const matched = v.indices.filter(i => indexSet.has(i));
@@ -242,7 +302,7 @@ function _buildViolationBreakdown(violations, indices) {
     if (!ruleMap.has(v.testId)) {
       ruleMap.set(v.testId, { testId: v.testId, description: v.description, pts: new Set() });
     }
-    for (const i of matched) ruleMap.get(v.testId).pts.add(i);
+    for (const i of matched) ruleMap.get(v.testId)!.pts.add(i);
   }
 
   const ruleBreakdown = [...ruleMap.values()]
@@ -257,30 +317,53 @@ function _buildViolationBreakdown(violations, indices) {
   };
 }
 
+interface SelectedPhaseInfo extends ViolationBreakdown {
+  label: string;
+  index: number;
+  ucl: number | undefined;
+  center: number | undefined;
+  lcl: number | undefined;
+  pointCount: number;
+}
+
 /** Build selected phase summary for evidence rail display. */
-function _buildSelectedPhase(focused) {
+function _buildSelectedPhase(focused: ChartSlot): SelectedPhaseInfo | null {
   const idx = focused.selectedPhaseIndex;
   if (idx == null || !focused.phases || !focused.phases[idx]) return null;
-  const phase = focused.phases[idx];
-  const pointCount = (phase.end - phase.start) + 1;
-  const phaseIndices = [];
-  for (let i = phase.start; i <= phase.end; i++) phaseIndices.push(i);
+  const phase = focused.phases[idx] as unknown as Record<string, unknown>;
+  const phaseStart = (phase.start ?? phase.startIndex ?? 0) as number;
+  const phaseEnd = (phase.end ?? phase.endIndex ?? 0) as number;
+  const pointCount = (phaseEnd - phaseStart) + 1;
+  const phaseIndices: number[] = [];
+  for (let i = phaseStart; i <= phaseEnd; i++) phaseIndices.push(i);
   const violations = focused.violations || [];
   const breakdown = _buildViolationBreakdown(violations, phaseIndices);
+  const phaseLimits = phase.limits as { ucl?: number; center?: number; lcl?: number } | undefined;
 
   return {
-    label: phase.label || phase.id || `Phase ${idx + 1}`,
+    label: (phase.label as string) || (phase.id as string) || `Phase ${idx + 1}`,
     index: idx,
-    ucl: phase.limits?.ucl,
-    center: phase.limits?.center,
-    lcl: phase.limits?.lcl,
+    ucl: phaseLimits?.ucl,
+    center: phaseLimits?.center,
+    lcl: phaseLimits?.lcl,
     pointCount,
     ...breakdown,
   };
 }
 
+interface SelectedPointsInfo extends ViolationBreakdown {
+  count: number;
+  min: number;
+  max: number;
+  mean: number;
+  stdDev: number;
+  range: number;
+  excludedCount: number;
+  indices: number[];
+}
+
 /** Build summary for multi-point (marquee) selection. */
-function _buildSelectedPoints(state) {
+function _buildSelectedPoints(state: SPCState): SelectedPointsInfo | null {
   const focused = getFocused(state);
   const hasChartValues = focused.chartValues && focused.chartValues.length > 0;
   const indices = hasChartValues
@@ -298,11 +381,11 @@ function _buildSelectedPoints(state) {
     : state.points;
 
   const violations = focused.violations || [];
-  const values = [];
+  const values: number[] = [];
   let excludedCount = 0;
 
   for (const idx of indices) {
-    const pt = points[idx];
+    const pt = points[idx] as { primaryValue?: number; value?: number; excluded?: boolean } | undefined;
     if (!pt) continue;
     const val = pt.primaryValue ?? pt.value;
     if (val != null) values.push(val);
@@ -337,29 +420,55 @@ function _buildSelectedPoints(state) {
 
 // ─── Method Lab selectors ──────────────────────────
 
+interface MethodLabEntry {
+  id: string;
+  empty?: boolean;
+  isFocused?: boolean;
+  chartType?: string;
+  sigmaMethod?: string;
+  kSigma?: number;
+  subgroup?: string;
+  phaseColumn?: string;
+  ucl?: number;
+  center?: number;
+  lcl?: number;
+  limitsScope?: string;
+  sigmaHat?: number;
+  cpk?: number;
+  ppk?: number;
+  cp?: number;
+  capGrade?: string | null;
+  oocCount?: number;
+  ruleCount?: number;
+  ruleBreakdown?: { testId: string; desc: string; count: number }[];
+  enabledRules?: string[];
+  phaseCount?: number;
+}
+
 /** Per-chart method summary for side-by-side comparison. */
-export function buildMethodLabComparison(state) {
+export function buildMethodLabComparison(state: SPCState): MethodLabEntry[] {
   return state.chartOrder.map(id => {
     const slot = state.charts[id];
     if (!slot) return { id, empty: true };
-    const params = slot.params || {};
+    const params = slot.params || ({} as ChartSlot["params"]);
     const violations = slot.violations || [];
     const totalOOC = violations.reduce((sum, v) => sum + v.indices.length, 0);
     const uniqueRules = new Set(violations.map(v => v.testId));
 
     // Per-rule breakdown: deduplicate by testId, sum points across phases
-    const ruleMap = new Map();
+    const ruleMap = new Map<string, { testId: string; desc: string; count: number }>();
     for (const v of violations) {
       if (!ruleMap.has(v.testId)) {
         ruleMap.set(v.testId, { testId: v.testId, desc: v.description, count: 0 });
       }
-      ruleMap.get(v.testId).count += v.indices.length;
+      ruleMap.get(v.testId)!.count += v.indices.length;
     }
 
     // Nelson rules: params stores boolean array indexed 0-7 → convert to rule numbers
-    const enabledRules = (params.nelson_rules || [])
-      .map((on, i) => on ? String(i + 1) : null)
-      .filter(Boolean);
+    const nelsonRules = (params as unknown as Record<string, unknown>).nelson_rules as boolean[] | undefined;
+    const enabledRules = (nelsonRules || [])
+      .map((on: boolean, i: number) => on ? String(i + 1) : null)
+      .filter((v): v is string => v !== null);
 
     return {
       id,
@@ -394,19 +503,38 @@ export function buildMethodLabComparison(state) {
   });
 }
 
-/** Points where charts disagree (some flag, some don't). Only meaningful with 2+ charts.
- *  @param {Array<string>} [chartIds] - optional subset of chart IDs to compare (defaults to all)
- */
-export function buildDisagreements(state, chartIds) {
+interface DisagreementItem {
+  pointIndex: number;
+  label: string;
+  value: number | undefined;
+  flaggedBy: { chartLabel: string; rules: string[] }[];
+  clearedBy: string[];
+}
+
+interface DisagreementSummary {
+  disagreementCount: number;
+  totalPoints: number;
+  pct: string;
+  uniqueCounts: { label: string; uniqueCount: number }[];
+  unanimousOOC: number;
+}
+
+interface DisagreementsResult {
+  items: DisagreementItem[];
+  summary: DisagreementSummary | null;
+}
+
+/** Points where charts disagree (some flag, some don't). Only meaningful with 2+ charts. */
+export function buildDisagreements(state: SPCState, chartIds?: string[]): DisagreementsResult {
   const ids = chartIds || state.chartOrder;
   if (ids.length < 2) return { items: [], summary: null };
 
   // For each chart, build a Set of all violation point indices
   const chartSets = ids.map(id => {
     const slot = state.charts[id];
-    if (!slot) return { id, label: "—", indices: new Set() };
+    if (!slot) return { id, label: "—", indices: new Set<number>() };
     const violations = slot.violations || [];
-    const indices = new Set();
+    const indices = new Set<number>();
     for (const v of violations) v.indices.forEach(i => indices.add(i));
     return {
       id,
@@ -416,17 +544,17 @@ export function buildDisagreements(state, chartIds) {
   });
 
   // Collect every index flagged by ANY chart
-  const allFlagged = new Set();
+  const allFlagged = new Set<number>();
   for (const c of chartSets) c.indices.forEach(i => allFlagged.add(i));
 
-  const items = [];
+  const items: DisagreementItem[] = [];
   for (const idx of [...allFlagged].sort((a, b) => a - b)) {
     const flaggedBy = chartSets.filter(c => c.indices.has(idx));
     const clearedBy = chartSets.filter(c => !c.indices.has(idx));
     if (flaggedBy.length === 0 || clearedBy.length === 0) continue; // unanimous — skip
 
     const pt = state.points[idx];
-    const value = pt?.primaryValue ?? pt?.value;
+    const value = pt?.primaryValue ?? (pt as unknown as Record<string, unknown>)?.value as number | undefined;
 
     // Which rules each flagging chart uses at this point
     const ruleDetails = flaggedBy.map(c => {
@@ -471,7 +599,25 @@ export function buildDisagreements(state, chartIds) {
   };
 }
 
-export function deriveWorkspace(state) {
+interface DerivedWorkspace {
+  selectedPoint: SelectedPointInfo | undefined;
+  hasPointSelection: boolean;
+  pointBreakdown: ViolationBreakdown | null;
+  selectedPoints: SelectedPointsInfo | null;
+  signal: SignalNarrative;
+  whyTriggered: (string | WhyTriggeredItem)[];
+  rulesAtPoint: RuleAtPoint[];
+  evidence: EvidenceItem[];
+  recommendations: string[];
+  compareCards: CompareCard[];
+  excludedCount: number;
+  lineageCount: number;
+  failedTransformCount: number;
+  phaseLabel: string | null;
+  selectedPhase: SelectedPhaseInfo | null;
+}
+
+export function deriveWorkspace(state: SPCState): DerivedWorkspace {
   const focused = getFocused(state);
   const hasChartValues = focused.chartValues && focused.chartValues.length > 0;
 
@@ -485,7 +631,7 @@ export function deriveWorkspace(state) {
   const activeIdx = hasChartValues ? (focused.selectedPointIndex ?? 0) : state.selectedPointIndex;
 
   // Build single-point violation breakdown when a point IS selected
-  let pointBreakdown = null;
+  let pointBreakdown: ViolationBreakdown | null = null;
   if (hasPointSelection && activeIdx != null) {
     const violations = focused.violations || [];
     pointBreakdown = _buildViolationBreakdown(violations, [activeIdx]);
@@ -509,9 +655,9 @@ export function deriveWorkspace(state) {
     recommendations: buildRecommendations(state, point),
     compareCards: buildComparisonStrip(state),
     excludedCount: state.points.filter((candidate) => candidate.excluded).length,
-    lineageCount: state.transforms.filter((step) => step.active || step.status === "failed").length,
+    lineageCount: (state.transforms as TransformStep[]).filter((step) => step.active || step.status === "failed").length,
     failedTransformCount: getFailedTransformCount(state),
-    phaseLabel: point ? getPhaseLabel(state, point.phaseId) : null,
+    phaseLabel: point ? getPhaseLabel(state, point.phaseId ?? null) : null,
     selectedPhase,
   };
 }

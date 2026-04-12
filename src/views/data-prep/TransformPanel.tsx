@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { spcStore } from "../../store/spc-store.js";
 import {
   ROW_OPS,
@@ -22,6 +22,7 @@ import {
   splitColumn,
   concatColumns,
 } from "../../data/data-prep-engine.js";
+import type { FilterOperator, MissingStrategy, ColumnDtype } from "../../data/data-prep-engine.js";
 import {
   setPrepError,
   clearPrepTransforms,
@@ -40,49 +41,85 @@ import {
   fetchDatasets,
 } from "../../data/api.js";
 import { replayPrepTransforms } from "../../runtime/prep-runtime.js";
+import type { DataPrepState, SPCState } from "../../types/state.js";
+import type { ColumnOut } from "../../types/api.js";
+import type { ColumnTable } from "arquero";
+
+/* ── Shared interfaces ──────────────────────────────── */
+
+interface ColumnInfo {
+  name: string;
+  ordinal: number;
+  dtype: string;
+  role: string | null;
+}
+
+interface DatasetItem {
+  id: string;
+  name: string;
+}
+
+interface TransformRecord {
+  type: string;
+  params: Record<string, unknown>;
+}
+
+interface OpDef {
+  action: string;
+  label: string;
+  panel: string | null;
+  key?: string;
+  short?: string;
+}
 
 /* ── UtilityBar ──────────────────────────────────────────────────────── */
 
-function UtilityBar({ dataPrep, datasets, columns }) {
-  const count = dataPrep.transforms.length;
-  const unsaved = dataPrep.unsavedChanges;
-  const ds = datasets.find((d) => d.id === dataPrep.selectedDatasetId);
-  const table = dataPrep.arqueroTable;
-  const totalRows = table ? table.numRows() : dataPrep.datasetPoints.length;
-  const cols = (columns || []).length;
-  const excl = dataPrep.excludedRows.length;
-  const resetting = dataPrep.confirmingReset;
-  const resetTimerRef = useRef(null);
+interface UtilityBarProps {
+  dataPrep: DataPrepState;
+  datasets: DatasetItem[];
+  columns: ColumnInfo[];
+}
 
-  const handleSave = useCallback(async () => {
-    const state = spcStore.getState();
+function UtilityBar({ dataPrep, datasets, columns }: UtilityBarProps): React.JSX.Element {
+  const count: number = dataPrep.transforms.length;
+  const unsaved: boolean = dataPrep.unsavedChanges;
+  const ds: DatasetItem | undefined = datasets.find((d: DatasetItem) => d.id === dataPrep.selectedDatasetId);
+  const table = dataPrep.arqueroTable as ColumnTable | null;
+  const totalRows: number = table ? table.numRows() : dataPrep.datasetPoints.length;
+  const cols: number = (columns || []).length;
+  const excl: number = dataPrep.excludedRows.length;
+  const resetting: boolean = dataPrep.confirmingReset;
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSave = useCallback(async (): Promise<void> => {
+    const state: SPCState = spcStore.getState();
     if (!state.dataPrep.rawRows || !state.dataPrep.selectedDatasetId) return;
     try {
       await createDataset({
-        name: `${state.datasets.find((d) => d.id === state.dataPrep.selectedDatasetId)?.name} (cleaned)`,
-        columns: state.columnConfig.columns,
+        name: `${(state.datasets as unknown as DatasetItem[]).find((d: DatasetItem) => d.id === state.dataPrep.selectedDatasetId)?.name} (cleaned)`,
+        columns: state.columnConfig.columns as unknown as ColumnOut[],
         rows: state.dataPrep.arqueroTable
-          ? state.dataPrep.arqueroTable.objects().map((row) => {
-              const out = {};
+          ? ((state.dataPrep.arqueroTable as ColumnTable).objects() as Record<string, unknown>[]).map((row: Record<string, unknown>) => {
+              const out: Record<string, string> = {};
               for (const [key, rawValue] of Object.entries(row)) out[key] = rawValue != null ? String(rawValue) : "";
               return out;
             })
-          : state.dataPrep.rawRows,
+          : state.dataPrep.rawRows as Record<string, string>[],
       });
       const dsList = await fetchDatasets();
-      let next = setDatasets(spcStore.getState(), dsList);
+      let next = setDatasets(spcStore.getState(), dsList as unknown as Array<{ id: string; name: string }>);
       next = markPrepSaved(next);
       spcStore.setState(next);
-    } catch (err) {
-      spcStore.setState(setPrepError(spcStore.getState(), err.message));
+    } catch (err: unknown) {
+      spcStore.setState(setPrepError(spcStore.getState(), (err as Error).message));
     }
   }, []);
 
-  const handleUndo = useCallback(() => {
-    const state = spcStore.getState();
+  const handleUndo = useCallback((): void => {
+    const state: SPCState = spcStore.getState();
     if (state.dataPrep.transforms.length === 0) return;
     let next = undoPrepTransform(state);
-    const replayed = replayPrepTransforms(next);
+    const replayed = replayPrepTransforms(next) as { table: ColumnTable; columns: ColumnOut[] } | null;
     if (replayed) {
       next = setPrepTable(next, replayed.table);
       next = setColumns(next, replayed.columns);
@@ -92,26 +129,26 @@ function UtilityBar({ dataPrep, datasets, columns }) {
     spcStore.setState(next);
   }, []);
 
-  const handleExportCSV = useCallback(() => {
-    const state = spcStore.getState();
-    const exportTable = state.dataPrep.arqueroTable;
-    const exportCols = state.columnConfig.columns || [];
+  const handleExportCSV = useCallback((): void => {
+    const state: SPCState = spcStore.getState();
+    const exportTable = state.dataPrep.arqueroTable as ColumnTable | null;
+    const exportCols: ColumnInfo[] = state.columnConfig.columns || [];
     if (exportTable && exportCols.length > 0) {
-      const header = exportCols.map((c) => c.name).join(",");
-      const rows = exportTable.objects().map((row) =>
-        exportCols.map((c) => {
-          const rawValue = row[c.name];
+      const header: string = exportCols.map((c: ColumnInfo) => c.name).join(",");
+      const rows: string[] = (exportTable.objects() as Record<string, unknown>[]).map((row: Record<string, unknown>) =>
+        exportCols.map((c: ColumnInfo) => {
+          const rawValue: unknown = row[c.name];
           if (rawValue == null) return "";
-          const stringValue = String(rawValue);
+          const stringValue: string = String(rawValue);
           return stringValue.includes(",") || stringValue.includes("\"") || stringValue.includes("\n")
             ? `"${stringValue.replace(/"/g, "\"\"")}"` : stringValue;
         }).join(",")
       );
-      const csv = [header, ...rows].join("\n");
+      const csv: string = [header, ...rows].join("\n");
       const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      const dataset = state.datasets.find((item) => item.id === state.dataPrep.selectedDatasetId);
+      const url: string = URL.createObjectURL(blob);
+      const anchor: HTMLAnchorElement = document.createElement("a");
+      const dataset: DatasetItem | undefined = state.datasets.find((item: DatasetItem) => item.id === state.dataPrep.selectedDatasetId);
       anchor.href = url;
       anchor.download = `${dataset?.name || "export"}.csv`;
       anchor.click();
@@ -119,23 +156,23 @@ function UtilityBar({ dataPrep, datasets, columns }) {
     }
   }, []);
 
-  const handleValidate = useCallback(() => {
+  const handleValidate = useCallback((): void => {
     spcStore.setState(setActivePanel(spcStore.getState(), "validate"));
   }, []);
 
-  const handleReset = useCallback(() => {
-    const state = spcStore.getState();
+  const handleReset = useCallback((): void => {
+    const state: SPCState = spcStore.getState();
     if (state.dataPrep.transforms.length === 0) return;
     if (state.dataPrep.confirmingReset) {
-      clearTimeout(resetTimerRef.current);
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
       let next = clearPrepTransforms(state);
       next = { ...next, dataPrep: { ...next.dataPrep, confirmingReset: false } };
       spcStore.setState(next);
     } else {
-      const next = { ...state, dataPrep: { ...state.dataPrep, confirmingReset: true } };
+      const next: SPCState = { ...state, dataPrep: { ...state.dataPrep, confirmingReset: true } };
       spcStore.setState(next);
       resetTimerRef.current = setTimeout(() => {
-        const current = spcStore.getState();
+        const current: SPCState = spcStore.getState();
         if (current.dataPrep.confirmingReset) {
           spcStore.setState({ ...current, dataPrep: { ...current.dataPrep, confirmingReset: false } });
         }
@@ -228,12 +265,21 @@ function UtilityBar({ dataPrep, datasets, columns }) {
 
 /* ── TransformToolbar ────────────────────────────────────────────────── */
 
-function OpGroup({ label, groupClass, ops, activePanel, onSetPanel, onTrim }) {
+interface OpGroupProps {
+  label: string;
+  groupClass: string;
+  ops: OpDef[];
+  activePanel: string | null;
+  onSetPanel: (panel: string) => void;
+  onTrim: () => void;
+}
+
+function OpGroup({ label, groupClass, ops, activePanel, onSetPanel, onTrim }: OpGroupProps): React.JSX.Element {
   return (
     <div className={`prep-op-group prep-op-group--${groupClass}`}>
       <span className="prep-op-group-label">{label}</span>
       <div className="prep-op-group-actions" aria-label={`${label} operations`}>
-        {ops.map((op) => (
+        {ops.map((op: OpDef) => (
           <button
             key={op.action}
             onClick={() => {
@@ -255,94 +301,111 @@ function OpGroup({ label, groupClass, ops, activePanel, onSetPanel, onTrim }) {
   );
 }
 
-function TransformToolbar({ activePanel }) {
-  const handleSetPanel = useCallback((panel) => {
+interface TransformToolbarProps {
+  activePanel: string | null;
+}
+
+function TransformToolbar({ activePanel }: TransformToolbarProps): React.JSX.Element {
+  const handleSetPanel = useCallback((panel: string): void => {
     spcStore.setState(setActivePanel(spcStore.getState(), panel));
   }, []);
 
-  const handleTrim = useCallback(() => {
-    const state = spcStore.getState();
-    const cols = state.columnConfig.columns.filter((c) => c.dtype === "text");
-    if (cols.length === 0 || !state.dataPrep.arqueroTable) return;
-    let table = state.dataPrep.arqueroTable;
-    for (const column of cols) {
-      try { table = cleanText(table, column.name, "trim"); } catch { /* skip */ }
+  const handleTrim = useCallback((): void => {
+    const state: SPCState = spcStore.getState();
+    const trimCols: ColumnInfo[] = state.columnConfig.columns.filter((c: ColumnInfo) => c.dtype === "text");
+    if (trimCols.length === 0 || !state.dataPrep.arqueroTable) return;
+    let table = state.dataPrep.arqueroTable as ColumnTable;
+    for (const column of trimCols) {
+      try { table = cleanText(table, column.name, "trim") as ColumnTable; } catch { /* skip */ }
     }
-    let next = addPrepTransform(state, { type: "trim", params: { columns: cols.map((c) => c.name) } });
+    let next = addPrepTransform(state, { type: "trim", params: { columns: trimCols.map((c: ColumnInfo) => c.name) } });
     next = setPrepTable(next, table);
     spcStore.setState(next);
   }, []);
 
   return (
     <div className="prep-transform-toolbar">
-      <OpGroup label="Column" groupClass="column" ops={COL_OPS} activePanel={activePanel} onSetPanel={handleSetPanel} onTrim={handleTrim} />
-      <OpGroup label="Row" groupClass="row" ops={ROW_OPS} activePanel={activePanel} onSetPanel={handleSetPanel} onTrim={handleTrim} />
+      <OpGroup label="Column" groupClass="column" ops={COL_OPS as OpDef[]} activePanel={activePanel} onSetPanel={handleSetPanel} onTrim={handleTrim} />
+      <OpGroup label="Row" groupClass="row" ops={ROW_OPS as OpDef[]} activePanel={activePanel} onSetPanel={handleSetPanel} onTrim={handleTrim} />
     </div>
   );
 }
 
 /* ── PrepPanel ───────────────────────────────────────────────────────── */
 
-function ColOptions({ cols }) {
-  return cols.map((c) => (
-    <option key={c.name} value={c.name}>
-      {c.name}
-    </option>
-  ));
+interface ColOptionsProps {
+  cols: ColumnInfo[];
 }
 
-function PrepPanel({ dataPrep, columns }) {
-  const ap = dataPrep.activePanel;
-  const cols = columns || [];
+function ColOptions({ cols }: ColOptionsProps): React.JSX.Element {
+  return (
+    <>
+      {cols.map((c: ColumnInfo) => (
+        <option key={c.name} value={c.name}>
+          {c.name}
+        </option>
+      ))}
+    </>
+  );
+}
+
+interface PrepPanelProps {
+  dataPrep: DataPrepState;
+  columns: ColumnInfo[];
+}
+
+function PrepPanel({ dataPrep, columns }: PrepPanelProps): React.JSX.Element | null {
+  const ap: string | null = dataPrep.activePanel;
+  const cols: ColumnInfo[] = columns || [];
 
   // Form state for visibility toggles
-  const [filterOp, setFilterOp] = useState("eq");
-  const [missingStrategy, setMissingStrategy] = useState("remove");
-  const [recodeNewCol, setRecodeNewCol] = useState(false);
-  const [binCustom, setBinCustom] = useState(false);
-  const [validateType, setValidateType] = useState("range");
-  const [recodeMappings, setRecodeMappings] = useState([{ old: "", new: "" }]);
+  const [filterOp, setFilterOp] = useState<string>("eq");
+  const [missingStrategy, setMissingStrategy] = useState<string>("remove");
+  const [recodeNewCol, setRecodeNewCol] = useState<boolean>(false);
+  const [binCustom, setBinCustom] = useState<boolean>(false);
+  const [validateType, setValidateType] = useState<string>("range");
+  const [recodeMappings, setRecodeMappings] = useState<{ old: string; new: string }[]>([{ old: "", new: "" }]);
 
   // Refs for form values
-  const filterColRef = useRef(null);
-  const filterValRef = useRef(null);
-  const filterVal2Ref = useRef(null);
-  const findColRef = useRef(null);
-  const findSearchRef = useRef(null);
-  const findReplaceRef = useRef(null);
-  const findRegexRef = useRef(null);
-  const missingColRef = useRef(null);
-  const missingCustomRef = useRef(null);
-  const renameColRef = useRef(null);
-  const renameNewRef = useRef(null);
-  const typeColRef = useRef(null);
-  const typeTargetRef = useRef(null);
-  const calcNameRef = useRef(null);
-  const calcExprRef = useRef(null);
-  const recodeColRef = useRef(null);
-  const recodeNewNameRef = useRef(null);
-  const binColRef = useRef(null);
-  const binCountRef = useRef(null);
-  const binBreaksRef = useRef(null);
-  const binNameRef = useRef(null);
-  const splitColRef = useRef(null);
-  const splitDelimRef = useRef(null);
-  const splitPartsRef = useRef(null);
-  const concatSepRef = useRef(null);
-  const concatNameRef = useRef(null);
-  const validateColRef = useRef(null);
-  const validateMinRef = useRef(null);
-  const validateMaxRef = useRef(null);
-  const validateValuesRef = useRef(null);
-  const validatePatternRef = useRef(null);
-  const dedupFormRef = useRef(null);
-  const concatFormRef = useRef(null);
+  const filterColRef = useRef<HTMLSelectElement>(null);
+  const filterValRef = useRef<HTMLInputElement>(null);
+  const filterVal2Ref = useRef<HTMLInputElement>(null);
+  const findColRef = useRef<HTMLSelectElement>(null);
+  const findSearchRef = useRef<HTMLInputElement>(null);
+  const findReplaceRef = useRef<HTMLInputElement>(null);
+  const findRegexRef = useRef<HTMLInputElement>(null);
+  const missingColRef = useRef<HTMLSelectElement>(null);
+  const missingCustomRef = useRef<HTMLInputElement>(null);
+  const renameColRef = useRef<HTMLSelectElement>(null);
+  const renameNewRef = useRef<HTMLInputElement>(null);
+  const typeColRef = useRef<HTMLSelectElement>(null);
+  const typeTargetRef = useRef<HTMLSelectElement>(null);
+  const calcNameRef = useRef<HTMLInputElement>(null);
+  const calcExprRef = useRef<HTMLInputElement>(null);
+  const recodeColRef = useRef<HTMLSelectElement>(null);
+  const recodeNewNameRef = useRef<HTMLInputElement>(null);
+  const binColRef = useRef<HTMLSelectElement>(null);
+  const binCountRef = useRef<HTMLInputElement>(null);
+  const binBreaksRef = useRef<HTMLInputElement>(null);
+  const binNameRef = useRef<HTMLInputElement>(null);
+  const splitColRef = useRef<HTMLSelectElement>(null);
+  const splitDelimRef = useRef<HTMLInputElement>(null);
+  const splitPartsRef = useRef<HTMLInputElement>(null);
+  const concatSepRef = useRef<HTMLInputElement>(null);
+  const concatNameRef = useRef<HTMLInputElement>(null);
+  const validateColRef = useRef<HTMLSelectElement>(null);
+  const validateMinRef = useRef<HTMLInputElement>(null);
+  const validateMaxRef = useRef<HTMLInputElement>(null);
+  const validateValuesRef = useRef<HTMLInputElement>(null);
+  const validatePatternRef = useRef<HTMLInputElement>(null);
+  const dedupFormRef = useRef<HTMLDivElement>(null);
+  const concatFormRef = useRef<HTMLDivElement>(null);
 
   if (!ap) return null;
 
   if (ap === "filter") {
-    const showVal2 = filterOp === "between";
-    const hideVal = filterOp === "is_null" || filterOp === "is_not_null";
+    const showVal2: boolean = filterOp === "between";
+    const hideVal: boolean = filterOp === "is_null" || filterOp === "is_not_null";
     return (
       <div className="prep-panel">
         <span className="prep-panel-label">Column</span>
@@ -350,7 +413,7 @@ function PrepPanel({ dataPrep, columns }) {
           <ColOptions cols={cols} />
         </select>
         <span className="prep-panel-label">Op</span>
-        <select value={filterOp} onChange={(e) => setFilterOp(e.target.value)}>
+        <select value={filterOp} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterOp(e.target.value)}>
           <option value="eq">=</option>
           <option value="neq">{"\u2260"}</option>
           <option value="gt">&gt;</option>
@@ -367,14 +430,14 @@ function PrepPanel({ dataPrep, columns }) {
         {showVal2 && <input type="text" ref={filterVal2Ref} placeholder="max" />}
         <button
           onClick={() => {
-            const column = filterColRef.current?.value;
-            const operator = filterOp;
-            const val = filterValRef.current?.value;
-            const val2 = filterVal2Ref.current?.value;
+            const column: string | undefined = filterColRef.current?.value;
+            const operator: string = filterOp;
+            const val: string | undefined = filterValRef.current?.value;
+            const val2: string | undefined = filterVal2Ref.current?.value;
             if (!column || !operator) return;
-            const filterVal = operator === "between" ? [val, val2] : (operator === "is_null" || operator === "is_not_null") ? null : val;
-            applyTransform((state) => ({
-              table: filterRows(state.dataPrep.arqueroTable, column, operator, filterVal),
+            const filterVal: string | [string | undefined, string | undefined] | null = operator === "between" ? [val, val2] : (operator === "is_null" || operator === "is_not_null") ? null : val ?? null;
+            applyTransform((state: SPCState) => ({
+              table: filterRows(state.dataPrep.arqueroTable as ColumnTable, column, operator as FilterOperator, filterVal as string | [string, string]),
               transform: { type: "filter", params: { column, operator, value: filterVal } },
             }));
           }}
@@ -404,19 +467,19 @@ function PrepPanel({ dataPrep, columns }) {
         </label>
         <button
           onClick={() => {
-            const column = findColRef.current?.value;
-            const search = findSearchRef.current?.value;
-            const replace = findReplaceRef.current?.value ?? "";
-            const useRegex = findRegexRef.current?.checked || false;
+            const column: string = findColRef.current?.value ?? "__all__";
+            const search: string | undefined = findSearchRef.current?.value;
+            const replace: string = findReplaceRef.current?.value ?? "";
+            const useRegex: boolean = findRegexRef.current?.checked || false;
             if (!search) return;
-            applyTransform((state) => {
-              let table = state.dataPrep.arqueroTable;
+            applyTransform((state: SPCState) => {
+              let table = state.dataPrep.arqueroTable as ColumnTable;
               if (column === "__all__") {
                 for (const col of table.columnNames()) {
-                  try { table = findReplace(table, col, search, replace, useRegex); } catch { /* skip */ }
+                  try { table = findReplace(table, col, search, replace, useRegex) as ColumnTable; } catch { /* skip */ }
                 }
               } else {
-                table = findReplace(table, column, search, replace, useRegex);
+                table = findReplace(table, column, search, replace, useRegex) as ColumnTable;
               }
               return {
                 table,
@@ -437,7 +500,7 @@ function PrepPanel({ dataPrep, columns }) {
     return (
       <div className="prep-panel" ref={dedupFormRef}>
         <span className="prep-panel-label">Key columns</span>
-        {cols.map((c) => (
+        {cols.map((c: ColumnInfo) => (
           <label key={c.name} className="prep-panel-check">
             <input type="checkbox" value={c.name} defaultChecked className="dedup-col-check" /> {c.name}
           </label>
@@ -445,11 +508,11 @@ function PrepPanel({ dataPrep, columns }) {
         <div className="prep-panel-sep" />
         <button
           onClick={() => {
-            const checkboxes = dedupFormRef.current?.querySelectorAll(".dedup-col-check:checked") || [];
-            const selectedColumns = [...checkboxes].map((el) => el.value);
+            const checkboxes: NodeListOf<HTMLInputElement> = dedupFormRef.current?.querySelectorAll(".dedup-col-check:checked") || ([] as unknown as NodeListOf<HTMLInputElement>);
+            const selectedColumns: string[] = [...checkboxes].map((el: HTMLInputElement) => el.value);
             if (selectedColumns.length === 0) return;
-            applyTransform((state) => ({
-              table: removeDuplicates(state.dataPrep.arqueroTable, selectedColumns),
+            applyTransform((state: SPCState) => ({
+              table: removeDuplicates(state.dataPrep.arqueroTable as ColumnTable, selectedColumns),
               transform: { type: "dedup", params: { keyColumns: selectedColumns } },
             }));
           }}
@@ -470,7 +533,7 @@ function PrepPanel({ dataPrep, columns }) {
           <ColOptions cols={cols} />
         </select>
         <span className="prep-panel-label">Strategy</span>
-        <select value={missingStrategy} onChange={(e) => setMissingStrategy(e.target.value)}>
+        <select value={missingStrategy} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMissingStrategy(e.target.value)}>
           <option value="remove">Remove rows</option>
           <option value="fill_mean">Fill with mean</option>
           <option value="fill_median">Fill with median</option>
@@ -484,12 +547,12 @@ function PrepPanel({ dataPrep, columns }) {
         )}
         <button
           onClick={() => {
-            const column = missingColRef.current?.value;
-            const strategy = missingStrategy;
-            const customValue = missingCustomRef.current?.value || null;
+            const column: string | undefined = missingColRef.current?.value;
+            const strategy: string = missingStrategy;
+            const customValue: string | null = missingCustomRef.current?.value || null;
             if (!column || !strategy) return;
-            applyTransform((state) => ({
-              table: handleMissing(state.dataPrep.arqueroTable, column, strategy, customValue),
+            applyTransform((state: SPCState) => ({
+              table: handleMissing(state.dataPrep.arqueroTable as ColumnTable, column, strategy as MissingStrategy, customValue),
               transform: { type: "missing", params: { column, strategy, customValue } },
             }));
           }}
@@ -515,17 +578,17 @@ function PrepPanel({ dataPrep, columns }) {
         <input type="text" ref={renameNewRef} placeholder="new column name" />
         <button
           onClick={() => {
-            const oldName = renameColRef.current?.value;
-            const newName = renameNewRef.current?.value?.trim();
+            const oldName: string | undefined = renameColRef.current?.value;
+            const newName: string | undefined = renameNewRef.current?.value?.trim();
             if (!oldName || !newName) return;
-            const state = spcStore.getState();
-            const existing = state.columnConfig.columns.map((c) => c.name);
+            const state: SPCState = spcStore.getState();
+            const existing: string[] = state.columnConfig.columns.map((c) => c.name);
             if (existing.includes(newName)) {
               spcStore.setState(setPrepError(state, `Column "${newName}" already exists`));
               return;
             }
-            applyTransform((s) => ({
-              table: renameColumn(s.dataPrep.arqueroTable, oldName, newName),
+            applyTransform((s: SPCState) => ({
+              table: renameColumn(s.dataPrep.arqueroTable as ColumnTable, oldName, newName),
               transform: { type: "rename", params: { oldName, newName } },
               meta: { updateCol: { name: oldName, updates: { name: newName } } },
             }));
@@ -540,11 +603,11 @@ function PrepPanel({ dataPrep, columns }) {
   }
 
   if (ap === "change_type") {
-    let previewHtml = null;
+    let previewHtml: React.JSX.Element | null = null;
     if (dataPrep.arqueroTable && cols.length > 0) {
-      const firstCol = cols[0].name;
-      const firstTarget = cols[0].dtype === "numeric" ? "text" : "numeric";
-      const pv = previewTypeConversion(dataPrep.arqueroTable, firstCol, firstTarget);
+      const firstCol: string = cols[0].name;
+      const firstTarget: string = cols[0].dtype === "numeric" ? "text" : "numeric";
+      const pv = previewTypeConversion(dataPrep.arqueroTable as ColumnTable, firstCol, firstTarget as ColumnDtype) as { convertible: number; total: number };
       previewHtml = (
         <span className="prep-preview-badge">
           {pv.convertible}/{pv.total} convertible
@@ -565,11 +628,11 @@ function PrepPanel({ dataPrep, columns }) {
         {previewHtml}
         <button
           onClick={() => {
-            const column = typeColRef.current?.value;
-            const targetType = typeTargetRef.current?.value;
+            const column: string | undefined = typeColRef.current?.value;
+            const targetType: string | undefined = typeTargetRef.current?.value;
             if (!column || !targetType) return;
-            applyTransform((state) => ({
-              table: changeColumnType(state.dataPrep.arqueroTable, column, targetType),
+            applyTransform((state: SPCState) => ({
+              table: changeColumnType(state.dataPrep.arqueroTable as ColumnTable, column, targetType as ColumnDtype),
               transform: { type: "change_type", params: { column, targetType } },
               meta: { updateCol: { name: column, updates: { dtype: targetType } } },
             }));
@@ -602,19 +665,19 @@ function PrepPanel({ dataPrep, columns }) {
         />
         <button
           onClick={() => {
-            const newColName = calcNameRef.current?.value?.trim();
-            const expression = calcExprRef.current?.value?.trim();
+            const newColName: string | undefined = calcNameRef.current?.value?.trim();
+            const expression: string | undefined = calcExprRef.current?.value?.trim();
             if (!newColName || !expression) return;
-            const state = spcStore.getState();
-            const columns = state.columnConfig.columns.map((c) => c.name);
-            if (columns.includes(newColName)) {
+            const state: SPCState = spcStore.getState();
+            const colNames: string[] = state.columnConfig.columns.map((c) => c.name);
+            if (colNames.includes(newColName)) {
               spcStore.setState(setPrepError(state, `Column "${newColName}" already exists`));
               return;
             }
-            applyTransform((s) => ({
-              table: addCalculatedColumn(s.dataPrep.arqueroTable, newColName, expression, columns),
-              transform: { type: "calculated", params: { newColName, expression, columns } },
-              meta: { addCols: [{ name: newColName, dtype: "numeric" }] },
+            applyTransform((s: SPCState) => ({
+              table: addCalculatedColumn(s.dataPrep.arqueroTable as ColumnTable, newColName, expression, colNames),
+              transform: { type: "calculated", params: { newColName, expression, columns: colNames } },
+              meta: { addCols: [{ name: newColName, dtype: "numeric", ordinal: 0, role: null }] },
             }));
           }}
           type="button"
@@ -638,7 +701,7 @@ function PrepPanel({ dataPrep, columns }) {
             <ColOptions cols={cols} />
           </select>
           <label className="prep-panel-check">
-            <input type="checkbox" checked={recodeNewCol} onChange={(e) => setRecodeNewCol(e.target.checked)} /> Save as new column
+            <input type="checkbox" checked={recodeNewCol} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRecodeNewCol(e.target.checked)} /> Save as new column
           </label>
           {recodeNewCol && (
             <input
@@ -650,19 +713,19 @@ function PrepPanel({ dataPrep, columns }) {
           )}
           <button
             onClick={() => {
-              const column = recodeColRef.current?.value;
-              const asNew = recodeNewCol;
-              const newColName = asNew ? recodeNewNameRef.current?.value?.trim() : null;
+              const column: string | undefined = recodeColRef.current?.value;
+              const asNew: boolean = recodeNewCol;
+              const newColName: string | null = asNew ? recodeNewNameRef.current?.value?.trim() ?? null : null;
               if (!column || (asNew && !newColName)) return;
-              const mapping = {};
+              const mapping: Record<string, string> = {};
               for (const m of recodeMappings) {
                 if (m.old != null && m.old !== "") mapping[m.old] = m.new ?? "";
               }
               if (Object.keys(mapping).length === 0) return;
-              applyTransform((state) => ({
-                table: recodeValues(state.dataPrep.arqueroTable, column, mapping, newColName),
+              applyTransform((state: SPCState) => ({
+                table: recodeValues(state.dataPrep.arqueroTable as ColumnTable, column, mapping, newColName),
                 transform: { type: "recode", params: { column, mapping, newColName } },
-                meta: newColName ? { addCols: [{ name: newColName, dtype: "text" }] } : undefined,
+                meta: newColName ? { addCols: [{ name: newColName, dtype: "text", ordinal: 0, role: null }] } : undefined,
               }));
             }}
             type="button"
@@ -672,13 +735,13 @@ function PrepPanel({ dataPrep, columns }) {
           </button>
         </div>
         <div className="prep-mapping-rows">
-          {recodeMappings.map((m, i) => (
+          {recodeMappings.map((m: { old: string; new: string }, i: number) => (
             <div key={i} className="prep-mapping-row">
               <input
                 type="text"
                 placeholder="old value"
                 value={m.old}
-                onChange={(e) => {
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                   const updated = [...recodeMappings];
                   updated[i] = { ...updated[i], old: e.target.value };
                   setRecodeMappings(updated);
@@ -689,7 +752,7 @@ function PrepPanel({ dataPrep, columns }) {
                 type="text"
                 placeholder="new value"
                 value={m.new}
-                onChange={(e) => {
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                   const updated = [...recodeMappings];
                   updated[i] = { ...updated[i], new: e.target.value };
                   setRecodeMappings(updated);
@@ -710,8 +773,8 @@ function PrepPanel({ dataPrep, columns }) {
   }
 
   if (ap === "bin") {
-    const numericOpts = cols.filter((c) => c.dtype === "numeric");
-    const binCols = numericOpts.length > 0 ? numericOpts : cols;
+    const numericOpts: ColumnInfo[] = cols.filter((c: ColumnInfo) => c.dtype === "numeric");
+    const binCols: ColumnInfo[] = numericOpts.length > 0 ? numericOpts : cols;
     return (
       <div className="prep-panel">
         <span className="prep-panel-label">Column</span>
@@ -728,7 +791,7 @@ function PrepPanel({ dataPrep, columns }) {
           style={{ width: "50px" }}
         />
         <label className="prep-panel-check">
-          <input type="checkbox" checked={binCustom} onChange={(e) => setBinCustom(e.target.checked)} /> Custom breaks
+          <input type="checkbox" checked={binCustom} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBinCustom(e.target.checked)} /> Custom breaks
         </label>
         {binCustom && (
           <input
@@ -747,24 +810,24 @@ function PrepPanel({ dataPrep, columns }) {
         />
         <button
           onClick={() => {
-            const column = binColRef.current?.value;
-            const binCount = parseInt(binCountRef.current?.value || "5", 10);
-            const useCustom = binCustom;
-            const newColName = binNameRef.current?.value?.trim() || `${column}_binned`;
-            let customBreaks = null;
+            const column: string | undefined = binColRef.current?.value;
+            const binCount: number = parseInt(binCountRef.current?.value || "5", 10);
+            const useCustom: boolean = binCustom;
+            const newColName: string = binNameRef.current?.value?.trim() || `${column}_binned`;
+            let customBreaks: number[] | null = null;
             if (useCustom) {
-              const breaksStr = binBreaksRef.current?.value || "";
-              customBreaks = breaksStr.split(",").map((p) => parseFloat(p.trim())).filter((n) => !isNaN(n)).sort((a, b) => a - b);
+              const breaksStr: string = binBreaksRef.current?.value || "";
+              customBreaks = breaksStr.split(",").map((p: string) => parseFloat(p.trim())).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b);
               if (customBreaks.length === 0) {
                 spcStore.setState(setPrepError(spcStore.getState(), "Enter valid break values"));
                 return;
               }
             }
             if (!column) return;
-            applyTransform((state) => ({
-              table: binColumn(state.dataPrep.arqueroTable, column, binCount, newColName, customBreaks),
+            applyTransform((state: SPCState) => ({
+              table: binColumn(state.dataPrep.arqueroTable as ColumnTable, column, binCount, newColName, customBreaks),
               transform: { type: "bin", params: { column, binCount, newColName, customBreaks } },
-              meta: { addCols: [{ name: newColName, dtype: "text" }] },
+              meta: { addCols: [{ name: newColName, dtype: "text", ordinal: 0, role: null }] },
             }));
           }}
           type="button"
@@ -801,13 +864,13 @@ function PrepPanel({ dataPrep, columns }) {
         />
         <button
           onClick={() => {
-            const column = splitColRef.current?.value;
-            const delimiter = splitDelimRef.current?.value || ",";
-            const maxParts = parseInt(splitPartsRef.current?.value || "2", 10);
+            const column: string | undefined = splitColRef.current?.value;
+            const delimiter: string = splitDelimRef.current?.value || ",";
+            const maxParts: number = parseInt(splitPartsRef.current?.value || "2", 10);
             if (!column) return;
-            applyTransform((state) => {
-              const table = splitColumn(state.dataPrep.arqueroTable, column, delimiter, maxParts);
-              const newCols = Array.from({ length: maxParts }, (_, i) => ({ name: `${column}_${i + 1}`, dtype: "text" }));
+            applyTransform((state: SPCState) => {
+              const table = splitColumn(state.dataPrep.arqueroTable as ColumnTable, column, delimiter, maxParts) as ColumnTable;
+              const newCols = Array.from({ length: maxParts }, (_: unknown, i: number) => ({ name: `${column}_${i + 1}`, dtype: "text", ordinal: 0, role: null as string | null }));
               return {
                 table,
                 transform: { type: "split", params: { column, delimiter, maxParts } },
@@ -828,7 +891,7 @@ function PrepPanel({ dataPrep, columns }) {
     return (
       <div className="prep-panel" ref={concatFormRef}>
         <span className="prep-panel-label">Columns</span>
-        {cols.map((c) => (
+        {cols.map((c: ColumnInfo) => (
           <label key={c.name} className="prep-panel-check">
             <input type="checkbox" value={c.name} className="concat-col-check" /> {c.name}
           </label>
@@ -850,15 +913,15 @@ function PrepPanel({ dataPrep, columns }) {
         />
         <button
           onClick={() => {
-            const checkboxes = concatFormRef.current?.querySelectorAll(".concat-col-check:checked") || [];
-            const columns = [...checkboxes].map((el) => el.value);
-            const separator = concatSepRef.current?.value ?? " ";
-            const newColName = concatNameRef.current?.value?.trim() || "combined";
-            if (columns.length < 2) return;
-            applyTransform((state) => ({
-              table: concatColumns(state.dataPrep.arqueroTable, columns, separator, newColName),
-              transform: { type: "concat", params: { columns, separator, newColName } },
-              meta: { addCols: [{ name: newColName, dtype: "text" }] },
+            const checkboxes: NodeListOf<HTMLInputElement> = concatFormRef.current?.querySelectorAll(".concat-col-check:checked") || ([] as unknown as NodeListOf<HTMLInputElement>);
+            const concatCols: string[] = [...checkboxes].map((el: HTMLInputElement) => el.value);
+            const separator: string = concatSepRef.current?.value ?? " ";
+            const newColName: string = concatNameRef.current?.value?.trim() || "combined";
+            if (concatCols.length < 2) return;
+            applyTransform((state: SPCState) => ({
+              table: concatColumns(state.dataPrep.arqueroTable as ColumnTable, concatCols, separator, newColName),
+              transform: { type: "concat", params: { columns: concatCols, separator, newColName } },
+              meta: { addCols: [{ name: newColName, dtype: "text", ordinal: 0, role: null }] },
             }));
           }}
           type="button"
@@ -880,7 +943,7 @@ function PrepPanel({ dataPrep, columns }) {
           <ColOptions cols={cols} />
         </select>
         <span className="prep-panel-label">Rule</span>
-        <select value={validateType} onChange={(e) => setValidateType(e.target.value)}>
+        <select value={validateType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setValidateType(e.target.value)}>
           <option value="range">Range (min&ndash;max)</option>
           <option value="allowed">Allowed values</option>
           <option value="regex">Regex pattern</option>
@@ -899,23 +962,23 @@ function PrepPanel({ dataPrep, columns }) {
         )}
         <button
           onClick={() => {
-            const column = validateColRef.current?.value;
-            const type = validateType;
+            const column: string | undefined = validateColRef.current?.value;
+            const type: string = validateType;
             if (!column || !type) return;
-            let rule;
+            let rule: Record<string, unknown> | undefined;
             if (type === "range") {
-              const min = validateMinRef.current?.value;
-              const max = validateMaxRef.current?.value;
+              const min: string = validateMinRef.current?.value ?? "";
+              const max: string = validateMaxRef.current?.value ?? "";
               rule = { type: "range", min: min !== "" ? Number(min) : null, max: max !== "" ? Number(max) : null };
             } else if (type === "allowed") {
-              const values = (validateValuesRef.current?.value || "").split(",").map((p) => p.trim()).filter(Boolean);
+              const values: string[] = (validateValuesRef.current?.value || "").split(",").map((p: string) => p.trim()).filter(Boolean);
               rule = { type: "allowed", values };
             } else if (type === "regex") {
               rule = { type: "regex", pattern: validatePatternRef.current?.value || "" };
             }
             if (rule) {
               const state = spcStore.getState();
-              let next = updateColumnMeta(state, column, { validation: rule });
+              let next = updateColumnMeta(state, column, { validation: rule } as unknown as Partial<ColumnOut>);
               next = closeActivePanel(next);
               spcStore.setState(next);
             }
@@ -927,10 +990,10 @@ function PrepPanel({ dataPrep, columns }) {
         </button>
         <button
           onClick={() => {
-            const column = validateColRef.current?.value;
+            const column: string | undefined = validateColRef.current?.value;
             if (column) {
               const state = spcStore.getState();
-              let next = updateColumnMeta(state, column, { validation: null });
+              let next = updateColumnMeta(state, column, { validation: null } as unknown as Partial<ColumnOut>);
               next = closeActivePanel(next);
               spcStore.setState(next);
             }
@@ -950,12 +1013,16 @@ function PrepPanel({ dataPrep, columns }) {
 
 /* ── TransformLedger ─────────────────────────────────────────────────── */
 
-function TransformLedger({ transforms }) {
-  const handleUndo = useCallback(() => {
-    const state = spcStore.getState();
+interface TransformLedgerProps {
+  transforms: TransformRecord[];
+}
+
+function TransformLedger({ transforms }: TransformLedgerProps): React.JSX.Element | null {
+  const handleUndo = useCallback((): void => {
+    const state: SPCState = spcStore.getState();
     if (state.dataPrep.transforms.length === 0) return;
     let next = undoPrepTransform(state);
-    const replayed = replayPrepTransforms(next);
+    const replayed = replayPrepTransforms(next) as { table: ColumnTable; columns: ColumnOut[] } | null;
     if (replayed) {
       next = setPrepTable(next, replayed.table);
       next = setColumns(next, replayed.columns);
@@ -969,10 +1036,10 @@ function TransformLedger({ transforms }) {
 
   return (
     <div className="prep-ledger">
-      {transforms.map((tr, i) => {
-        const label = TRANSFORM_LABELS[tr.type] || tr.type;
-        const detail = transformSummary(tr);
-        const isLast = i === transforms.length - 1;
+      {transforms.map((tr: TransformRecord, i: number) => {
+        const label: string = (TRANSFORM_LABELS as Record<string, string>)[tr.type] || tr.type;
+        const detail: string = transformSummary(tr as { type: string; params?: Record<string, unknown>; [key: string]: unknown });
+        const isLast: boolean = i === transforms.length - 1;
         return (
           <div key={i} className={`ledger-step${isLast ? " ledger-step-last" : ""}`}>
             <span className="ledger-step-idx">{i + 1}</span>
@@ -997,14 +1064,20 @@ function TransformLedger({ transforms }) {
 
 /* ── TransformPanel (default export) ─────────────────────────────────── */
 
-export default function TransformPanel({ dataPrep, columns, datasets }) {
+interface TransformPanelProps {
+  dataPrep: DataPrepState;
+  columns: ColumnInfo[];
+  datasets: DatasetItem[];
+}
+
+export default function TransformPanel({ dataPrep, columns, datasets }: TransformPanelProps): React.JSX.Element | null {
   if (!dataPrep.selectedDatasetId || dataPrep.loading || dataPrep.error) return null;
   return (
     <>
       <UtilityBar dataPrep={dataPrep} datasets={datasets} columns={columns} />
       <TransformToolbar activePanel={dataPrep.activePanel} />
       <PrepPanel dataPrep={dataPrep} columns={columns} />
-      <TransformLedger transforms={dataPrep.transforms} />
+      <TransformLedger transforms={dataPrep.transforms as TransformRecord[]} />
     </>
   );
 }

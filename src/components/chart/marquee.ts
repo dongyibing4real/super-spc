@@ -1,24 +1,52 @@
+import type { Selection } from 'd3-selection';
+import type { ChartScales } from './scales.js';
+import type { SizedConfig } from './config.js';
 import { clamp } from './utils.js';
 
 const MARQUEE_THRESHOLD = 5; // px — minimum drag to activate marquee
 
+interface MarqueeContext {
+  scales: ChartScales | null;
+  sizedConfig: SizedConfig | null;
+  width: number;
+  height: number;
+  lastData: MarqueeData | null;
+}
+
+interface MarqueeData {
+  points: { [key: string]: unknown }[];
+  seriesKey?: string;
+}
+
+interface MarqueeState {
+  startX: number;
+  startY: number;
+  active: boolean;
+}
+
+interface MarqueeOptions {
+  onSelectPoints?: ((indices: number[] | null) => void) | null;
+}
+
+interface MarqueeResult {
+  destroy: () => void;
+  wasMarqueeJustFinished: () => boolean;
+}
+
 /**
  * JMP-style marquee (rubber-band) multi-point selection.
- * Click-hold-drag draws a selection rectangle; on mouseup, all points inside are selected.
- * A short click (< 5px movement) falls through to normal point/click handling.
- *
- * @param {Selection} svg - D3 SVG selection
- * @param {HTMLElement} container - DOM container element
- * @param {Selection} marqueeLayer - D3 selection for the marquee rectangle layer
- * @param {Function} getContext - () => { scales, sizedConfig, width, height, lastData }
- * @param {{ onSelectPoints: Function }} options
- * @returns {{ destroy: Function, wasMarqueeJustFinished: Function }}
  */
-export function setupMarquee(svg, container, marqueeLayer, getContext, { onSelectPoints }) {
-  let marqueeState = null;
+export function setupMarquee(
+  svg: Selection<SVGSVGElement, unknown, null, undefined>,
+  container: HTMLElement,
+  marqueeLayer: Selection<SVGGElement, unknown, null, undefined>,
+  getContext: () => MarqueeContext,
+  { onSelectPoints }: MarqueeOptions
+): MarqueeResult {
+  let marqueeState: MarqueeState | null = null;
   let marqueeJustFinished = false;
 
-  svg.on('pointerdown.marquee', (event) => {
+  svg.on('pointerdown.marquee', (event: PointerEvent) => {
     if (event.button !== 0) return;
     const { sizedConfig, width, height } = getContext();
     if (!sizedConfig) return;
@@ -30,7 +58,7 @@ export function setupMarquee(svg, container, marqueeLayer, getContext, { onSelec
     if (localX < p.left || localX > width - p.right) return;
     if (localY < p.top || localY > height - p.bottom) return;
 
-    const target = event.target;
+    const target = event.target as Element;
     if (target.closest?.('.point-hit') || target.closest?.('.forecast-shell-hit') ||
         target.closest?.('.forecast-prompt-hit') || target.closest?.('.forecast-cancel') ||
         target.closest?.('.phase-header-hit')) return;
@@ -42,7 +70,7 @@ export function setupMarquee(svg, container, marqueeLayer, getContext, { onSelec
     };
   });
 
-  function marqueeMove(event) {
+  function marqueeMove(event: PointerEvent): void {
     if (!marqueeState) return;
     const rect = container.getBoundingClientRect();
     const localX = event.clientX - rect.left;
@@ -57,7 +85,7 @@ export function setupMarquee(svg, container, marqueeLayer, getContext, { onSelec
     if (!marqueeState.active) return;
 
     const { sizedConfig, width, height } = getContext();
-    const p = sizedConfig.padding;
+    const p = sizedConfig!.padding;
     const cx = clamp(localX, p.left, width - p.right);
     const cy = clamp(localY, p.top, height - p.bottom);
     const sx = marqueeState.startX;
@@ -75,7 +103,7 @@ export function setupMarquee(svg, container, marqueeLayer, getContext, { onSelec
       .attr('width', rw).attr('height', rh);
   }
 
-  function marqueeUp(event) {
+  function marqueeUp(event: PointerEvent): void {
     if (!marqueeState) return;
     const wasActive = marqueeState.active;
 
@@ -85,7 +113,7 @@ export function setupMarquee(svg, container, marqueeLayer, getContext, { onSelec
         const rect = container.getBoundingClientRect();
         const localX = event.clientX - rect.left;
         const localY = event.clientY - rect.top;
-        const p = sizedConfig.padding;
+        const p = sizedConfig!.padding;
         const cx = clamp(localX, p.left, width - p.right);
         const cy = clamp(localY, p.top, height - p.bottom);
         const sx = marqueeState.startX;
@@ -99,11 +127,11 @@ export function setupMarquee(svg, container, marqueeLayer, getContext, { onSelec
         const { x, y } = scales;
         const seriesKey = lastData.seriesKey || 'primaryValue';
         const points = lastData.points;
-        const selected = [];
+        const selected: number[] = [];
 
         for (let i = 0; i < points.length; i++) {
           const px = x(i);
-          const py = y(points[i][seriesKey]);
+          const py = y(points[i][seriesKey] as number);
           if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
             selected.push(i);
           }
@@ -129,11 +157,11 @@ export function setupMarquee(svg, container, marqueeLayer, getContext, { onSelec
   window.addEventListener('pointerup', marqueeUp);
 
   return {
-    destroy() {
+    destroy(): void {
       window.removeEventListener('pointermove', marqueeMove);
       window.removeEventListener('pointerup', marqueeUp);
     },
-    wasMarqueeJustFinished() {
+    wasMarqueeJustFinished(): boolean {
       return marqueeJustFinished;
     },
   };

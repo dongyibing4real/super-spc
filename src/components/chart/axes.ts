@@ -1,3 +1,36 @@
+import type { Selection } from 'd3-selection';
+import type { ChartScales } from './scales.js';
+import type { SizedConfig, AxisDragInfo } from './config.js';
+
+interface AxisContext {
+  scales: ChartScales | null;
+  sizedConfig: SizedConfig | null;
+  width: number;
+  height: number;
+}
+
+interface AxisCallbacks {
+  onAxisDrag?: ((info: AxisDragInfo) => void) | null;
+  onAxisDragLive?: ((info: AxisDragInfo) => void) | null;
+  onForecastActivity?: (() => void) | null;
+}
+
+interface PointData {
+  label: string;
+  [key: string]: unknown;
+}
+
+interface AxesData {
+  points: PointData[];
+  selectedIndex: number | null;
+}
+
+interface AxesConfig {
+  padding: { top: number; right: number; bottom: number; left: number };
+  width: number;
+  height: number;
+}
+
 /**
  * Set up JMP-style axis drag interaction on a hit element.
  *
@@ -6,20 +39,16 @@
  *   drag PERPENDICULAR     -> SCALE (zoom in/out)
  * Only differs in: which mouse axis is "along" vs "perpendicular",
  * data bounds for clamping, and the output event shape.
- *
- *   X-axis: horizontal = along (pan), vertical = perpendicular (scale)
- *   Y-axis: vertical = along (pan), horizontal = perpendicular (scale)
- *
- * @param {Selection} hitElement - D3 selection for the invisible drag target rect
- * @param {'x'|'y'} axisType - which axis this controls
- * @param {Function} getContext - returns { scales, sizedConfig, width, height }
- * @param {object} callbacks - { onAxisDrag, onForecastActivity }
- * @returns {Function} cleanup function to remove active drag listeners
  */
-export function setupAxisDrag(hitElement, axisType, getContext, callbacks) {
-  let activeDragCleanup = null;
+export function setupAxisDrag(
+  hitElement: Selection<SVGRectElement, unknown, null, undefined>,
+  axisType: 'x' | 'y',
+  getContext: () => AxisContext,
+  callbacks: AxisCallbacks
+): () => void {
+  let activeDragCleanup: (() => void) | null = null;
 
-  hitElement.on('pointerdown', (event) => {
+  hitElement.on('pointerdown', (event: PointerEvent) => {
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
@@ -38,8 +67,8 @@ export function setupAxisDrag(hitElement, axisType, getContext, callbacks) {
     // Pixel range for this axis direction
     const activePadding = sizedConfig?.padding;
     const pixelRange = axisType === 'x'
-      ? width - activePadding.left - activePadding.right
-      : height - activePadding.top - activePadding.bottom;
+      ? width - activePadding!.left - activePadding!.right
+      : height - activePadding!.top - activePadding!.bottom;
 
     // Clamping — identical for both axes: generous range, no position walls
     const minRange = range * 0.05;   // can zoom to 5% of original range
@@ -51,7 +80,7 @@ export function setupAxisDrag(hitElement, axisType, getContext, callbacks) {
     let lastLo = startMin;
     let lastHi = startMax;
 
-    const onMove = (e) => {
+    const onMove = (e: PointerEvent): void => {
       callbacks.onForecastActivity?.();
       const dx = e.clientX - startClientX;
       const dy = e.clientY - startClientY;
@@ -80,7 +109,7 @@ export function setupAxisDrag(hitElement, axisType, getContext, callbacks) {
       }
     };
 
-    const onUp = () => {
+    const onUp = (): void => {
       document.body.style.cursor = '';
       hitElement.style('cursor', 'grab');
       window.removeEventListener('pointermove', onMove);
@@ -110,15 +139,8 @@ export function setupAxisDrag(hitElement, axisType, getContext, callbacks) {
 
 /**
  * Compute a "nice stride" for categorical axis labels.
- * This is the categorical equivalent of the y-axis "nice numbers" algorithm:
- *   y-axis: snap to 1, 2, 5 × 10^n  (value steps)
- *   x-axis: snap to 1, 2, 5 × 10^n  (index strides)
- *
- * Both follow the same 1-2-5 progression from the Heckbert/Wilkinson algorithm.
- * @param {number} raw - the raw (fractional) stride from pixel density
- * @returns {number} the nearest nice integer stride (≥1)
  */
-function niceStride(raw) {
+function niceStride(raw: number): number {
   if (raw <= 1) return 1;
   const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
   const residual = raw / magnitude;
@@ -130,20 +152,13 @@ function niceStride(raw) {
 
 /**
  * Render X-axis baseline and lot labels.
- *
- * ALGORITHM (rotation-aware, same philosophy as y-axis nice ticks):
- * ─────────────────────────────────────────────────────────────────
- * 1. Compute pointSpacing from current domain (adapts to pan/scale)
- * 2. Estimate label dimensions from character count + font size
- * 3. Determine rotation FIRST from raw density vs label width
- * 4. Compute effective horizontal footprint for that rotation
- * 5. Derive stride from footprint / pointSpacing → snap to nice stride
- * 6. Render with selected-point collision suppression
- *
- * The stride is responsive to label dimensions AND rotation state,
- * so labels never overlap at any zoom level.
  */
-export function renderAxes(layer, scales, data, config) {
+export function renderAxes(
+  layer: Selection<SVGGElement, unknown, null, undefined>,
+  scales: ChartScales,
+  data: AxesData,
+  config: AxesConfig
+): void {
   const { x } = scales;
   const L = config.padding.left;
   const R = config.width - config.padding.right;
@@ -165,7 +180,6 @@ export function renderAxes(layer, scales, data, config) {
   const labelWidth = sampleLabel.length * baseCharW;
 
   // ── 3. Determine rotation from RAW density (before stride) ────────
-  //    If labels at stride=1 would overlap, rotation is needed
   const rotate45 = pointSpacing < labelWidth * 0.8;
   const rotate90 = pointSpacing < labelWidth * 0.2;
   const smallFont = rotate45 && pointSpacing < labelWidth * 0.35;
@@ -173,13 +187,10 @@ export function renderAxes(layer, scales, data, config) {
   const effectiveCharW = fontSize * MONOSPACE_CHAR_WIDTH_RATIO;
 
   // ── 4. Effective horizontal footprint per label ───────────────────
-  //    Conservative estimates that guarantee no visual overlap AND readability.
-  //    The floor (MIN_LABEL_GAP) ensures labels never get denser than the y-axis
-  //    tick interval — same philosophy, both axes respect the same density bound.
-  const MIN_LABEL_GAP = 24; // px — readability floor, analogous to y-axis tickPixelInterval
-  let footprint;
+  const MIN_LABEL_GAP = 24;
+  let footprint: number;
   if (rotate90) {
-    footprint = fontSize * 2 + 4; // vertical text needs breathing room
+    footprint = fontSize * 2 + 4;
   } else if (rotate45) {
     footprint = sampleLabel.length * effectiveCharW * 0.75 + 6;
   } else {

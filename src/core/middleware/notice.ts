@@ -7,7 +7,15 @@
  * This replaces inline ui.notice writes that were previously scattered
  * across chart.js and pipeline.js reducers.
  */
-export function noticeMiddleware(prevState, nextState) {
+import type { SPCState, UIState } from '../../types/state.js';
+
+type Notice = NonNullable<UIState["notice"]>;
+
+function makeNotice(tone: string, title: string, body: string): Notice {
+  return { title, body, tone } as Notice;
+}
+
+export function noticeMiddleware(prevState: SPCState, nextState: SPCState): SPCState {
   if (prevState === nextState) return nextState;
 
   // Point exclusion changed
@@ -20,11 +28,7 @@ export function noticeMiddleware(prevState, nextState) {
           ...nextState,
           ui: {
             ...nextState.ui,
-            notice: {
-              tone: "info",
-              title: next.excluded ? "Point excluded" : "Point restored",
-              body: `${next.label} remains visible so the exclusion is auditable.`,
-            },
+            notice: makeNotice("info", next.excluded ? "Point excluded" : "Point restored", `${next.label} remains visible so the exclusion is auditable.`),
           },
         };
       }
@@ -34,8 +38,8 @@ export function noticeMiddleware(prevState, nextState) {
   // Transform toggled
   if (prevState.transforms !== nextState.transforms && prevState.transforms.length === nextState.transforms.length) {
     for (let i = 0; i < nextState.transforms.length; i++) {
-      const prev = prevState.transforms[i];
-      const next = nextState.transforms[i];
+      const prev = prevState.transforms[i] as Record<string, unknown> | undefined;
+      const next = nextState.transforms[i] as Record<string, unknown> | undefined;
       if (!prev || !next) continue;
 
       // Recovery takes priority over active toggle
@@ -44,11 +48,7 @@ export function noticeMiddleware(prevState, nextState) {
           ...nextState,
           ui: {
             ...nextState.ui,
-            notice: {
-              tone: "positive",
-              title: "Transform recovered",
-              body: `${next.title} is active again and the pipeline has been revalidated.`,
-            },
+            notice: makeNotice("positive", "Transform recovered", `${next.title} is active again and the pipeline has been revalidated.`),
           },
         };
       }
@@ -57,11 +57,7 @@ export function noticeMiddleware(prevState, nextState) {
           ...nextState,
           ui: {
             ...nextState.ui,
-            notice: {
-              tone: "warning",
-              title: "Transform failed",
-              body: `${next.title} failed validation. The previous chart result is still active while the step stays reversible.`,
-            },
+            notice: makeNotice("warning", "Transform failed", `${next.title} failed validation. The previous chart result is still active while the step stays reversible.`),
           },
         };
       }
@@ -70,11 +66,7 @@ export function noticeMiddleware(prevState, nextState) {
           ...nextState,
           ui: {
             ...nextState.ui,
-            notice: {
-              tone: "info",
-              title: next.active ? "Transform enabled" : "Transform disabled",
-              body: next.detail,
-            },
+            notice: makeNotice("info", next.active ? "Transform enabled" : "Transform disabled", next.detail as string),
           },
         };
       }

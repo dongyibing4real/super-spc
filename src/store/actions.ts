@@ -1,5 +1,5 @@
 /**
- * actions.js -- Async store actions for the React/Zustand migration.
+ * actions.ts -- Async store actions for the React/Zustand migration.
  *
  * Extracted from legacy-boot.js. Each function reads/writes spcStore
  * directly -- no bridge needed.
@@ -20,11 +20,24 @@ import { parseCSV } from "../data/csv-engine.js";
 import { createTable } from "../data/data-prep-engine.js";
 import { finalizeDatasetLoad, finalizeReanalysis } from "../core/state/analysis.js";
 import { CHART_TYPE_LABELS, INDIVIDUAL_ONLY, SUBGROUP_REQUIRED } from "../constants.js";
+import type { SPCState, ChartParams, ChartSlot, ChartLayout, CascadeMemory } from "../types/state.ts";
+import type { AnalysisResult, AnalysisRequest } from "../types/api.ts";
 
 const LAYOUT_STORAGE_KEY = "super-spc-chart-layout";
 
+interface SavedLayout {
+  rows: string[][];
+  colWeights: number[][];
+  rowWeights: number[];
+  chartOrder: string[];
+  focusedChartId: string;
+  nextChartId: number;
+  chartParams: Record<string, ChartParams | null>;
+  cascadeMemory: Record<string, CascadeMemory | null>;
+}
+
 /** Pre-validate chart params before hitting the backend. */
-export function validatedRunAnalysis(datasetId, params) {
+export function validatedRunAnalysis(datasetId: string, params: ChartParams): Promise<AnalysisResult> {
   if (!params.chart_type) {
     return Promise.reject(new Error("No chart type selected."));
   }
@@ -37,7 +50,7 @@ export function validatedRunAnalysis(datasetId, params) {
 }
 
 /** Load a dataset by ID: fetch points+columns, run analysis per chart, finalize. */
-export async function loadDatasetById(datasetId) {
+export async function loadDatasetById(datasetId: string): Promise<void> {
   spcStore.setState(setLoadingState(spcStore.getState(), true));
   try {
     const [points, columns] = await Promise.all([
@@ -48,7 +61,7 @@ export async function loadDatasetById(datasetId) {
 
     const state = spcStore.getState();
     const analysisResults = await Promise.allSettled(
-      state.chartOrder.map(id => validatedRunAnalysis(datasetId, state.charts[id].params))
+      state.chartOrder.map((id: string) => validatedRunAnalysis(datasetId, state.charts[id].params))
     );
     const { nextState } = finalizeDatasetLoad(spcStore.getState(), {
       datasetId,
@@ -59,12 +72,12 @@ export async function loadDatasetById(datasetId) {
     });
     spcStore.setState(nextState);
   } catch (err) {
-    spcStore.setState(setError(spcStore.getState(), err.message));
+    spcStore.setState(setError(spcStore.getState(), (err as Error).message));
   }
 }
 
 /** Re-fetch points and re-run analysis for the active dataset. */
-export async function reanalyze() {
+export async function reanalyze(): Promise<void> {
   const state = spcStore.getState();
   if (!state.activeDatasetId) return;
   try {
@@ -72,17 +85,17 @@ export async function reanalyze() {
     const points = await fetchRows(dsId);
     const freshState = spcStore.getState();
     const analysisResults = await Promise.allSettled(
-      freshState.chartOrder.map(id => validatedRunAnalysis(dsId, freshState.charts[id].params))
+      freshState.chartOrder.map((id: string) => validatedRunAnalysis(dsId, freshState.charts[id].params))
     );
     const { nextState } = finalizeReanalysis(spcStore.getState(), { points, analysisResults });
     spcStore.setState(nextState);
   } catch (err) {
-    spcStore.setState(setError(spcStore.getState(), err.message));
+    spcStore.setState(setError(spcStore.getState(), (err as Error).message));
   }
 }
 
 /** Parse a CSV file, create a dataset via API, then load it. */
-export async function uploadCSV(file) {
+export async function uploadCSV(file: File): Promise<void> {
   spcStore.setState(setLoadingState(spcStore.getState(), true));
   try {
     const parsed = await parseCSV(file);
@@ -105,15 +118,15 @@ export async function uploadCSV(file) {
 
     await loadDatasetById(newDs.id);
   } catch (err) {
-    spcStore.setState(setError(spcStore.getState(), err.message));
+    spcStore.setState(setError(spcStore.getState(), (err as Error).message));
   }
 }
 
 /** Persist the current chart layout to localStorage. */
-export function saveLayout() {
+export function saveLayout(): void {
   try {
     const state = spcStore.getState();
-    const data = {
+    const data: SavedLayout = {
       rows: state.chartLayout.rows,
       colWeights: state.chartLayout.colWeights,
       rowWeights: state.chartLayout.rowWeights,
@@ -132,14 +145,14 @@ export function saveLayout() {
 }
 
 /** Read chart layout from localStorage, with migration support for legacy tree format. */
-export function restoreLayout() {
+export function restoreLayout(): SavedLayout | null {
   try {
     const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
     if (!raw) return null;
-    const data = JSON.parse(raw);
+    const data = JSON.parse(raw) as SavedLayout;
     if (!data.chartOrder || !data.chartParams) return null;
     if (!data.rows) {
-      const migrated = migrateTreeToRows(data);
+      const migrated = migrateTreeToRows(data as unknown as Parameters<typeof migrateTreeToRows>[0]);
       data.rows = migrated.rows;
       data.colWeights = migrated.colWeights;
       data.rowWeights = migrated.rowWeights;
@@ -150,7 +163,7 @@ export function restoreLayout() {
       }
     }
     if (!data.colWeights) {
-      data.colWeights = data.rows.map(r => r.map(() => 1));
+      data.colWeights = data.rows.map((r: string[]) => r.map(() => 1));
     }
     if (!data.rowWeights) {
       data.rowWeights = data.rows.map(() => 1);
@@ -160,7 +173,7 @@ export function restoreLayout() {
 }
 
 /** Boot sequence: fetch datasets, restore layout, load the first dataset. */
-export async function bootApp() {
+export async function bootApp(): Promise<void> {
   // Apply theme before anything renders
   spcStore.setState(initTheme(spcStore.getState()));
   try {
@@ -174,12 +187,12 @@ export async function bootApp() {
 
     const saved = restoreLayout();
     if (saved && saved.chartOrder.length > 0) {
-      const restoredCharts = {};
+      const restoredCharts: Record<string, ChartSlot> = {};
       for (const cid of saved.chartOrder) {
         const p = saved.chartParams[cid];
         const mem = saved.cascadeMemory?.[cid] || null;
         // Restore as-is; setChartParams reconciles on next param change
-        restoredCharts[cid] = createSlot(p ? { params: p, _cascadeMemory: mem } : {});
+        restoredCharts[cid] = createSlot(p ? { params: p, _cascadeMemory: mem } as Partial<ChartSlot> : {});
       }
       const state = spcStore.getState();
       spcStore.setState({
@@ -194,6 +207,6 @@ export async function bootApp() {
 
     await loadDatasetById(id);
   } catch (err) {
-    spcStore.setState(setError(spcStore.getState(), err.message));
+    spcStore.setState(setError(spcStore.getState(), (err as Error).message));
   }
 }

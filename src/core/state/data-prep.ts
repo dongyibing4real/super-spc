@@ -1,25 +1,28 @@
-export function selectPrepDataset(state, datasetId) {
+import type { SPCState, ChartPoint } from '../../types/state.js';
+import type { ColumnOut } from '../../types/api.js';
+
+export function selectPrepDataset(state: SPCState, datasetId: string): SPCState {
   return {
     ...state,
     dataPrep: { ...state.dataPrep, selectedDatasetId: datasetId, datasetPoints: [], loading: true, error: null }
   };
 }
 
-export function loadPrepPoints(state, points) {
+export function loadPrepPoints(state: SPCState, points: ChartPoint[]): SPCState {
   return {
     ...state,
     dataPrep: { ...state.dataPrep, datasetPoints: points, loading: false, error: null }
   };
 }
 
-export function setPrepError(state, message) {
+export function setPrepError(state: SPCState, message: string): SPCState {
   return {
     ...state,
     dataPrep: { ...state.dataPrep, loading: false, error: message }
   };
 }
 
-export function deletePrepDataset(state, datasetId) {
+export function deletePrepDataset(state: SPCState, datasetId: string): SPCState {
   const datasets = state.datasets.filter(d => d.id !== datasetId);
   const dp = state.dataPrep.selectedDatasetId === datasetId
     ? { ...state.dataPrep, selectedDatasetId: null, datasetPoints: [], error: null }
@@ -30,7 +33,13 @@ export function deletePrepDataset(state, datasetId) {
 
 /* ---Client-side data prep actions ---*/
 
-export function setPrepParsedData(state, { rawRows, arqueroTable, columns }) {
+interface ParsedDataPayload {
+  rawRows: unknown[];
+  arqueroTable: unknown;
+  columns: ColumnOut[];
+}
+
+export function setPrepParsedData(state: SPCState, { rawRows, arqueroTable, columns }: ParsedDataPayload): SPCState {
   return {
     ...state,
     dataPrep: {
@@ -49,14 +58,19 @@ export function setPrepParsedData(state, { rawRows, arqueroTable, columns }) {
   };
 }
 
-export function setPrepTable(state, arqueroTable) {
+export function setPrepTable(state: SPCState, arqueroTable: unknown): SPCState {
   return {
     ...state,
     dataPrep: { ...state.dataPrep, arqueroTable, unsavedChanges: true },
   };
 }
 
-export function addPrepTransform(state, transform) {
+interface Transform {
+  timestamp?: number;
+  [key: string]: unknown;
+}
+
+export function addPrepTransform(state: SPCState, transform: Transform): SPCState {
   return {
     ...state,
     dataPrep: {
@@ -67,7 +81,7 @@ export function addPrepTransform(state, transform) {
   };
 }
 
-export function undoPrepTransform(state) {
+export function undoPrepTransform(state: SPCState): SPCState {
   const transforms = state.dataPrep.transforms.slice(0, -1);
   return {
     ...state,
@@ -75,21 +89,21 @@ export function undoPrepTransform(state) {
   };
 }
 
-export function clearPrepTransforms(state) {
+export function clearPrepTransforms(state: SPCState): SPCState {
   return {
     ...state,
     dataPrep: { ...state.dataPrep, transforms: [], unsavedChanges: false },
   };
 }
 
-export function markPrepSaved(state) {
+export function markPrepSaved(state: SPCState): SPCState {
   return {
     ...state,
     dataPrep: { ...state.dataPrep, unsavedChanges: false },
   };
 }
 
-export function setActivePanel(state, panel) {
+export function setActivePanel(state: SPCState, panel: string): SPCState {
   const toggled = state.dataPrep.activePanel === panel ? null : panel;
   return {
     ...state,
@@ -97,7 +111,7 @@ export function setActivePanel(state, panel) {
   };
 }
 
-export function closeActivePanel(state) {
+export function closeActivePanel(state: SPCState): SPCState {
   return {
     ...state,
     dataPrep: { ...state.dataPrep, activePanel: null },
@@ -108,13 +122,13 @@ export function closeActivePanel(state) {
  * Update column metadata (for rename, change dtype).
  * Also updates hiddenColumns if a column name changed.
  */
-export function updateColumnMeta(state, oldName, updates) {
+export function updateColumnMeta(state: SPCState, oldName: string, updates: Partial<ColumnOut>): SPCState {
   const columns = state.columnConfig.columns.map(c =>
     c.name === oldName ? { ...c, ...updates } : c
   );
   let hiddenColumns = state.dataPrep.hiddenColumns;
   if (updates.name && updates.name !== oldName) {
-    hiddenColumns = hiddenColumns.map(h => h === oldName ? updates.name : h);
+    hiddenColumns = hiddenColumns.map(h => h === oldName ? updates.name! : h);
   }
   return {
     ...state,
@@ -123,12 +137,16 @@ export function updateColumnMeta(state, oldName, updates) {
   };
 }
 
+interface NewColumnDef {
+  name: string;
+  dtype: string;
+  role?: string | null;
+}
+
 /**
  * Add new column metadata (for calculated, split, concat, recode-to-new, bin).
- * @param {Object} state
- * @param {Array<{name: string, dtype: string, role: string|null}>} newColumns
  */
-export function addColumnMeta(state, newColumns) {
+export function addColumnMeta(state: SPCState, newColumns: NewColumnDef[]): SPCState {
   const startOrdinal = state.columnConfig.columns.length;
   const withOrdinals = newColumns.map((c, i) => ({
     ...c,
@@ -146,12 +164,10 @@ export function addColumnMeta(state, newColumns) {
 
 // ---Phase 3 ---Row Exclusion ---
 
-export function toggleRowExclusion(state, rowIdx) {
+export function toggleRowExclusion(state: SPCState, rowIdx: number): SPCState {
   const excluded = [...state.dataPrep.excludedRows];
   const pos = excluded.indexOf(rowIdx);
   if (pos >= 0) excluded.splice(pos, 1);
   else excluded.push(rowIdx);
   return { ...state, dataPrep: { ...state.dataPrep, excludedRows: excluded } };
 }
-
-

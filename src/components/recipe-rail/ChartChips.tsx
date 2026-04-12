@@ -1,3 +1,4 @@
+import type { ChangeEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { spcStore } from "../../store/spc-store.js";
 import { setChartParams, setActiveChipEditor } from "../../core/state/chart.js";
 import { setRecipeParams } from "../../core/state/reconcile-params.js";
@@ -14,42 +15,49 @@ import {
   parseNullableNumber,
   specSummary,
 } from "./recipe-rail-constants.js";
+import type { ChartParams, ChartContext, SPCState } from "../../types/state.ts";
+import type { RecipeRailState } from "./RecipeRail.jsx";
 
 /* --- Dispatch helpers for chart param changes --- */
 
-export function dispatchChartParam(prefix, paramUpdate) {
+export function dispatchChartParam(prefix: string, paramUpdate: Partial<ChartParams>): void {
   const needsReconcile = Object.keys(paramUpdate).some((k) => RECIPE_KEYS.has(k));
   if (prefix === "_pending") {
-    spcStore.setState((s) => {
+    spcStore.setState((s: SPCState) => {
       const pending = { ...s.ui.pendingNewChart, ...paramUpdate };
-      let next = { ...s, ui: { ...s.ui, pendingNewChart: pending } };
+      let next: SPCState = { ...s, ui: { ...s.ui, pendingNewChart: pending } };
       return setActiveChipEditor(next, null);
     });
   } else {
-    spcStore.setState((s) => {
+    spcStore.setState((s: SPCState) => {
       const setter = needsReconcile ? setRecipeParams : setChartParams;
-      let next = setter(s, prefix, paramUpdate);
+      let next: SPCState = setter(s, prefix, paramUpdate);
       return setActiveChipEditor(next, null);
     });
     reanalyze();
   }
 }
 
-export function dispatchPendingParamNoClose(prefix, paramUpdate) {
+export function dispatchPendingParamNoClose(prefix: string, paramUpdate: Partial<ChartParams>): void {
   if (prefix === "_pending") {
-    spcStore.setState((s) => ({
+    spcStore.setState((s: SPCState) => ({
       ...s,
       ui: { ...s.ui, pendingNewChart: { ...s.ui.pendingNewChart, ...paramUpdate } },
     }));
   } else {
     const needsReconcile = Object.keys(paramUpdate).some((k) => RECIPE_KEYS.has(k));
     const setter = needsReconcile ? setRecipeParams : setChartParams;
-    spcStore.setState((s) => setter(s, prefix, paramUpdate));
+    spcStore.setState((s: SPCState) => setter(s, prefix, paramUpdate));
     reanalyze();
   }
 }
 
-export function SpecEditor({ prefix, params }) {
+interface SpecEditorProps {
+  prefix: string;
+  params: ChartParams;
+}
+
+export function SpecEditor({ prefix, params }: SpecEditorProps) {
   return (
     <span className="chip-sigma-editor">
       <label className="chip-sigma-row">
@@ -57,10 +65,10 @@ export function SpecEditor({ prefix, params }) {
         <input
           type="number"
           className="chip-k-input"
-          onChange={(e) => dispatchChartParam(prefix, { lsl: parseNullableNumber(e.target.value) })}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => dispatchChartParam(prefix, { lsl: parseNullableNumber(e.target.value) })}
           defaultValue={params.lsl ?? ""}
           step="any"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e: ReactMouseEvent) => e.stopPropagation()}
           placeholder="\u2014"
         />
       </label>
@@ -69,10 +77,10 @@ export function SpecEditor({ prefix, params }) {
         <input
           type="number"
           className="chip-k-input"
-          onChange={(e) => dispatchChartParam(prefix, { target: parseNullableNumber(e.target.value) })}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => dispatchChartParam(prefix, { target: parseNullableNumber(e.target.value) })}
           defaultValue={params.target ?? ""}
           step="any"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e: ReactMouseEvent) => e.stopPropagation()}
           placeholder="\u2014"
         />
       </label>
@@ -81,10 +89,10 @@ export function SpecEditor({ prefix, params }) {
         <input
           type="number"
           className="chip-k-input"
-          onChange={(e) => dispatchChartParam(prefix, { usl: parseNullableNumber(e.target.value) })}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => dispatchChartParam(prefix, { usl: parseNullableNumber(e.target.value) })}
           defaultValue={params.usl ?? ""}
           step="any"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e: ReactMouseEvent) => e.stopPropagation()}
           placeholder="\u2014"
         />
       </label>
@@ -92,8 +100,13 @@ export function SpecEditor({ prefix, params }) {
   );
 }
 
-export function SigmaEditor({ prefix, params }) {
-  const showMethod = SIGMA_METHOD_CHARTS.has(params.chart_type);
+interface SigmaEditorProps {
+  prefix: string;
+  params: ChartParams;
+}
+
+export function SigmaEditor({ prefix, params }: SigmaEditorProps) {
+  const showMethod = SIGMA_METHOD_CHARTS.has(params.chart_type!);
   return (
     <span className="chip-sigma-editor">
       <label className="chip-sigma-row">
@@ -101,7 +114,7 @@ export function SigmaEditor({ prefix, params }) {
         <input
           type="number"
           className="chip-k-input"
-          onChange={(e) => {
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
             const k = parseFloat(e.target.value);
             if (k > 0 && k <= 6) dispatchPendingParamNoClose(prefix, { k_sigma: k });
           }}
@@ -109,7 +122,7 @@ export function SigmaEditor({ prefix, params }) {
           min="0.5"
           max="6"
           step="0.5"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e: ReactMouseEvent) => e.stopPropagation()}
         />
       </label>
       {showMethod && (
@@ -117,7 +130,7 @@ export function SigmaEditor({ prefix, params }) {
           <span className="chip-sigma-label">Method</span>
           <ChipSelect
             resetKey={prefix}
-            onChange={(e) => dispatchChartParam(prefix, { sigma_method: e.target.value })}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => dispatchChartParam(prefix, { sigma_method: e.target.value })}
             options={SIGMA_METHODS}
             current={params.sigma_method}
           />
@@ -127,27 +140,43 @@ export function SigmaEditor({ prefix, params }) {
   );
 }
 
-export default function ChartChips({ state, prefix, params, context, ae, cols }) {
+interface ChartChipsProps {
+  state: RecipeRailState;
+  prefix: string;
+  params: ChartParams;
+  context: ChartContext;
+  ae: string | null;
+  cols: { name: string; ordinal: number; dtype: string; role: string | null }[];
+}
+
+interface ChipDef {
+  id: string;
+  label: string;
+  value: ReactNode;
+  detail: string | undefined;
+}
+
+export default function ChartChips({ state, prefix, params, context, ae, cols }: ChartChipsProps) {
   const numericCols = cols.filter((c) => c.dtype === "numeric");
   const allNonValue = cols.filter((c) => c.role !== "value");
   const currentSg = params.subgroup_column || "";
   const currentPh = params.phase_column || "";
   const activeTests = params.nelson_tests || [];
 
-  const handleToggleChip = (chipId, isLocked) => {
+  const handleToggleChip = (chipId: string, isLocked: boolean): void => {
     if (isLocked) return;
-    spcStore.setState((s) => setActiveChipEditor(s, ae === chipId ? null : chipId));
+    spcStore.setState((s: SPCState) => setActiveChipEditor(s, ae === chipId ? null : chipId));
   };
 
-  const chips = [
+  const chips: ChipDef[] = [
     {
       id: `${prefix}-metric`,
       label: "Metric",
       value: ae === `${prefix}-metric`
         ? <ChipSelect
             resetKey={prefix}
-            onChange={(e) => dispatchChartParam(prefix, { value_column: e.target.value || null })}
-            options={numericCols.map((c) => [c.name, c.name])}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => dispatchChartParam(prefix, { value_column: e.target.value || null })}
+            options={numericCols.map((c) => [c.name, c.name] as [string, string])}
             current={numericCols.find((c) => c.role === "value")?.name || ""}
           />
         : context.metric.label,
@@ -159,10 +188,10 @@ export default function ChartChips({ state, prefix, params, context, ae, cols })
       value: ae === `${prefix}-subgroup`
         ? <ChipSelect
             resetKey={prefix}
-            onChange={(e) => dispatchChartParam(prefix, { subgroup_column: e.target.value || null })}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => dispatchChartParam(prefix, { subgroup_column: e.target.value || null })}
             options={[
-              ["", "Individual (n=1)"],
-              ...allNonValue.map((c) => [c.name, c.name]),
+              ["", "Individual (n=1)"] as [string, string],
+              ...allNonValue.map((c) => [c.name, c.name] as [string, string]),
             ]}
             current={currentSg}
           />
@@ -175,8 +204,8 @@ export default function ChartChips({ state, prefix, params, context, ae, cols })
       value: ae === `${prefix}-phase`
         ? <ChipSelect
             resetKey={prefix}
-            onChange={(e) => dispatchChartParam(prefix, { phase_column: e.target.value || null })}
-            options={[["", "No phases"], ...allNonValue.map((c) => [c.name, c.name])]}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => dispatchChartParam(prefix, { phase_column: e.target.value || null })}
+            options={[["", "No phases"] as [string, string], ...allNonValue.map((c) => [c.name, c.name] as [string, string])]}
             current={currentPh}
           />
         : context.phase.label,
@@ -188,7 +217,7 @@ export default function ChartChips({ state, prefix, params, context, ae, cols })
       value: ae === `${prefix}-chart`
         ? <ChipGroupSelect
             resetKey={prefix}
-            onChange={(e) => dispatchChartParam(prefix, { chart_type: e.target.value || null })}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => dispatchChartParam(prefix, { chart_type: e.target.value || null })}
             groups={CHART_TYPES}
             current={params.chart_type || ""}
             disabledSet={getDisabledChartTypes(params, cols)}
@@ -212,22 +241,22 @@ export default function ChartChips({ state, prefix, params, context, ae, cols })
       value: ae === `${prefix}-tests`
         ? (
           <span className="chip-tests-inline">
-            {NELSON_RULES.map(([id, ruleLabel]) => (
-              <label key={id} className="chip-test-toggle" onClick={(e) => e.stopPropagation()}>
+            {NELSON_RULES.map(([id, ruleLabel]: [number, string]) => (
+              <label key={id} className="chip-test-toggle" onClick={(e: ReactMouseEvent) => e.stopPropagation()}>
                 <input
                   type="checkbox"
-                  onChange={(e) => {
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => {
                     const ruleId = id;
                     if (prefix === "_pending") {
-                      spcStore.setState((s) => {
-                        const current = s.ui.pendingNewChart.nelson_tests || [];
-                        const nextRules = e.target.checked ? [...current, ruleId] : current.filter((r) => r !== ruleId);
+                      spcStore.setState((s: SPCState) => {
+                        const current = (s.ui.pendingNewChart as unknown as ChartParams).nelson_tests || [];
+                        const nextRules = e.target.checked ? [...current, ruleId] : current.filter((r: number) => r !== ruleId);
                         return { ...s, ui: { ...s.ui, pendingNewChart: { ...s.ui.pendingNewChart, nelson_tests: nextRules } } };
                       });
                     } else {
-                      spcStore.setState((s) => {
+                      spcStore.setState((s: SPCState) => {
                         const current = s.charts[prefix].params.nelson_tests || [];
-                        const nextRules = e.target.checked ? [...current, ruleId] : current.filter((r) => r !== ruleId);
+                        const nextRules = e.target.checked ? [...current, ruleId] : current.filter((r: number) => r !== ruleId);
                         return setChartParams(s, prefix, { nelson_tests: nextRules });
                       });
                       reanalyze();
@@ -254,7 +283,7 @@ export default function ChartChips({ state, prefix, params, context, ae, cols })
     }] : []),
   ];
 
-  return chips.map((chip) => {
+  return chips.map((chip: ChipDef) => {
     const isEditing = ae === chip.id;
     const isChart = chip.id.endsWith("-chart");
     const isPlaceholder = isChart && !params.chart_type;

@@ -1,10 +1,55 @@
-import { useCallback } from "react";
+import React, { useCallback } from "react";
 import { spcStore } from "../../store/spc-store.js";
 import { ROLE_LABELS, fmt, fmtShort } from "./data-prep-utils.js";
 import { profileColumn } from "../../data/data-prep-engine.js";
 import { setExpandedProfileColumn } from "../../core/state/columns.js";
+import type { DataPrepState, SPCState } from "../../types/state.js";
+import type { ColumnTable } from "arquero";
 
-function StatRow({ label, value, cls }) {
+interface ColumnInfo {
+  name: string;
+  ordinal: number;
+  dtype: string;
+  role: string | null;
+}
+
+interface DatasetItem {
+  id: string;
+  name: string;
+}
+
+interface ProfileData {
+  histogram?: number[];
+  min?: number;
+  max?: number;
+  median?: number;
+  mean?: number;
+  std?: number;
+  count: number;
+  missing: number;
+  distinct?: number;
+  minLength?: number;
+  maxLength?: number;
+  topValues?: { value: string; count: number }[];
+  p10?: number;
+  p90?: number;
+  q1?: number;
+  q3?: number;
+  cv?: number;
+  skewness?: number;
+  kurtosis?: number;
+  outlierCount?: number;
+  balanceRatio?: number;
+  emptyStrings?: number;
+}
+
+interface StatRowProps {
+  label: string;
+  value: string | number;
+  cls?: string;
+}
+
+function StatRow({ label, value, cls }: StatRowProps): React.JSX.Element {
   return (
     <div className={`stat-row${cls ? " " + cls : ""}`}>
       <span className="stat-label">{label}</span>
@@ -13,21 +58,28 @@ function StatRow({ label, value, cls }) {
   );
 }
 
-function DetailedProfile({ col, profile, onBack }) {
-  const roleLabel = col.role ? ROLE_LABELS[col.role] || col.role : null;
-  const completePct =
+interface DetailedProfileProps {
+  col: ColumnInfo;
+  profile: ProfileData;
+  onBack: () => void;
+}
+
+function DetailedProfile({ col, profile, onBack }: DetailedProfileProps): React.JSX.Element {
+  const roleLabel: string | null = col.role ? (ROLE_LABELS as Record<string, string>)[col.role] || col.role : null;
+  const completePct: number =
     profile.count > 0 ? ((profile.count - profile.missing) / profile.count) * 100 : 0;
 
-  let distributionHtml = null;
-  let quantileHtml = null;
-  let momentsHtml = null;
-  let outlierHtml = null;
-  let normalityChip = null;
+  let distributionHtml: React.JSX.Element | null = null;
+  let quantileHtml: React.JSX.Element | null = null;
+  let momentsHtml: React.JSX.Element | null = null;
+  let outlierHtml: React.JSX.Element | null = null;
+  let normalityChip: React.JSX.Element | null = null;
 
   if (col.dtype === "numeric" && profile.histogram && profile.histogram.length > 0) {
-    const skew = profile.skewness ?? 0;
-    const kurt = profile.kurtosis ?? 0;
-    let normLabel, normClass;
+    const skew: number = profile.skewness ?? 0;
+    const kurt: number = profile.kurtosis ?? 0;
+    let normLabel: string;
+    let normClass: string;
     if (Math.abs(skew) < 0.5 && Math.abs(kurt) < 1) {
       normLabel = "Approx. normal";
       normClass = "col-normality-ok";
@@ -47,7 +99,7 @@ function DetailedProfile({ col, profile, onBack }) {
           {normalityChip}
         </div>
         <div className="col-hist col-hist-lg">
-          {profile.histogram.map((h, i) => (
+          {profile.histogram.map((h: number, i: number) => (
             <span
               key={i}
               className="col-hist-bar"
@@ -96,9 +148,9 @@ function DetailedProfile({ col, profile, onBack }) {
       </div>
     );
 
-    const cvStr = profile.cv != null ? `${profile.cv.toFixed(1)}%` : "\u2014";
-    const skewStr = profile.skewness != null ? profile.skewness.toFixed(3) : "\u2014";
-    const kurtStr =
+    const cvStr: string = profile.cv != null ? `${profile.cv.toFixed(1)}%` : "\u2014";
+    const skewStr: string = profile.skewness != null ? profile.skewness.toFixed(3) : "\u2014";
+    const kurtStr: string =
       profile.kurtosis != null ? `${profile.kurtosis.toFixed(3)} (excess)` : "\u2014";
 
     momentsHtml = (
@@ -123,7 +175,7 @@ function DetailedProfile({ col, profile, onBack }) {
     );
 
     if (profile.outlierCount != null) {
-      const outlierPct =
+      const outlierPct: string =
         profile.count > 0 ? ((profile.outlierCount / profile.count) * 100).toFixed(1) : "0";
       outlierHtml = (
         <div className="col-detail-section">
@@ -142,11 +194,11 @@ function DetailedProfile({ col, profile, onBack }) {
       );
     }
   } else if (profile.topValues && profile.topValues.length > 0) {
-    const maxCount = profile.topValues[0].count;
+    const maxCount: number = profile.topValues[0].count;
 
-    const br = profile.balanceRatio;
-    let balanceNote = "";
-    let balanceClass = "";
+    const br: number | undefined = profile.balanceRatio;
+    let balanceNote: string = "";
+    let balanceClass: string = "";
     if (br != null) {
       if (br <= 1.5) {
         balanceNote = `Even distribution (ratio ${br.toFixed(1)}:1)`;
@@ -168,10 +220,10 @@ function DetailedProfile({ col, profile, onBack }) {
           {normalityChip}
         </div>
         <div className="col-top-values">
-          {profile.topValues.slice(0, 10).map((t, i) => {
-            const pct = maxCount > 0 ? ((t.count / maxCount) * 100).toFixed(0) : 0;
-            const countPct =
-              profile.count > 0 ? ((t.count / profile.count) * 100).toFixed(1) : 0;
+          {profile.topValues.slice(0, 10).map((t: { value: string; count: number }, i: number) => {
+            const pct: string = maxCount > 0 ? ((t.count / maxCount) * 100).toFixed(0) : "0";
+            const countPct: string =
+              profile.count > 0 ? ((t.count / profile.count) * 100).toFixed(1) : "0";
             return (
               <div key={i} className="col-top-row">
                 <span className="col-top-label mono">
@@ -203,16 +255,16 @@ function DetailedProfile({ col, profile, onBack }) {
           }
           cls={profile.missing > 0 ? "stat-row-warn" : ""}
         />
-        <StatRow label="Distinct values" value={profile.distinct} />
+        <StatRow label="Distinct values" value={profile.distinct ?? 0} />
         <StatRow
           label="Cardinality"
-          value={`${((profile.distinct / Math.max(profile.count, 1)) * 100).toFixed(1)}% unique`}
+          value={`${(((profile.distinct ?? 0) / Math.max(profile.count, 1)) * 100).toFixed(1)}% unique`}
         />
         {profile.minLength != null && (
           <StatRow label="Value length" value={`${profile.minLength}\u2013${profile.maxLength} chars`} />
         )}
-        {profile.emptyStrings > 0 && (
-          <StatRow label="Empty strings" value={profile.emptyStrings} cls="stat-row-warn" />
+        {(profile.emptyStrings ?? 0) > 0 && (
+          <StatRow label="Empty strings" value={profile.emptyStrings!} cls="stat-row-warn" />
         )}
       </div>
     );
@@ -258,12 +310,19 @@ function DetailedProfile({ col, profile, onBack }) {
   );
 }
 
-export default function DatasetMetadata({ dataPrep, columns }) {
-  const datasets = spcStore.getState().datasets;
-  const ds = datasets.find((d) => d.id === dataPrep.selectedDatasetId);
+interface DatasetMetadataProps {
+  dataPrep: DataPrepState;
+  columns: ColumnInfo[];
+}
 
-  const handleBack = useCallback(() => {
-    spcStore.setState(setExpandedProfileColumn(spcStore.getState(), null));
+export default function DatasetMetadata({ dataPrep, columns }: DatasetMetadataProps): React.JSX.Element {
+  const state: SPCState = spcStore.getState();
+  const datasets = state.datasets as unknown as DatasetItem[];
+  const ds: DatasetItem | undefined = datasets.find((d: DatasetItem) => d.id === dataPrep.selectedDatasetId);
+
+  const handleBack = useCallback((): void => {
+    const s: SPCState = spcStore.getState();
+    spcStore.setState({ ...s, dataPrep: { ...s.dataPrep, expandedProfileColumn: null } });
   }, []);
 
   if (!ds) {
@@ -278,16 +337,16 @@ export default function DatasetMetadata({ dataPrep, columns }) {
     );
   }
 
-  const cols = columns || [];
-  const table = dataPrep.arqueroTable;
-  const cache = dataPrep.profileCache || {};
-  const selectedCol = dataPrep.expandedProfileColumn;
+  const cols: ColumnInfo[] = columns || [];
+  const table = dataPrep.arqueroTable as ColumnTable | null;
+  const cache: Record<string, ProfileData> = (dataPrep.profileCache || {}) as Record<string, ProfileData>;
+  const selectedCol: string | null = dataPrep.expandedProfileColumn;
 
   if (table && cols.length > 0) {
     for (const c of cols) {
       if (!cache[c.name]) {
         try {
-          cache[c.name] = profileColumn(table, c.name, c.dtype);
+          cache[c.name] = profileColumn(table, c.name, c.dtype) as ProfileData;
         } catch {
           /* skip */
         }
@@ -295,18 +354,18 @@ export default function DatasetMetadata({ dataPrep, columns }) {
     }
   }
 
-  let panel = null;
+  let panel: React.JSX.Element | null = null;
   if (selectedCol) {
-    const c = cols.find((col) => col.name === selectedCol);
+    const c: ColumnInfo | undefined = cols.find((col: ColumnInfo) => col.name === selectedCol);
     if (c && cache[c.name]) {
       panel = <DetailedProfile col={c} profile={cache[c.name]} onBack={handleBack} />;
     }
   }
 
-  const totalRows = table ? table.numRows() : dataPrep.datasetPoints.length;
-  const numCols = cols.filter((c) => c.dtype === "numeric");
-  const textCols = cols.filter((c) => c.dtype !== "numeric");
-  const totalMissing = Object.values(cache).reduce((sum, p) => sum + (p.missing || 0), 0);
+  const totalRows: number = table ? table.numRows() : dataPrep.datasetPoints.length;
+  const numCols: ColumnInfo[] = cols.filter((c: ColumnInfo) => c.dtype === "numeric");
+  const textCols: ColumnInfo[] = cols.filter((c: ColumnInfo) => c.dtype !== "numeric");
+  const totalMissing: number = Object.values(cache).reduce((sum: number, p: ProfileData) => sum + (p.missing || 0), 0);
 
   if (!panel) {
     panel = (

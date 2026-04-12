@@ -8,8 +8,8 @@ import ContextMenu from "./components/ContextMenu.jsx";
 import Router from "./components/Router.jsx";
 import ShortcutOverlay from "./components/ShortcutOverlay.jsx";
 
-export default function App() {
-  const mainRef = useRef(null);
+export default function App(): React.JSX.Element {
+  const mainRef = useRef<HTMLDivElement>(null);
 
   useAppBoot();
   useKeyboardShortcuts(mainRef);

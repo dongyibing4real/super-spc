@@ -3,15 +3,72 @@
  *
  * Extracted from legacy-boot.js to be importable by both legacy code and React Chart.jsx.
  */
+import type { SPCState, ChartSlot, ChartPoint, ChartToggles, ChartLimits, ContextField, SlotPhase, ForecastResult, DriftSummary } from "../types/state.js";
 import { detectRuleViolations, getCapability } from "../core/state/selectors.js";
 import { setXDomainOverride, setForecastHorizon } from "../core/state/chart.js";
 
 const DEFAULT_FORECAST_HORIZON = 6;
 
-export function getChartPoints(slot, globalPoints) {
+interface SyntheticPoint {
+  primaryValue: number;
+  label: string;
+  subgroupLabel: string;
+  excluded: boolean;
+  annotation: null;
+  raw: Record<string, string>;
+}
+
+interface ForecastLimits {
+  ucl: number;
+  lcl: number;
+  center: number;
+}
+
+interface ChartForecast {
+  mode: string;
+  horizon: number;
+  visibleHorizon: number;
+  result: ForecastResult | null;
+  driftSummary: DriftSummary | null;
+  predicting: boolean;
+  limits: ForecastLimits;
+}
+
+interface DomainRange {
+  min: number;
+  max: number;
+}
+
+interface ChartDataToggles extends ChartToggles {
+  overlay: boolean;
+  xDomainOverride: { min: number; max: number } | null;
+  xDefaultDomain: DomainRange;
+  yDomainOverride: { yMin: number; yMax: number } | null;
+}
+
+export interface ChartData {
+  points: (ChartPoint | SyntheticPoint)[];
+  limits: ChartLimits;
+  phases: SlotPhase[];
+  forecast: ChartForecast;
+  toggles: ChartDataToggles;
+  selectedIndex: number | null;
+  selectedIndices: number[] | null;
+  selectedPhaseIndex: number | null;
+  violations: Map<number, string[]>;
+  capability: { cpk: number | null; ppk: number | null; cp: number | null };
+  metric: ContextField;
+  subgroup: ContextField;
+  phase: ContextField;
+  chartType: ContextField;
+  seriesKey: string;
+  seriesType: string;
+}
+
+export function getChartPoints(slot: ChartSlot, globalPoints: ChartPoint[]): (ChartPoint | SyntheticPoint)[] {
   const hasChartValues = slot.chartValues && slot.chartValues.length > 0;
   return hasChartValues
-    ? slot.chartValues.map((v, i) => ({
+    ? slot.chartValues.map((v: number, i: number): SyntheticPoint => ({
         primaryValue: v,
         label: slot.chartLabels[i] || `pt-${i}`,
         subgroupLabel: slot.chartLabels[i] || `pt-${i}`,
@@ -22,7 +79,7 @@ export function getChartPoints(slot, globalPoints) {
     : globalPoints;
 }
 
-export function ensureForecastVisible(nextState, chartId) {
+export function ensureForecastVisible(nextState: SPCState, chartId: string): SPCState {
   const slot = nextState.charts[chartId];
   if (!slot) return nextState;
   const points = getChartPoints(slot, nextState.points);
@@ -36,7 +93,7 @@ export function ensureForecastVisible(nextState, chartId) {
   return setXDomainOverride(nextState, currentOverride.min, requiredMax, chartId);
 }
 
-export function growForecastHorizonToFit(nextState, chartId, nextXMax) {
+export function growForecastHorizonToFit(nextState: SPCState, chartId: string, nextXMax: number): SPCState {
   const slot = nextState.charts[chartId];
   const mode = slot?.forecast?.mode;
   if (!slot || (mode !== "active" && mode !== "loading")) return nextState;
@@ -50,11 +107,11 @@ export function growForecastHorizonToFit(nextState, chartId, nextXMax) {
 
 /**
  * Build the full data payload a D3 chart needs to render.
- * @param {string} chartId — chart slot ID (e.g. "chart-1")
- * @param {object} state — full app state (required)
- * @returns {object} — { points, limits, phases, forecast, toggles, selectedIndex, ... }
+ * @param chartId — chart slot ID (e.g. "chart-1")
+ * @param state — full app state (required)
+ * @returns chart data object or null
  */
-export function buildChartData(chartId, state) {
+export function buildChartData(chartId: string, state: SPCState): ChartData | null {
   const slot = state.charts[chartId];
   if (!slot) return null;
 
@@ -68,7 +125,7 @@ export function buildChartData(chartId, state) {
   const lastIdx = Math.max(0, points.length - 1);
 
   // Forecast data comes from backend (stored in slot.forecast by API response)
-  const forecastState = slot.forecast || {};
+  const forecastState = slot.forecast || {} as ChartSlot["forecast"];
   const forecastMode = forecastState.mode || "hidden";
   const forecastHorizon = forecastState.horizon ?? DEFAULT_FORECAST_HORIZON;
 
@@ -76,7 +133,7 @@ export function buildChartData(chartId, state) {
   const xDefaultMax = (forecastMode === "active" || forecastMode === "loading")
     ? lastIdx + forecastHorizon
     : lastIdx;
-  const xDefaultDomain = { min: 0, max: xDefaultMax };
+  const xDefaultDomain: DomainRange = { min: 0, max: xDefaultMax };
 
   const visibleForecastSpace = Math.max(0, (slot.overrides.x?.max ?? xDefaultDomain.max) - lastIdx);
   const visibleHorizon = Math.max(0, Math.min(forecastHorizon, visibleForecastSpace));
@@ -84,17 +141,17 @@ export function buildChartData(chartId, state) {
   // The forecast extends from the last data point, which belongs to the last phase.
   const phases = slot.phases || [];
   const lastPhase = phases.length > 0 ? phases[phases.length - 1] : null;
-  const forecastLimits = lastPhase?.limits
+  const forecastLimits: ForecastLimits = lastPhase?.limits
     ? { ucl: lastPhase.limits.ucl, lcl: lastPhase.limits.lcl, center: lastPhase.limits.center }
     : { ucl: slot.limits.ucl, lcl: slot.limits.lcl, center: slot.limits.center };
 
-  const forecast = {
+  const forecast: ChartForecast = {
     mode: forecastState.mode || "hidden",
     horizon: forecastState.horizon ?? DEFAULT_FORECAST_HORIZON,
     visibleHorizon,
     result: forecastState.result || null,
     driftSummary: forecastState.driftSummary || null,
-    predicting: !!forecastState.predicting,
+    predicting: !!(forecastState as unknown as Record<string, unknown>).predicting,
     limits: forecastLimits,
   };
 

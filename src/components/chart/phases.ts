@@ -1,24 +1,38 @@
+import type { Selection } from 'd3-selection';
+import type { ChartScales } from './scales.js';
+
+interface PhaseData {
+  start: number;
+  end: number;
+  label?: string;
+  id: string;
+}
+
+interface PhasesData {
+  phases?: PhaseData[];
+  phase?: { label?: string };
+  selectedPhaseIndex?: number | null;
+}
+
+interface PhasesConfig {
+  padding: { top: number; right: number; bottom: number; left: number };
+  width: number;
+  height: number;
+  phaseHeaderHeight?: number;
+  onSelectPoint?: ((index: number | null) => void) | null;
+  onSelectPhase?: ((index: number | null) => void) | null;
+}
+
 /**
  * Render SPC phase boundaries and labels (JMP-style).
- *
- * SPC phases represent distinct process states (e.g., before/after a
- * tooling change). Each phase computes its own control limits, so the
- * chart must visually delineate where one phase ends and another begins.
- *
- * JMP convention: a horizontal header band sits above the plot area,
- * spanning each phase's width. Each phase gets a labeled strip with
- * a uniform subtle background so users instantly see the chart has
- * phases and which region belongs to which phase. Vertical divider
- * lines extend from the header through the chart plot area.
- *
- * Header clicks: clicking a phase header selects that phase, which
- * highlights its region and shows phase-specific edge labels. Clicking
- * the selected header again or empty space deselects.
- *
- * Edge labels: only shown for the selected phase to avoid ambiguity
- * when different phases have different limit values.
  */
-export function renderPhases(layer, labelLayer, scales, data, config) {
+export function renderPhases(
+  layer: Selection<SVGGElement, unknown, null, undefined>,
+  labelLayer: Selection<SVGGElement, unknown, null, undefined>,
+  scales: ChartScales,
+  data: PhasesData,
+  config: PhasesConfig
+): void {
   const { x } = scales;
   const T = config.padding.top;
   const B = config.height - config.padding.bottom;
@@ -32,11 +46,10 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
   if (!data.phases || data.phases.length <= 1) return;
 
   // ── Header band background strips (unclipped — above plot area) ──
-  // The header band sits in the space between (T - headerH) and T.
   const bandTop = T - headerH;
   const bandBot = T;
 
-  // Full-width header background (single uniform fill — JMP convention, no alternating bands)
+  // Full-width header background
   labelLayer.append('rect')
     .attr('class', 'phase-header-bg')
     .attr('x', L).attr('y', bandTop)
@@ -44,8 +57,6 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
     .attr('fill', 'rgba(147,153,163,0.06)');
 
   // ── "Phase: {variable}" label in the left gutter of the header band ──
-  // JMP convention: tells the user this band represents phase grouping
-  // and which column variable defines the phases.
   const phaseVarLabel = data.phase?.label || '';
   const hasVarName = phaseVarLabel && phaseVarLabel !== 'Single phase' && phaseVarLabel !== 'No phases';
   const prefixFontSize = Math.max(7, Math.min(9, headerH * 0.55));
@@ -66,7 +77,7 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
 
   const selectedPhaseIndex = data.selectedPhaseIndex;
 
-  data.phases.forEach((ph, i) => {
+  data.phases.forEach((ph: PhaseData, i: number) => {
     const sx = Math.max(x(ph.start), L);
     const ex = Math.min(x(ph.end), R);
     const pw = ex - sx;
@@ -74,10 +85,7 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
 
     const isSelected = selectedPhaseIndex === i;
 
-    // Selected phase fill in the plot area (clipped layer — subtle blue tint)
-    // Clicking inside the selected phase deselects any selected point
-    // but keeps the phase selected (stopPropagation prevents the SVG
-    // background handler from also deselecting the phase).
+    // Selected phase fill in the plot area
     if (isSelected) {
       layer.append('rect')
         .attr('class', 'phase-selected-fill')
@@ -85,7 +93,7 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
         .attr('width', pw).attr('height', B - T)
         .attr('fill', 'rgba(45,114,210,0.04)')
         .style('cursor', 'default')
-        .on('click', (event) => {
+        .on('click', (event: MouseEvent) => {
           event.stopPropagation();
           config.onSelectPoint?.(null);
         });
@@ -99,7 +107,7 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
       .attr('fill', isSelected ? 'rgba(45,114,210,0.10)' : 'transparent')
       .style('cursor', 'pointer');
 
-    hitRect.on('click', (event) => {
+    hitRect.on('click', (event: MouseEvent) => {
       event.stopPropagation();
       config.onSelectPhase?.(i);
     });
@@ -126,8 +134,8 @@ export function renderPhases(layer, labelLayer, scales, data, config) {
     .attr('stroke', 'rgba(147,153,163,0.25)')
     .attr('stroke-width', 0.5);
 
-  // ── Vertical boundary lines between phases (extend from header top through chart) ──
-  data.phases.slice(1).forEach(ph => {
+  // ── Vertical boundary lines between phases ──
+  data.phases.slice(1).forEach((ph: PhaseData) => {
     const bx = x(ph.start);
 
     // Line through header band (unclipped)

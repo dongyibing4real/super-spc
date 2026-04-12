@@ -1,22 +1,35 @@
+import type { Selection } from 'd3-selection';
+import type { ChartScales } from './scales.js';
+
+interface EventPoint {
+  annotation: string | null;
+  [key: string]: unknown;
+}
+
+interface EventData {
+  points: EventPoint[];
+}
+
+interface EventConfig {
+  height: number;
+  padding: { top: number; right: number; bottom: number; left: number };
+}
+
 /**
  * Render event annotation lines and chips.
- *
- * Event markers represent external occurrences (tool changes, lot boundaries,
- * recipe updates) that may explain process shifts visible in the SPC chart.
- * Each marker is a vertical line from the header area to the x-axis, with
- * a small chip label describing the event.
- *
- * In SPC context, event annotations help engineers correlate assignable
- * causes with statistical signals (e.g., a rule violation coinciding with
- * a known equipment change).
  */
-export function renderEvents(layer, scales, data, config) {
+export function renderEvents(
+  layer: Selection<SVGGElement, unknown, null, undefined>,
+  scales: ChartScales,
+  data: EventData,
+  config: EventConfig
+): void {
   const { x } = scales;
   const B = config.height - config.padding.bottom;
 
   layer.selectAll('*').remove();
 
-  data.points.forEach((p, i) => {
+  data.points.forEach((p: EventPoint, i: number) => {
     if (!p.annotation) return;
     const cx = x(i);
 

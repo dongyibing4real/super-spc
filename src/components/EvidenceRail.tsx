@@ -1,18 +1,34 @@
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
 import { deriveWorkspace, getFocused } from "../core/state/selectors.js";
 import { toneClass } from "../helpers.js";
+import type { SPCState, ChartSlot } from "../types/state.js";
 
+interface RuleBreakdownItem {
+  testId: string;
+  count: number;
+  description?: string;
+}
 
-function fmtVal(v) {
+interface BreakdownData {
+  inControl: number;
+  oocCount: number;
+  ruleBreakdown: RuleBreakdownItem[];
+}
+
+function fmtVal(v: number | null | undefined): string {
   return v != null ? Number(v).toFixed(3) : "-";
 }
 
-function Breakdown({ breakdown }) {
+interface BreakdownProps {
+  breakdown: BreakdownData | null;
+}
+
+function Breakdown({ breakdown }: BreakdownProps): React.JSX.Element | null {
   if (!breakdown) return null;
   const { inControl, oocCount, ruleBreakdown } = breakdown;
-  const nelsonRules = ruleBreakdown.filter((r) => r.testId !== "1");
+  const nelsonRules: RuleBreakdownItem[] = ruleBreakdown.filter((r: RuleBreakdownItem) => r.testId !== "1");
   return (
     <div className="rail-section breakdown-stats">
       <p className="eyebrow">Status</p>
@@ -32,7 +48,7 @@ function Breakdown({ breakdown }) {
             Nelson Tests
           </p>
           <ul className="evidence-list">
-            {nelsonRules.map((r) => (
+            {nelsonRules.map((r: RuleBreakdownItem) => (
               <li key={r.testId}>
                 <span>R{r.testId}</span>
                 <strong className="warning">
@@ -47,18 +63,84 @@ function Breakdown({ breakdown }) {
   );
 }
 
-export default function EvidenceRail() {
-  const focusedChartId = useStore(spcStore, (s) => s.focusedChartId);
-  const selectedPointIndex = useStore(spcStore, (s) => s.selectedPointIndex);
-  const selectedPointIndices = useStore(spcStore, (s) => s.selectedPointIndices);
-  const points = useStore(spcStore, (s) => s.points);
-  const transforms = useStore(spcStore, (s) => s.transforms);
-  const pipeline = useStore(spcStore, (s) => s.pipeline);
-  const charts = useStore(spcStore, (s) => s.charts);
-  const chartOrder = useStore(spcStore, (s) => s.chartOrder);
+interface WorkspaceSignal {
+  statusTone: string;
+  title: string;
+  confidence: string;
+}
 
-  const workspace = useMemo(
-    () => deriveWorkspace(spcStore.getState()),
+interface WorkspacePoint {
+  label: string;
+}
+
+interface WorkspaceSelectedPoints {
+  count: number;
+  oocCount: number;
+  excludedCount: number;
+  mean: number | null;
+  stdDev: number | null;
+  min: number | null;
+  max: number | null;
+  range: number | null;
+  inControl: number;
+  ruleBreakdown: RuleBreakdownItem[];
+}
+
+interface WorkspacePhase {
+  index: number;
+  label: string;
+  oocCount: number;
+  pointCount: number;
+  ucl: number | null;
+  center: number | null;
+  lcl: number | null;
+  range: number | null;
+  sigma: number | null;
+  inControl: number;
+  ruleBreakdown: RuleBreakdownItem[];
+}
+
+interface EvidenceItem {
+  label: string;
+  value: string;
+  resolved: boolean;
+  category: string;
+}
+
+interface RuleAtPoint {
+  testId: string;
+  description: string;
+}
+
+interface WhyTriggeredItem {
+  description?: string;
+  count?: number;
+}
+
+interface Workspace {
+  signal: WorkspaceSignal;
+  selectedPoint: WorkspacePoint | null;
+  hasPointSelection: boolean;
+  pointBreakdown: BreakdownData | null;
+  selectedPoints: WorkspaceSelectedPoints | null;
+  rulesAtPoint: RuleAtPoint[];
+  whyTriggered: (string | WhyTriggeredItem)[];
+  evidence: EvidenceItem[];
+  selectedPhase: WorkspacePhase | null;
+}
+
+export default function EvidenceRail(): React.JSX.Element {
+  const focusedChartId = useStore(spcStore, (s: SPCState) => s.focusedChartId);
+  const selectedPointIndex = useStore(spcStore, (s: SPCState) => s.selectedPointIndex);
+  const selectedPointIndices = useStore(spcStore, (s: SPCState) => s.selectedPointIndices);
+  const points = useStore(spcStore, (s: SPCState) => s.points);
+  const transforms = useStore(spcStore, (s: SPCState) => s.transforms);
+  const pipeline = useStore(spcStore, (s: SPCState) => s.pipeline);
+  const charts = useStore(spcStore, (s: SPCState) => s.charts);
+  const chartOrder = useStore(spcStore, (s: SPCState) => s.chartOrder);
+
+  const workspace: Workspace = useMemo(
+    () => deriveWorkspace(spcStore.getState()) as Workspace,
     [focusedChartId, selectedPointIndex, selectedPointIndices, points, transforms, pipeline, charts, chartOrder]
   );
 
@@ -74,10 +156,10 @@ export default function EvidenceRail() {
     selectedPhase,
   } = workspace;
 
-  const tone = toneClass(signal.statusTone);
-  const chartEvidence = evidence.filter((e) => e.category === "chart");
-  const focusedSlot = getFocused(spcStore.getState());
-  const chartLabel = focusedSlot?.context?.chartType?.label || "-";
+  const tone: string = toneClass(signal.statusTone);
+  const chartEvidence: EvidenceItem[] = evidence.filter((e: EvidenceItem) => e.category === "chart");
+  const focusedSlot = getFocused(spcStore.getState()) as ChartSlot | null;
+  const chartLabel: string = focusedSlot?.context?.chartType?.label || "-";
 
   return (
     <aside className="evidence-rail">
@@ -99,7 +181,7 @@ export default function EvidenceRail() {
               </span>
               {rulesAtPoint.length > 0 && (
                 <div className="rule-tags">
-                  {rulesAtPoint.map((r) => (
+                  {rulesAtPoint.map((r: RuleAtPoint) => (
                     <span
                       key={r.testId}
                       className="rule-tag"
@@ -146,7 +228,7 @@ export default function EvidenceRail() {
             </div>
           </div>
 
-          <Breakdown breakdown={selectedPoints} />
+          <Breakdown breakdown={selectedPoints as BreakdownData} />
 
           <div className="rail-section selection-stats">
             <p className="eyebrow">Summary Statistics</p>
@@ -204,7 +286,7 @@ export default function EvidenceRail() {
             </div>
           </div>
 
-          <Breakdown breakdown={selectedPhase} />
+          <Breakdown breakdown={selectedPhase as BreakdownData} />
 
           <div className="rail-section phase-limits">
             <p className="eyebrow">Control Limits</p>
@@ -249,14 +331,14 @@ export default function EvidenceRail() {
       <div className="rail-section">
         <p className="eyebrow">Violations</p>
         <ul className="rail-list">
-          {whyTriggered.map((item, i) =>
+          {whyTriggered.map((item: string | WhyTriggeredItem, i: number) =>
             typeof item === "string" ? (
               <li key={i}>{item}</li>
             ) : (
-              <li key={item.description || i}>
-                {item.description} -{" "}
+              <li key={(item as WhyTriggeredItem).description || i}>
+                {(item as WhyTriggeredItem).description} -{" "}
                 <strong className="violation-count">
-                  {item.count} point{item.count !== 1 ? "s" : ""}
+                  {(item as WhyTriggeredItem).count} point{(item as WhyTriggeredItem).count !== 1 ? "s" : ""}
                 </strong>{" "}
                 flagged.
               </li>
@@ -268,7 +350,7 @@ export default function EvidenceRail() {
       <div className="rail-section">
         <p className="eyebrow">Method</p>
         <ul className="evidence-list">
-          {chartEvidence.map((item) => (
+          {chartEvidence.map((item: EvidenceItem) => (
             <li
               key={item.label}
               className={item.resolved ? "" : "unresolved"}

@@ -4,6 +4,9 @@
  * These functions compose multiple primitive reducers (setColumns, setRecipeParams,
  * loadDataset, setStructuralFindings) into complete state transitions.
  */
+import type { SPCState, ChartSlot, ChartContext, ChartPoint, ForecastState } from '../../types/state.js';
+import type { ColumnOut, DataRowOut, AnalysisResult } from '../../types/api.js';
+import type { SlotFields } from '../../data/transforms.js';
 import { getFirstChart } from './selectors.js';
 import { loadDataset } from './pipeline.js';
 import { setRecipeParams } from './reconcile-params.js';
@@ -14,21 +17,37 @@ import { buildInitialChartContext, mapAnalysisToSlotFields, mapRowsToChartPoints
 import { generateFindings } from '../findings-engine.js';
 
 /** Expected rejection messages that indicate incomplete config, not real errors. */
-const SILENT_REJECTIONS = new Set([
+const SILENT_REJECTIONS: Set<string> = new Set([
   "No chart type selected.",
 ]);
 
-function isExpectedRejection(reason) {
+interface RejectionReason {
+  message?: string;
+}
+
+interface SettledResult {
+  status: "fulfilled" | "rejected";
+  value?: AnalysisResult;
+  reason?: RejectionReason;
+}
+
+function isExpectedRejection(reason: RejectionReason | undefined): boolean {
   if (!reason?.message) return false;
   if (SILENT_REJECTIONS.has(reason.message)) return true;
   if (reason.message.includes("requires a subgroup column")) return true;
   return false;
 }
 
-function buildWarningNotice(failedCharts, analysisResults) {
+interface WarningNotice {
+  tone: string;
+  title: string;
+  body: string;
+}
+
+function buildWarningNotice(failedCharts: string[], analysisResults: SettledResult[] | undefined): WarningNotice | null {
   if (failedCharts.length === 0) return null;
   // Filter out expected incomplete-config rejections
-  const realFailures = [];
+  const realFailures: SettledResult[] = [];
   if (analysisResults) {
     for (const r of analysisResults) {
       if (r.status === "rejected" && !isExpectedRejection(r.reason)) {
@@ -45,7 +64,7 @@ function buildWarningNotice(failedCharts, analysisResults) {
   };
 }
 
-export function applyColumnRolesToChartParams(state, columns) {
+export function applyColumnRolesToChartParams(state: SPCState, columns: ColumnOut[]): SPCState {
   let next = setColumns(state, columns);
   const valueName = columns.find((c) => c.role === "value")?.name || null;
   const subgroupName = columns.find((c) => c.role === "subgroup")?.name || null;
@@ -64,16 +83,33 @@ export function applyColumnRolesToChartParams(state, columns) {
   return next;
 }
 
-export function buildSuccessfulAnalysisSlots(state, analysisResults, baseContext) {
-  const slots = {};
+interface AnalysisSlotResult {
+  context: ChartContext;
+  limits: Record<string, unknown>;
+  capability: Record<string, unknown> | null;
+  violations: Record<string, unknown>[];
+  sigma: Record<string, unknown> | null;
+  zones: Record<string, unknown> | null;
+  chartValues: number[];
+  chartLabels: string[];
+  phases: Record<string, unknown>[];
+  forecast: ForecastState;
+}
+
+export function buildSuccessfulAnalysisSlots(
+  state: SPCState,
+  analysisResults: SettledResult[],
+  baseContext: ChartContext
+): Record<string, Partial<ChartSlot>> {
+  const slots: Record<string, Partial<ChartSlot>> = {};
   state.chartOrder.forEach((id, i) => {
     if (analysisResults[i]?.status !== "fulfilled") return;
 
     const params = state.charts[id].params;
-    const transformed = mapAnalysisToSlotFields(analysisResults[i].value, params.usl, params.lsl);
+    const transformed = mapAnalysisToSlotFields(analysisResults[i].value!, params.usl, params.lsl);
     slots[id] = {
       context: applyParamsToContext(baseContext, params),
-      limits: { ...transformed.limits, target: params.target ?? null },
+      limits: { ...transformed.limits, target: params.target ?? null } as ChartSlot["limits"],
       capability: transformed.capability,
       violations: transformed.violations,
       sigma: transformed.sigma,
@@ -88,6 +124,7 @@ export function buildSuccessfulAnalysisSlots(state, analysisResults, baseContext
         timeBudget: state.charts[id]?.forecast?.timeBudget ?? 3,
         result: null,
         driftSummary: null,
+        cacheKey: null,
         visibleHorizon: state.charts[id]?.forecast?.horizon ?? 6,
       },
     };
@@ -95,12 +132,25 @@ export function buildSuccessfulAnalysisSlots(state, analysisResults, baseContext
   return slots;
 }
 
-export function finalizeDatasetLoad(state, { datasetId, datasets, points, columns, analysisResults }) {
+interface DatasetLoadPayload {
+  datasetId: string;
+  datasets: { id: string; name: string }[];
+  points: DataRowOut[];
+  columns: ColumnOut[];
+  analysisResults: SettledResult[];
+}
+
+interface AnalysisOutcome {
+  nextState: SPCState;
+  failedCharts: string[];
+}
+
+export function finalizeDatasetLoad(state: SPCState, { datasetId, datasets, points, columns, analysisResults }: DatasetLoadPayload): AnalysisOutcome {
   let next = applyColumnRolesToChartParams(state, columns);
   const dataset = datasets.find((item) => item.id === datasetId);
   const baseContext = dataset ? buildInitialChartContext(dataset, columns) : getFirstChart(next).context;
   const slots = buildSuccessfulAnalysisSlots(next, analysisResults, baseContext);
-  const failedCharts = next.chartOrder.filter((_, i) => analysisResults[i]?.status === "rejected");
+  const failedCharts = next.chartOrder.filter((_: string, i: number) => analysisResults[i]?.status === "rejected");
 
   next = loadDataset(next, {
     points: mapRowsToChartPoints(points, columns),
@@ -117,13 +167,18 @@ export function finalizeDatasetLoad(state, { datasetId, datasets, points, column
   return { nextState: next, failedCharts };
 }
 
-export function finalizeReanalysis(state, { points, analysisResults }) {
-  const datasetId = state.activeDatasetId;
+interface ReanalysisPayload {
+  points: DataRowOut[];
+  analysisResults: SettledResult[];
+}
+
+export function finalizeReanalysis(state: SPCState, { points, analysisResults }: ReanalysisPayload): AnalysisOutcome {
+  const datasetId = state.activeDatasetId!;
   const columns = state.columnConfig.columns;
   const dataset = state.datasets.find((item) => item.id === datasetId);
   const baseContext = dataset ? buildInitialChartContext(dataset, columns) : getFirstChart(state).context;
   const slots = buildSuccessfulAnalysisSlots(state, analysisResults, baseContext);
-  const failedCharts = state.chartOrder.filter((_, i) => analysisResults[i]?.status === "rejected");
+  const failedCharts = state.chartOrder.filter((_: string, i: number) => analysisResults[i]?.status === "rejected");
 
   let next = loadDataset(state, {
     points: mapRowsToChartPoints(points, columns),

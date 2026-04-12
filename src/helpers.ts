@@ -3,24 +3,40 @@
  * Pure functions, no side effects, no mutable state.
  */
 
-export function clamp(value, min, max) {
+export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export function toneClass(tone) {
-  return { critical: "critical", info: "info", neutral: "neutral", positive: "positive", warning: "warning" }[tone] || "neutral";
+export function toneClass(tone: string): string {
+  return ({ critical: "critical", info: "info", neutral: "neutral", positive: "positive", warning: "warning" } as Record<string, string>)[tone] || "neutral";
 }
 
-export function capClass(val, threshold = 1.33, marginal = 1.0) {
-  const v = parseFloat(val);
+export function capClass(val: number | string, threshold: number = 1.33, marginal: number = 1.0): string {
+  const v = parseFloat(String(val));
   if (v >= threshold) return "good";
   if (v >= marginal) return "marginal";
   return "poor";
 }
 
-export function computeStats(points) {
+interface StatsPoint {
+  value?: number | null;
+  primaryValue?: number | null;
+  subgroup?: string | null;
+}
+
+interface StatsResult {
+  n: number;
+  mean: number;
+  std: number;
+  min: number;
+  max: number;
+  median: number;
+  subgroupCount: number;
+}
+
+export function computeStats(points: StatsPoint[]): StatsResult | null {
   if (!points || !points.length) return null;
-  const values = points.map(p => p.value).filter(v => v != null && !isNaN(v));
+  const values = points.map(p => p.value).filter((v): v is number => v != null && !isNaN(v));
   const n = values.length;
   if (n === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -33,7 +49,7 @@ export function computeStats(points) {
   return { n, mean, std, min: sorted[0], max: sorted[n - 1], median, subgroupCount: subgroups.size };
 }
 
-export function formatDate(isoStr) {
+export function formatDate(isoStr: string | null | undefined): string {
   if (!isoStr) return "\u2014";
   const d = new Date(isoStr);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });

@@ -1,15 +1,25 @@
-import { useRef, useEffect } from "react";
+import React, { useRef, useEffect } from "react";
 import { useChartData } from "../hooks/useChartData.js";
 import { createChart } from "./chart/index.js";
 import { buildChartCallbacks, cleanupForecastState } from "./chart-callbacks.js";
+
+interface ChartProps {
+  chartId: string;
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
+}
+
+interface ChartInstance {
+  update: (data: unknown) => void;
+  destroy: () => void;
+}
 
 /**
  * React wrapper around the D3 createChart factory.
  * React manages the mount lifecycle; D3 owns the SVG content.
  */
-export default function Chart({ chartId, onContextMenu: onContextMenuProp }) {
-  const mountRef = useRef(null);
-  const chartRef = useRef(null);
+export default function Chart({ chartId, onContextMenu: onContextMenuProp }: ChartProps): React.JSX.Element {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<ChartInstance | null>(null);
 
   // Single memoized selector — only recomputes when chart-relevant state changes
   const data = useChartData(chartId);
@@ -18,7 +28,7 @@ export default function Chart({ chartId, onContextMenu: onContextMenuProp }) {
   useEffect(() => {
     if (!mountRef.current) return;
 
-    chartRef.current = createChart(mountRef.current, buildChartCallbacks(chartId));
+    chartRef.current = createChart(mountRef.current, buildChartCallbacks(chartId) as Parameters<typeof createChart>[1]) as ChartInstance;
 
     return () => {
       cleanupForecastState(chartId);

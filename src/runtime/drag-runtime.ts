@@ -1,10 +1,14 @@
-export function getDropZone(paneEl, clientX, clientY, prevZone) {
+import type { SPCState, ChartLayout } from "../types/state.ts";
+
+type DropZone = "top" | "bottom" | "left" | "right" | "center";
+
+export function getDropZone(paneEl: HTMLElement, clientX: number, clientY: number, prevZone: DropZone | null): DropZone | null {
   const rect = paneEl.getBoundingClientRect();
   if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
 
   const relX = (clientX - rect.left) / rect.width;
   const relY = (clientY - rect.top) / rect.height;
-  let zone;
+  let zone: DropZone;
   if (relY < 0.25) zone = "top";
   else if (relY > 0.75) zone = "bottom";
   else if (relX < 0.25) zone = "left";
@@ -28,6 +32,52 @@ export function getDropZone(paneEl, clientX, clientY, prevZone) {
   return zone;
 }
 
+interface ChartRuntime {
+  destroyChart(): void;
+  getCharts(): Record<string, { update(data: unknown): void }>;
+}
+
+interface DragInteractionsDeps {
+  root: HTMLElement;
+  documentRef: Document;
+  getState: () => SPCState;
+  chartRuntime: ChartRuntime;
+  collectChartIds: (layout: ChartLayout) => string[];
+  renderGhostRows: (layout: ChartLayout, incomingId: string) => string;
+  computeGridPreview: (layout: ChartLayout, draggingId: string, targetId: string, zone: DropZone) => ChartLayout;
+  commitLayout: (next: SPCState) => void;
+  saveLayout: () => void;
+  setColWeight: (state: SPCState, rowIndex: number, leftCol: number, ratio: number) => SPCState;
+  setRowWeight: (state: SPCState, topRow: number, ratio: number) => SPCState;
+  buildChartData: (chartId: string, state: SPCState) => unknown;
+  insertChart: (state: SPCState, chartId: string, targetId: string, zone: DropZone) => SPCState;
+  chartTypeLabels: Record<string, string>;
+}
+
+interface PendingDrag {
+  chartId: string;
+  pane: HTMLElement;
+  startX: number;
+  startY: number;
+  pointerId: number;
+}
+
+interface DragState {
+  chartId: string;
+  pane: HTMLElement;
+  ghost: HTMLDivElement;
+  dropTarget: string | null;
+  dropZone: DropZone | null;
+}
+
+interface DividerDrag {
+  type: "col" | "row";
+  row: number;
+  col?: number;
+  arenaRect: DOMRect;
+  pendingRatio?: number;
+}
+
 export function setupDragInteractions({
   root,
   documentRef,
@@ -43,24 +93,24 @@ export function setupDragInteractions({
   buildChartData,
   insertChart,
   chartTypeLabels,
-}) {
-  let pendingDrag = null;
-  let dragState = null;
-  let ghostOverlay = null;
-  let ghostRafId = null;
-  let dividerDrag = null;
+}: DragInteractionsDeps): void {
+  let pendingDrag: PendingDrag | null = null;
+  let dragState: DragState | null = null;
+  let ghostOverlay: HTMLDivElement | null = null;
+  let ghostRafId: number | null = null;
+  let dividerDrag: DividerDrag | null = null;
 
-  function updateGhostOverlay(ghostRows, incomingId) {
+  function updateGhostOverlay(ghostRows: ChartLayout, incomingId: string): void {
     if (!ghostOverlay || !ghostRows) return;
     if (ghostRafId) cancelAnimationFrame(ghostRafId);
     ghostRafId = requestAnimationFrame(() => {
-      ghostOverlay.innerHTML = renderGhostRows(ghostRows, incomingId);
-      ghostOverlay.style.display = "flex";
+      ghostOverlay!.innerHTML = renderGhostRows(ghostRows, incomingId);
+      ghostOverlay!.style.display = "flex";
       ghostRafId = null;
     });
   }
 
-  function removeGhostOverlay() {
+  function removeGhostOverlay(): void {
     if (ghostRafId) {
       cancelAnimationFrame(ghostRafId);
       ghostRafId = null;
@@ -77,7 +127,7 @@ export function setupDragInteractions({
     }
   }
 
-  function endDrag() {
+  function endDrag(): void {
     pendingDrag = null;
     if (!dragState) return;
 
@@ -99,56 +149,57 @@ export function setupDragInteractions({
     dragState = null;
   }
 
-  function endDividerDrag() {
+  function endDividerDrag(): void {
     if (!dividerDrag) return;
 
     const state = getState();
     root.querySelectorAll(".grid-divider-active").forEach((el) => el.classList.remove("grid-divider-active"));
     if (dividerDrag.pendingRatio !== undefined) {
-      let next = state;
-      if (dividerDrag.type === "col") next = setColWeight(state, dividerDrag.row, dividerDrag.col, dividerDrag.pendingRatio);
+      let next: SPCState = state;
+      if (dividerDrag.type === "col") next = setColWeight(state, dividerDrag.row, dividerDrag.col!, dividerDrag.pendingRatio);
       else next = setRowWeight(state, dividerDrag.row, dividerDrag.pendingRatio);
 
       commitLayout(next);
       saveLayout();
 
       const visibleIds = collectChartIds(next.chartLayout);
+      const stateForUpdate = getState();
       requestAnimationFrame(() => {
         for (const id of visibleIds) {
           const chart = chartRuntime.getCharts()[id];
-          if (chart) chart.update(buildChartData(id));
+          if (chart) chart.update(buildChartData(id, stateForUpdate));
         }
       });
     }
     dividerDrag = null;
   }
 
-  root.addEventListener("pointerdown", (e) => {
-    const divider = e.target.closest(".grid-divider");
+  root.addEventListener("pointerdown", (e: PointerEvent) => {
+    const divider = (e.target as HTMLElement).closest(".grid-divider") as HTMLElement | null;
     if (divider) {
       e.preventDefault();
       e.stopPropagation();
       divider.setPointerCapture(e.pointerId);
       divider.classList.add("grid-divider-active");
 
-      const arenaRect = root.querySelector(".chart-arena").getBoundingClientRect();
+      const arenaRect = (root.querySelector(".chart-arena") as HTMLElement).getBoundingClientRect();
       if (divider.classList.contains("grid-divider-col")) {
-        dividerDrag = { type: "col", row: +divider.dataset.row, col: +divider.dataset.col, arenaRect };
+        dividerDrag = { type: "col", row: +divider.dataset.row!, col: +divider.dataset.col!, arenaRect };
       } else {
-        dividerDrag = { type: "row", row: +divider.dataset.row, arenaRect };
+        dividerDrag = { type: "row", row: +divider.dataset.row!, arenaRect };
       }
       return;
     }
 
-    const handle = e.target.closest("[data-drag-handle]");
+    const handle = (e.target as HTMLElement).closest("[data-drag-handle]") as HTMLElement | null;
     const state = getState();
     if (!handle || state.chartOrder.length < 2) return;
-    const pane = handle.closest(".chart-pane");
-    if (!pane || e.target.closest("button")) return;
+    const pane = handle.closest(".chart-pane") as HTMLElement | null;
+    if (!pane || (e.target as HTMLElement).closest("button")) return;
 
     e.preventDefault();
     pendingDrag = {
-      chartId: handle.dataset.dragHandle,
+      chartId: handle.dataset.dragHandle!,
       pane,
       startX: e.clientX,
       startY: e.clientY,
@@ -156,16 +207,16 @@ export function setupDragInteractions({
     };
   });
 
-  root.addEventListener("pointermove", (e) => {
+  root.addEventListener("pointermove", (e: PointerEvent) => {
     const state = getState();
 
     if (dividerDrag) {
       if (dividerDrag.type === "col") {
-        const rowEl = root.querySelectorAll(".chart-row")[dividerDrag.row];
+        const rowEl = root.querySelectorAll(".chart-row")[dividerDrag.row] as HTMLElement | undefined;
         if (!rowEl) return;
-        const wraps = rowEl.querySelectorAll(":scope > .chart-pane-wrap");
-        const leftWrap = wraps[dividerDrag.col];
-        const rightWrap = wraps[dividerDrag.col + 1];
+        const wraps = rowEl.querySelectorAll<HTMLElement>(":scope > .chart-pane-wrap");
+        const leftWrap = wraps[dividerDrag.col!];
+        const rightWrap = wraps[dividerDrag.col! + 1];
         if (leftWrap && rightWrap) {
           const leftWeight = parseFloat(leftWrap.style.flex.split(" ")[0]) || 1;
           const rightWeight = parseFloat(rightWrap.style.flex.split(" ")[0]) || 1;
@@ -178,7 +229,7 @@ export function setupDragInteractions({
           dividerDrag.pendingRatio = localRatio;
         }
       } else {
-        const rowEls = root.querySelectorAll(".chart-row");
+        const rowEls = root.querySelectorAll<HTMLElement>(".chart-row");
         const topEl = rowEls[dividerDrag.row];
         const bottomEl = rowEls[dividerDrag.row + 1];
         if (topEl && bottomEl) {
@@ -208,7 +259,7 @@ export function setupDragInteractions({
 
       const ghost = documentRef.createElement("div");
       ghost.className = "drag-ghost";
-      ghost.textContent = (state.charts[chartId]?.params?.chart_type && chartTypeLabels[state.charts[chartId].params.chart_type]) || "Chart";
+      ghost.textContent = (state.charts[chartId]?.params?.chart_type && chartTypeLabels[state.charts[chartId].params.chart_type!]) || "Chart";
       documentRef.body.appendChild(ghost);
       pane.classList.add("dragging");
 
@@ -230,12 +281,12 @@ export function setupDragInteractions({
     ghost.style.left = `${e.clientX + 12}px`;
     ghost.style.top = `${e.clientY - 10}px`;
 
-    let foundTarget = null;
-    let foundZone = null;
-    for (const pane of root.querySelectorAll(".chart-pane:not(.dragging)")) {
+    let foundTarget: string | null = null;
+    let foundZone: DropZone | null = null;
+    for (const pane of root.querySelectorAll(".chart-pane:not(.dragging)") as NodeListOf<HTMLElement>) {
       const zone = getDropZone(pane, e.clientX, e.clientY, dragState.dropZone);
       if (zone) {
-        foundTarget = pane.dataset.chartId;
+        foundTarget = pane.dataset.chartId!;
         foundZone = zone;
         break;
       }
@@ -266,14 +317,14 @@ export function setupDragInteractions({
     endDrag();
   });
 
-  root.addEventListener("dblclick", (e) => {
-    const divider = e.target.closest(".grid-divider");
+  root.addEventListener("dblclick", (e: MouseEvent) => {
+    const divider = (e.target as HTMLElement).closest(".grid-divider") as HTMLElement | null;
     if (!divider) return;
     const state = getState();
     if (divider.classList.contains("grid-divider-col")) {
-      commitLayout(setColWeight(state, +divider.dataset.row, +divider.dataset.col, 0.5));
+      commitLayout(setColWeight(state, +divider.dataset.row!, +divider.dataset.col!, 0.5));
     } else {
-      commitLayout(setRowWeight(state, +divider.dataset.row, 0.5));
+      commitLayout(setRowWeight(state, +divider.dataset.row!, 0.5));
     }
     saveLayout();
   });

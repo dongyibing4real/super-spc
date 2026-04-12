@@ -1,25 +1,26 @@
-import { lazy, Suspense } from "react";
+import React, { lazy, Suspense } from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
 import { LoadingState, ErrorState, EmptyState } from "./Notice.jsx";
+import type { SPCState } from "../types/state.js";
 
 const WorkspaceView = lazy(() => import("../views/WorkspaceView.jsx"));
 const DataPrepView = lazy(() => import("../views/data-prep/DataPrepView.jsx"));
 const FindingsView = lazy(() => import("../views/FindingsView.jsx"));
 const MethodLabView = lazy(() => import("../views/MethodLabView.jsx"));
 
-export default function Router() {
-  const route = useStore(spcStore, (s) => s.route);
-  const loading = useStore(spcStore, (s) => s.loading);
-  const error = useStore(spcStore, (s) => s.error);
-  const pointsLen = useStore(spcStore, (s) => s.points.length);
-  const activeDatasetId = useStore(spcStore, (s) => s.activeDatasetId);
+export default function Router(): React.JSX.Element {
+  const route = useStore(spcStore, (s: SPCState) => s.route);
+  const loading = useStore(spcStore, (s: SPCState) => s.loading);
+  const error = useStore(spcStore, (s: SPCState) => s.error);
+  const pointsLen = useStore(spcStore, (s: SPCState) => s.points.length);
+  const activeDatasetId = useStore(spcStore, (s: SPCState) => s.activeDatasetId);
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState error={error} />;
   if (pointsLen === 0 && !activeDatasetId) return <EmptyState />;
 
-  let view;
+  let view: React.JSX.Element;
   switch (route) {
     case "dataprep":
       view = <DataPrepView />;

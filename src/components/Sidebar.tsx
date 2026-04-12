@@ -1,9 +1,11 @@
+import React from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
 import { navigate, setTheme } from "../core/state/ui.js";
 import { NAV } from "../constants.js";
+import type { SPCState } from "../types/state.js";
 
-function BrandMark() {
+function BrandMark(): React.JSX.Element {
   return (
     <svg
       className="brand-mark"
@@ -27,10 +29,14 @@ function BrandMark() {
   );
 }
 
-const THEME_CYCLE = { dark: 'light', light: 'system', system: 'dark' };
-const THEME_LABEL = { dark: 'Dark', light: 'Light', system: 'Auto' };
+const THEME_CYCLE: Record<string, string> = { dark: 'light', light: 'system', system: 'dark' };
+const THEME_LABEL: Record<string, string> = { dark: 'Dark', light: 'Light', system: 'Auto' };
 
-function ThemeIcon({ resolved }) {
+interface ThemeIconProps {
+  resolved: string;
+}
+
+function ThemeIcon({ resolved }: ThemeIconProps): React.JSX.Element {
   if (resolved === 'light') {
     // Sun
     return (
@@ -48,18 +54,18 @@ function ThemeIcon({ resolved }) {
   );
 }
 
-export default function Sidebar() {
-  const route = useStore(spcStore, (s) => s.route);
-  const pipelineStatus = useStore(spcStore, (s) => s.pipeline.status);
-  const themePreference = useStore(spcStore, (s) => s.ui.themePreference);
-  const themeResolved = useStore(spcStore, (s) => s.ui.themeResolved);
+export default function Sidebar(): React.JSX.Element {
+  const route = useStore(spcStore, (s: SPCState) => s.route);
+  const pipelineStatus = useStore(spcStore, (s: SPCState) => s.pipeline.status);
+  const themePreference = useStore(spcStore, (s: SPCState) => s.ui.themePreference);
+  const themeResolved = useStore(spcStore, (s: SPCState) => s.ui.themeResolved);
 
-  function handleNavigate(targetRoute) {
+  function handleNavigate(targetRoute: string): void {
     spcStore.setState(navigate(spcStore.getState(), targetRoute));
   }
 
-  function cycleTheme() {
-    const next = THEME_CYCLE[themePreference] || 'dark';
+  function cycleTheme(): void {
+    const next = (THEME_CYCLE[themePreference] || 'dark') as "system" | "light" | "dark";
     spcStore.setState(setTheme(spcStore.getState(), next));
   }
 
@@ -73,7 +79,7 @@ export default function Sidebar() {
       </div>
       <span className="nav-section-label">Views</span>
       <nav className="nav-list">
-        {NAV.map(([r, abbr, label]) => (
+        {NAV.map(([r, abbr, label]: [string, string, string]) => (
           <button
             key={r}
             className={`nav-item ${route === r ? "active" : ""}`}

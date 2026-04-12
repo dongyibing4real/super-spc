@@ -1,3 +1,8 @@
+import type { Selection } from 'd3-selection';
+import type { ChartScales } from './scales.js';
+import type { SizedConfig, ChartCallbacks, AxisDragInfo, AdaptivePadding } from './config.js';
+import type { ChartLayers, SvgSkeleton } from './svg-setup.js';
+
 import { createScales } from './scales.js';
 import { renderZones } from './zones.js';
 import { renderLimits } from './limits.js';
@@ -14,25 +19,70 @@ import { createSvgSkeleton } from './svg-setup.js';
 import { setupContextMenu } from './context-menu.js';
 import { setupMarquee } from './marquee.js';
 
+interface ChartData {
+  points: Record<string, unknown>[];
+  limits: { ucl: number; lcl: number; center: number; usl?: number | null; lsl?: number | null; target?: number | null };
+  phases?: { start: number; end: number; limits: { ucl: number; lcl: number; center: number }; id: string; label?: string }[];
+  forecast?: {
+    mode?: string;
+    horizon?: number;
+    visibleHorizon?: number;
+    result?: { projected: { x: number; y: number }[]; confidence: { x: number; upper: number; lower: number }[] } | null;
+    driftSummary?: string | null;
+    predicting?: boolean;
+    limits?: { ucl: number; lcl: number; center: number };
+  };
+  toggles: {
+    overlay: boolean;
+    specLimits: boolean;
+    grid: boolean;
+    phaseTags: boolean;
+    events: boolean;
+    excludedMarkers: boolean;
+    confidenceBand: boolean;
+    xDomainOverride?: { min: number; max: number } | null;
+    xDefaultDomain?: { min: number; max: number } | null;
+    yDomainOverride?: { yMin: number; yMax: number } | null;
+  };
+  selectedIndex: number | null;
+  selectedIndices: number[] | null;
+  selectedPhaseIndex?: number | null;
+  violations: Map<number, string[]>;
+  capability: { cp: number; cpk: number; ppk: number } | null;
+  metric: { id?: string | null; label?: string; unit?: string };
+  subgroup: { id?: string | null; label?: string; detail?: string };
+  phase?: { id?: string | null; label?: string; detail?: string };
+  chartType?: { id?: string | null; label?: string; detail?: string };
+  seriesKey?: string;
+  seriesType?: string;
+}
+
+interface ChartOptions extends ChartCallbacks {
+  padding?: AdaptivePadding;
+}
+
+export interface ChartInstance {
+  update: (data: ChartData) => void;
+  destroy: () => void;
+  svg: Selection<SVGSVGElement, unknown, null, undefined>;
+  remount: (newContainer: HTMLElement) => void;
+}
+
 /**
  * Create a D3-powered SPC control chart that auto-sizes to its container.
- *
- * @param {HTMLElement} container - DOM element to mount the SVG into
- * @param {object} options - Config overrides + callbacks
- * @returns {{ update: Function, destroy: Function, svg: Selection, remount: Function }}
  */
-export function createChart(container, options = {}) {
-  const config = { ...DEFAULT_CHART_OPTIONS, ...options };
+export function createChart(container: HTMLElement, options: ChartOptions = {}): ChartInstance {
+  const config: ChartOptions = { ...DEFAULT_CHART_OPTIONS, ...options };
 
   // ── SVG skeleton (layers, clip path, axis hit regions) ────────────
-  const { svg, defs, clipRect, layers, xAxisHit, yAxisHit } = createSvgSkeleton(container);
+  const { svg, defs, clipRect, layers, xAxisHit, yAxisHit }: SvgSkeleton = createSvgSkeleton(container);
 
   // ── Closure state ─────────────────────────────────────────────────
   let currentWidth = 0;
   let currentHeight = 0;
-  let currentScales = null;
-  let currentSizedConfig = null;
-  let lastData = null;
+  let currentScales: ChartScales | null = null;
+  let currentSizedConfig: SizedConfig | null = null;
+  let lastData: ChartData | null = null;
 
   const getContext = () => ({
     scales: currentScales,
@@ -43,21 +93,21 @@ export function createChart(container, options = {}) {
   });
 
   // ── Forecast activity listeners ───────────────────────────────────
-  function handleForecastActivity(event) {
-    const target = event?.target;
+  function handleForecastActivity(event: Event): void {
+    const target = (event as PointerEvent)?.target as Element | null;
     if (target?.closest?.('.forecast-prompt-hit, .forecast-prompt-callout, .forecast-shell-hit, .forecast-cancel, .forecast-handle')) {
       return;
     }
-    config.onForecastActivity?.();
+    (config as ChartCallbacks).onForecastActivity?.();
   }
 
-  function attachActivityListeners(target) {
+  function attachActivityListeners(target: HTMLElement): void {
     target.addEventListener('pointerdown', handleForecastActivity, true);
     target.addEventListener('wheel', handleForecastActivity, { passive: true, capture: true });
     target.addEventListener('keydown', handleForecastActivity, true);
   }
 
-  function detachActivityListeners(target) {
+  function detachActivityListeners(target: HTMLElement): void {
     target.removeEventListener('pointerdown', handleForecastActivity, true);
     target.removeEventListener('wheel', handleForecastActivity, true);
     target.removeEventListener('keydown', handleForecastActivity, true);
@@ -69,13 +119,13 @@ export function createChart(container, options = {}) {
   setupContextMenu(svg, container, getContext, config.onContextMenu);
 
   // ── Axis drag (JMP-style pan/scale) ───────────────────────────────
-  const onAxisDragLive = (info) => {
+  const onAxisDragLive = (info: AxisDragInfo): void => {
     if (!lastData) return;
-    const liveData = { ...lastData, toggles: { ...lastData.toggles } };
+    const liveData: ChartData = { ...lastData, toggles: { ...lastData.toggles } };
     if (info.axis === 'x') {
-      liveData.toggles.xDomainOverride = { min: info.min, max: info.max };
+      liveData.toggles.xDomainOverride = { min: info.min!, max: info.max! };
     } else {
-      liveData.toggles.yDomainOverride = { yMin: info.yMin, yMax: info.yMax };
+      liveData.toggles.yDomainOverride = { yMin: info.yMin!, yMax: info.yMax! };
     }
     renderAll(liveData);
   };
@@ -84,8 +134,8 @@ export function createChart(container, options = {}) {
   const cleanupXDrag = setupAxisDrag(xAxisHit, 'x', getAxisContext, axisCallbacks);
   const cleanupYDrag = setupAxisDrag(yAxisHit, 'y', getAxisContext, axisCallbacks);
 
-  xAxisHit.on('dblclick', () => config.onAxisReset?.('x'));
-  yAxisHit.on('dblclick', () => config.onAxisReset?.('y'));
+  xAxisHit.on('dblclick', () => (config as ChartCallbacks).onAxisReset?.('x'));
+  yAxisHit.on('dblclick', () => (config as ChartCallbacks).onAxisReset?.('y'));
 
   // ── Marquee selection ─────────────────────────────────────────────
   const marquee = setupMarquee(svg, container, layers.marquee, getContext, {
@@ -93,16 +143,14 @@ export function createChart(container, options = {}) {
   });
 
   // ── Click: deselect / forecast toggle ─────────────────────────────
-  svg.on('click', (event) => {
+  svg.on('click', (_event: MouseEvent) => {
     if (marquee.wasMarqueeJustFinished()) return;
     config.onSelectPoint?.(null);
     config.onSelectPhase?.(null);
-
-    // (forecast deselect removed — no longer tracked as separate state)
   });
 
   // ── ResizeObserver ────────────────────────────────────────────────
-  const resizeObserver = new ResizeObserver((entries) => {
+  const resizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
     for (const entry of entries) {
       const { width, height } = entry.contentRect;
       if (width > 0 && height > 0 && (Math.abs(width - currentWidth) > 2 || Math.abs(height - currentHeight) > 2)) {
@@ -116,13 +164,13 @@ export function createChart(container, options = {}) {
   resizeObserver.observe(container);
 
   // ── Render orchestrator ───────────────────────────────────────────
-  function renderAll(data) {
+  function renderAll(data: ChartData): void {
     if (currentWidth < 10 || currentHeight < 10) return;
     const seriesKey = data.seriesKey || 'primaryValue';
     const seriesType = data.seriesType || 'primary';
 
     const layout = computeAdaptivePadding(data, currentWidth, currentHeight);
-    const sizedConfig = {
+    const sizedConfig: SizedConfig = {
       ...config,
       padding: layout.padding,
       yLabelFontSize: layout.yLabelFontSize,
@@ -172,19 +220,19 @@ export function createChart(container, options = {}) {
       renderProjectionPrompt(layers.projectionUi, scales, data, sizedConfig);
       layers.projectionUi.selectAll('.forecast-prompt-hit, .forecast-prompt-callout')
         .style('cursor', 'pointer')
-        .on('pointerdown', (event) => event.stopPropagation())
-        .on('click', (event) => { event.preventDefault(); event.stopPropagation(); config.onActivateForecast?.(); });
+        .on('pointerdown', (event: Event) => event.stopPropagation())
+        .on('click', (event: Event) => { event.preventDefault(); event.stopPropagation(); (config as ChartCallbacks).onActivateForecast?.(); });
     } else if (forecastMode === 'loading' || forecastMode === 'active') {
       renderProjectionShell(layers.projectionUi, scales, data, sizedConfig);
       layers.projectionUi.select('.forecast-cancel')
         .style('cursor', 'pointer')
-        .on('pointerdown', (event) => event.stopPropagation())
-        .on('click', (event) => { event.preventDefault(); event.stopPropagation(); config.onCancelForecast?.(); });
+        .on('pointerdown', (event: Event) => event.stopPropagation())
+        .on('click', (event: Event) => { event.preventDefault(); event.stopPropagation(); (config as ChartCallbacks).onCancelForecast?.(); });
     } else {
       layers.projectionUi.selectAll('*').remove();
     }
 
-    // Predicting indicator — subtle hint while re-predict is in flight
+    // Predicting indicator
     layers.projectionUi.selectAll('.forecast-predicting').remove();
     if (data.forecast?.predicting && (forecastMode === 'active' || forecastMode === 'loading')) {
       const p = sizedConfig.padding;
@@ -213,17 +261,17 @@ export function createChart(container, options = {}) {
     }
 
     // Event annotations
-    if (data.toggles.events) renderEvents(layers.events, scales, data, sizedConfig);
+    if (data.toggles.events) renderEvents(layers.events, scales, data as unknown as Parameters<typeof renderEvents>[2], sizedConfig);
     else layers.events.selectAll('*').remove();
 
     // Data points
-    renderPoints(layers.points, scales, data, sizedConfig, seriesKey);
+    renderPoints(layers.points, scales, data as unknown as Parameters<typeof renderPoints>[2], sizedConfig, seriesKey);
 
     // X-axis labels
-    renderAxes(layers.xAxis, scales, data, sizedConfig);
+    renderAxes(layers.xAxis, scales, data as unknown as Parameters<typeof renderAxes>[2], sizedConfig);
 
     // Axis titles
-    renderAxisTitles(layers.xTitle, layers.yTitle, data, sizedConfig);
+    renderAxisTitles(layers.xTitle, layers.yTitle, data as unknown as Parameters<typeof renderAxisTitles>[2], sizedConfig);
 
     // Update clip rect
     const p = sizedConfig.padding;
@@ -253,10 +301,10 @@ export function createChart(container, options = {}) {
     const gapPx = Math.max(0, plotRight - lastPointX);
     const plotWidth = Math.max(0, sizedConfig.width - sizedConfig.padding.left - sizedConfig.padding.right);
     const minPromptGap = Math.max(12, Math.min(40, plotWidth * 0.04));
-    config.onForecastPromptEligibilityChange?.({ eligible: gapPx >= minPromptGap });
+    (config as ChartCallbacks).onForecastPromptEligibilityChange?.({ eligible: gapPx >= minPromptGap });
   }
 
-  function syncSize() {
+  function syncSize(): void {
     const cs = getComputedStyle(container);
     const w = container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     const h = container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
@@ -267,13 +315,13 @@ export function createChart(container, options = {}) {
     }
   }
 
-  function update(data) {
+  function update(data: ChartData): void {
     lastData = data;
     syncSize();
     renderAll(data);
   }
 
-  function remount(newContainer) {
+  function remount(newContainer: HTMLElement): void {
     cleanupXDrag();
     cleanupYDrag();
     detachActivityListeners(container);
@@ -283,7 +331,7 @@ export function createChart(container, options = {}) {
     attachActivityListeners(newContainer);
   }
 
-  function destroy() {
+  function destroy(): void {
     cleanupXDrag();
     cleanupYDrag();
     marquee.destroy();

@@ -78,7 +78,7 @@ export function fetchRawData(datasetId: string | number): Promise<Record<string,
 
 export function runForecast(
   datasetId: string | number,
-  params: { horizon?: number; confidence_level?: number; value_column?: string; time_budget?: number },
+  params: { horizon?: number; confidence_level?: number; value_column?: string; time_budget?: number; values?: number[]; limits?: { ucl: number; lcl: number } | null; cache_key?: string | null },
 ): Promise<ForecastOut> {
   return request<ForecastOut>(`/api/datasets/${datasetId}/forecast`, {
     method: "POST",
@@ -89,7 +89,7 @@ export function runForecast(
 
 export function predictForecast(
   datasetId: string | number,
-  params: { horizon?: number; confidence_level?: number },
+  params: { horizon?: number; confidence_level?: number; cache_key?: string | null },
 ): Promise<ForecastOut> {
   return request<ForecastOut>(`/api/datasets/${datasetId}/forecast/predict`, {
     method: "POST",

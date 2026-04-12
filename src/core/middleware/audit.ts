@@ -7,10 +7,12 @@
  * This replaces inline auditLog writes that were previously scattered
  * across chart.js and pipeline.js reducers.
  */
-export function auditMiddleware(prevState, nextState) {
+import type { SPCState } from '../../types/state.js';
+
+export function auditMiddleware(prevState: SPCState, nextState: SPCState): SPCState {
   if (prevState === nextState) return nextState;
 
-  const entries = [];
+  const entries: string[] = [];
 
   // Point exclusion changed
   if (prevState.points !== nextState.points && prevState.points.length === nextState.points.length) {
@@ -28,8 +30,8 @@ export function auditMiddleware(prevState, nextState) {
   // Transform toggled (active/inactive)
   if (prevState.transforms !== nextState.transforms && prevState.transforms.length === nextState.transforms.length) {
     for (let i = 0; i < nextState.transforms.length; i++) {
-      const prev = prevState.transforms[i];
-      const next = nextState.transforms[i];
+      const prev = prevState.transforms[i] as Record<string, unknown> | undefined;
+      const next = nextState.transforms[i] as Record<string, unknown> | undefined;
       if (!prev || !next) continue;
       // Recovery: failed → active (takes priority over active toggle)
       if (prev.status === "failed" && next.status === "active") {

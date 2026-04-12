@@ -1,11 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, type RefObject } from "react";
 import { spcStore } from "../store/spc-store.js";
 import { moveSelection, selectPoint } from "../core/state/chart.js";
 import { openContextMenu, closeContextMenu } from "../core/state/ui.js";
 import { setActivePanel } from "../core/state/data-prep.js";
 import { getFocused } from "../core/state/selectors.js";
+import type { SPCState, Violation } from "../types/state.ts";
 
-export function navigateSelectionToViolation(indices, currentIndex, directionKey) {
+export function navigateSelectionToViolation(indices: number[], currentIndex: number, directionKey: string): number {
   if (directionKey === "n") {
     return indices.find((index) => index > currentIndex) ?? indices[0];
   }
@@ -13,21 +14,21 @@ export function navigateSelectionToViolation(indices, currentIndex, directionKey
   return prev ?? indices[indices.length - 1];
 }
 
-export default function useKeyboardShortcuts(rootRef) {
+export default function useKeyboardShortcuts(rootRef: RefObject<HTMLDivElement | null>): void {
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
 
-    function handleKeydown(event) {
+    function handleKeydown(event: KeyboardEvent): void {
       const state = spcStore.getState();
 
       // Context menu arrow navigation
       if (state.ui.contextMenu && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
         event.preventDefault();
-        const menu = root.querySelector(".context-menu");
+        const menu = root!.querySelector(".context-menu");
         if (!menu) return;
-        const items = Array.from(menu.querySelectorAll("[role='menuitem']"));
-        const idx = items.indexOf(document.activeElement);
+        const items = Array.from(menu.querySelectorAll("[role='menuitem']")) as HTMLElement[];
+        const idx = items.indexOf(document.activeElement as HTMLElement);
         const next = event.key === "ArrowDown"
           ? items[(idx + 1) % items.length]
           : items[(idx - 1 + items.length) % items.length];
@@ -44,7 +45,7 @@ export default function useKeyboardShortcuts(rootRef) {
         }
       }
 
-      const tag = document.activeElement?.tagName;
+      const tag = (document.activeElement as HTMLElement)?.tagName;
       const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
       if (!inInput && !event.metaKey && !event.ctrlKey && !event.altKey) {
         // Open shortcut overlay
@@ -57,7 +58,8 @@ export default function useKeyboardShortcuts(rootRef) {
         // DataPrep shortcuts
         if (state.route === "dataprep" && state.dataPrep.selectedDatasetId) {
           const dpKey = event.key.toLowerCase();
-          const panel = { f: "filter", d: "find", r: "rename", t: "change_type", c: "calculated" }[dpKey];
+          const panelMap: Record<string, string> = { f: "filter", d: "find", r: "rename", t: "change_type", c: "calculated" };
+          const panel = panelMap[dpKey];
           if (panel) {
             event.preventDefault();
             spcStore.setState(setActivePanel(state, panel));
@@ -65,7 +67,7 @@ export default function useKeyboardShortcuts(rootRef) {
           }
           if (dpKey === "z" && state.dataPrep.transforms.length > 0) {
             event.preventDefault();
-            root.querySelector('[data-action="prep-undo"]')?.click();
+            root!.querySelector('[data-action="prep-undo"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             return;
           }
         }
@@ -75,8 +77,8 @@ export default function useKeyboardShortcuts(rootRef) {
           event.preventDefault();
           const focused = getFocused(state);
           if (!focused) return;
-          const violations = focused.violations || [];
-          const indices = [...new Set(violations.flatMap((v) => v.indices || []))].sort((a, b) => a - b);
+          const violations: Violation[] = focused.violations || [];
+          const indices = [...new Set(violations.flatMap((v: Violation) => v.indices || []))].sort((a: number, b: number) => a - b);
           if (indices.length === 0) return;
           const target = navigateSelectionToViolation(indices, state.selectedPointIndex ?? -1, event.key);
           spcStore.setState(selectPoint(state, target));
@@ -85,7 +87,7 @@ export default function useKeyboardShortcuts(rootRef) {
       }
 
       // Chart-scoped shortcuts (Arrow keys, Enter, Shift+F10, Escape)
-      const chartTarget = event.target.closest("[data-chart-focus], [data-action='select-point']");
+      const chartTarget = (event.target as HTMLElement).closest("[data-chart-focus], [data-action='select-point']");
       if (!chartTarget) return;
 
       if (event.key === "ArrowRight") {
@@ -98,9 +100,9 @@ export default function useKeyboardShortcuts(rootRef) {
         spcStore.setState(moveSelection(state, -1));
         return;
       }
-      if (event.key === "Enter" && event.target.matches("[data-action='select-point']")) {
+      if (event.key === "Enter" && (event.target as HTMLElement).matches("[data-action='select-point']")) {
         event.preventDefault();
-        spcStore.setState(selectPoint(state, Number(event.target.dataset.index)));
+        spcStore.setState(selectPoint(state, Number((event.target as HTMLElement).dataset.index)));
         return;
       }
       if (event.key === "F10" && event.shiftKey) {

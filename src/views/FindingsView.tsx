@@ -13,17 +13,74 @@ import { setChartParams } from "../core/state/chart.js";
 import { reanalyze } from "../store/actions.js";
 import { CHART_TYPE_LABELS } from "../constants.js";
 import { capClass } from "../helpers.js";
+import type {
+  SPCState,
+  ChartSlot,
+  FindingsStandards,
+  ColumnConfig,
+  ChartPoint,
+} from "../types/state.js";
+
+/* ── Local interfaces ─────────────────────────────────── */
+
+interface FindingMetric {
+  label: string;
+  value: string | number;
+}
+
+interface Finding {
+  id: string;
+  title: string;
+  detail: string;
+  severity: string;
+  category: string;
+  generatorId: string;
+  metric: FindingMetric | null;
+  context: Record<string, unknown>;
+}
+
+interface DerivedFindings {
+  grouped: Record<string, Finding[]>;
+  selected: Finding | null;
+  health: HealthData;
+  dangerCount: number;
+  warningCount: number;
+}
+
+interface HealthData {
+  label: string;
+  severity: string;
+  cpk: string | number;
+  cpkSeverity: string;
+  oocCount: number;
+  n: number;
+}
+
+interface StatsData {
+  mean?: string | number;
+  sigmaWithin?: string | number;
+  std?: string | number;
+  min?: string | number;
+  max?: string | number;
+  range?: string | number;
+  median?: string | number;
+}
 
 /* ── Constants ─────────────────────────────────────── */
 
-const CATEGORY_LABELS = {
+const CATEGORY_LABELS: Record<string, string> = {
   stability: "Stability",
   capability: "Capability",
   statistical: "Statistical",
   pattern: "Pattern",
 };
 
-const STANDARDS_FIELDS = [
+interface StandardField {
+  key: string;
+  label: string;
+}
+
+const STANDARDS_FIELDS: StandardField[] = [
   { key: "cpkThreshold", label: "Cpk Good" },
   { key: "cpkMarginal", label: "Cpk Marginal" },
   { key: "maxOocPercent", label: "Max OOC %" },
@@ -33,11 +90,15 @@ const STANDARDS_FIELDS = [
   { key: "zoneDeviation", label: "Zone Deviation" },
 ];
 
-const CATEGORIES = ["stability", "capability", "statistical", "pattern"];
+const CATEGORIES: string[] = ["stability", "capability", "statistical", "pattern"];
 
 /* ── Shared Detail Helpers ─────────────────────────── */
 
-function DetailHeader({ finding }) {
+interface DetailHeaderProps {
+  finding: Finding;
+}
+
+function DetailHeader({ finding }: DetailHeaderProps): React.JSX.Element {
   return (
     <>
       <div className="finding-detail-head">
@@ -57,14 +118,18 @@ function DetailHeader({ finding }) {
   );
 }
 
-function IndexChips({ indices }) {
+interface IndexChipsProps {
+  indices: number[] | undefined;
+}
+
+function IndexChips({ indices }: IndexChipsProps): React.JSX.Element | null {
   if (!indices || indices.length === 0) return null;
-  const capped = indices.slice(0, 30);
+  const capped: number[] = indices.slice(0, 30);
   return (
     <div className="finding-detail-section">
       <span className="eyebrow">Affected Points</span>
       <div className="index-chips">
-        {capped.map((i, idx) => (
+        {capped.map((i: number, idx: number) => (
           <span key={idx} className="index-chip mono">{i}</span>
         ))}
         {indices.length > 30 ? (
@@ -77,21 +142,25 @@ function IndexChips({ indices }) {
 
 /* ── Type-Specific Detail Renderers ────────────────── */
 
-function StabilityDetail({ finding }) {
+interface FindingDetailProps {
+  finding: Finding;
+}
+
+function StabilityDetail({ finding }: FindingDetailProps): React.JSX.Element {
   const ctx = finding.context || {};
-  const violations = ctx.violations || [];
+  const violations = (ctx.violations || []) as Array<{ testId: string; description: string; indices: number[] }>;
 
   const byRule = useMemo(() => {
-    const map = new Map();
+    const map = new Map<string, { testId: string; description: string; count: number }>();
     for (const v of violations) {
       if (!map.has(v.testId)) map.set(v.testId, { testId: v.testId, description: v.description, count: 0 });
-      map.get(v.testId).count += v.indices.length;
+      map.get(v.testId)!.count += v.indices.length;
     }
     return [...map.values()];
   }, [violations]);
 
-  const oocPct = ctx.oocPctRaw ?? 0;
-  const barWidth = Math.min(oocPct, 100);
+  const oocPct = (ctx.oocPctRaw as number) ?? 0;
+  const barWidth: number = Math.min(oocPct, 100);
 
   return (
     <article className="finding-detail-panel panel-card">
@@ -122,27 +191,27 @@ function StabilityDetail({ finding }) {
           ></div>
         </div>
         <div className="finding-bar-labels">
-          <span className="mono">{ctx.oocRate || "0%"}</span>
-          <span className="muted">threshold: {ctx.maxOocPercent ?? 2}% / {ctx.maxOocCount ?? 3} pts</span>
+          <span className="mono">{(ctx.oocRate as string) || "0%"}</span>
+          <span className="muted">threshold: {(ctx.maxOocPercent as number) ?? 2}% / {(ctx.maxOocCount as number) ?? 3} pts</span>
         </div>
       </div>
     </article>
   );
 }
 
-function ViolationDetail({ finding }) {
+function ViolationDetail({ finding }: FindingDetailProps): React.JSX.Element {
   const ctx = finding.context || {};
   return (
     <article className="finding-detail-panel panel-card">
       <DetailHeader finding={finding} />
-      <IndexChips indices={ctx.indices} />
+      <IndexChips indices={ctx.indices as number[] | undefined} />
     </article>
   );
 }
 
-function PhaseDetail({ finding }) {
+function PhaseDetail({ finding }: FindingDetailProps): React.JSX.Element {
   const ctx = finding.context || {};
-  const fmt = (v) => (v != null ? Number(v).toFixed(4) : "\u2014");
+  const fmt = (v: unknown): string => (v != null ? Number(v).toFixed(4) : "\u2014");
   return (
     <article className="finding-detail-panel panel-card">
       <DetailHeader finding={finding} />
@@ -150,7 +219,7 @@ function PhaseDetail({ finding }) {
         <span className="eyebrow">Phase Comparison</span>
         <div className="finding-comparison-row">
           <div className="finding-compare-col">
-            <span className="eyebrow">{ctx.fromPhase || "Before"}</span>
+            <span className="eyebrow">{(ctx.fromPhase as string) || "Before"}</span>
             <div className="header-bar-cell">
               <span className="eyebrow">Mean</span>
               <strong className="mono">{fmt(ctx.prevMean)}</strong>
@@ -162,7 +231,7 @@ function PhaseDetail({ finding }) {
           </div>
           <div className="finding-compare-arrow">{"\u2192"}</div>
           <div className="finding-compare-col">
-            <span className="eyebrow">{ctx.toPhase || "After"}</span>
+            <span className="eyebrow">{(ctx.toPhase as string) || "After"}</span>
             <div className="header-bar-cell">
               <span className="eyebrow">Mean</span>
               <strong className="mono">{fmt(ctx.currMean)}</strong>
@@ -176,11 +245,11 @@ function PhaseDetail({ finding }) {
         <div className="finding-context-grid">
           <div>
             <span className="eyebrow">Shift in {"\u03C3"}</span>
-            <strong className="mono">{ctx.shiftInSigmas ?? "\u2014"}</strong>
+            <strong className="mono">{(ctx.shiftInSigmas as string) ?? "\u2014"}</strong>
           </div>
           <div>
             <span className="eyebrow">{"\u03C3"} Change</span>
-            <strong className="mono">{ctx.sigmaChange ?? "\u2014"}%</strong>
+            <strong className="mono">{(ctx.sigmaChange as string) ?? "\u2014"}%</strong>
           </div>
         </div>
       </div>
@@ -188,12 +257,12 @@ function PhaseDetail({ finding }) {
   );
 }
 
-function CapabilityDetail({ finding }) {
+function CapabilityDetail({ finding }: FindingDetailProps): React.JSX.Element {
   const ctx = finding.context || {};
-  const threshold = ctx.threshold ?? 1.33;
-  const marginal = ctx.marginal ?? 1.0;
+  const threshold: number = (ctx.threshold as number) ?? 1.33;
+  const marginal: number = (ctx.marginal as number) ?? 1.0;
 
-  const capCell = (label, val) => {
+  const capCell = (label: string, val: number | null | undefined): React.JSX.Element => {
     if (val == null) {
       return (
         <div className="finding-cap-cell">
@@ -202,7 +271,7 @@ function CapabilityDetail({ finding }) {
         </div>
       );
     }
-    const cls = capClass(val, threshold, marginal);
+    const cls: string = capClass(val, threshold, marginal);
     return (
       <div className="finding-cap-cell">
         <span className="eyebrow">{label}</span>
@@ -211,9 +280,9 @@ function CapabilityDetail({ finding }) {
     );
   };
 
-  const cpk = ctx.cpk ?? null;
-  const barPct = cpk != null ? Math.min((cpk / (threshold * 1.5)) * 100, 100) : 0;
-  const threshPct = (threshold / (threshold * 1.5)) * 100;
+  const cpk: number | null = (ctx.cpk as number) ?? null;
+  const barPct: number = cpk != null ? Math.min((cpk / (threshold * 1.5)) * 100, 100) : 0;
+  const threshPct: number = (threshold / (threshold * 1.5)) * 100;
 
   return (
     <article className="finding-detail-panel panel-card">
@@ -221,10 +290,10 @@ function CapabilityDetail({ finding }) {
       <div className="finding-detail-section">
         <span className="eyebrow">Capability Indices</span>
         <div className="finding-2x2-grid">
-          {capCell("Cp", ctx.cp)}
-          {capCell("Cpk", ctx.cpk)}
-          {capCell("Pp", ctx.pp)}
-          {capCell("Ppk", ctx.ppk)}
+          {capCell("Cp", ctx.cp as number | null | undefined)}
+          {capCell("Cpk", ctx.cpk as number | null | undefined)}
+          {capCell("Pp", ctx.pp as number | null | undefined)}
+          {capCell("Ppk", ctx.ppk as number | null | undefined)}
         </div>
       </div>
       {cpk != null ? (
@@ -243,15 +312,15 @@ function CapabilityDetail({ finding }) {
   );
 }
 
-function CenteringDetail({ finding }) {
+function CenteringDetail({ finding }: FindingDetailProps): React.JSX.Element {
   const ctx = finding.context || {};
-  const hasSpecs = ctx.usl != null && ctx.lsl != null && ctx.mean != null;
+  const hasSpecs: boolean = ctx.usl != null && ctx.lsl != null && ctx.mean != null;
 
-  let centeringBar = null;
+  let centeringBar: React.JSX.Element | null = null;
   if (hasSpecs) {
-    const range = ctx.usl - ctx.lsl;
-    const meanPct = range > 0 ? ((ctx.mean - ctx.lsl) / range) * 100 : 50;
-    const clampedPct = Math.max(2, Math.min(98, meanPct));
+    const range: number = (ctx.usl as number) - (ctx.lsl as number);
+    const meanPct: number = range > 0 ? (((ctx.mean as number) - (ctx.lsl as number)) / range) * 100 : 50;
+    const clampedPct: number = Math.max(2, Math.min(98, meanPct));
     centeringBar = (
       <div className="finding-detail-section">
         <span className="eyebrow">Mean Position</span>
@@ -272,17 +341,17 @@ function CenteringDetail({ finding }) {
       <div className="finding-context-grid">
         <div>
           <span className="eyebrow">Cp</span>
-          <strong className="mono">{ctx.cp?.toFixed(2) ?? "\u2014"}</strong>
+          <strong className="mono">{(ctx.cp as number)?.toFixed(2) ?? "\u2014"}</strong>
         </div>
         <div>
           <span className="eyebrow">Cpk</span>
-          <strong className="mono">{ctx.cpk?.toFixed(2) ?? "\u2014"}</strong>
+          <strong className="mono">{(ctx.cpk as number)?.toFixed(2) ?? "\u2014"}</strong>
         </div>
         <div>
           <span className="eyebrow">Standard</span>
           <strong className="mono">
             {ctx.centeringStandard != null
-              ? (ctx.centeringStandard * 100).toFixed(0) + "%"
+              ? ((ctx.centeringStandard as number) * 100).toFixed(0) + "%"
               : "\u2014"}
           </strong>
         </div>
@@ -292,9 +361,9 @@ function CenteringDetail({ finding }) {
   );
 }
 
-function StatisticalDetail({ finding }) {
+function StatisticalDetail({ finding }: FindingDetailProps): React.JSX.Element {
   const ctx = finding.context || {};
-  const rows = [
+  const rows: [string, unknown][] = [
     ["N", ctx.n],
     ["Mean", ctx.mean],
     ["\u03C3 Within", ctx.sigmaWithin],
@@ -312,10 +381,10 @@ function StatisticalDetail({ finding }) {
       <div className="finding-detail-section">
         <table className="finding-stats-table">
           <tbody>
-            {rows.map(([label, val]) => (
+            {rows.map(([label, val]: [string, unknown]) => (
               <tr key={label}>
                 <td className="eyebrow">{label}</td>
-                <td className="mono">{val ?? "\u2014"}</td>
+                <td className="mono">{(val as string | number) ?? "\u2014"}</td>
               </tr>
             ))}
           </tbody>
@@ -325,7 +394,7 @@ function StatisticalDetail({ finding }) {
   );
 }
 
-function SigmaMethodDetail({ finding }) {
+function SigmaMethodDetail({ finding }: FindingDetailProps): React.JSX.Element {
   const ctx = finding.context || {};
   return (
     <article className="finding-detail-panel panel-card">
@@ -333,31 +402,36 @@ function SigmaMethodDetail({ finding }) {
       <div className="finding-context-grid">
         <div>
           <span className="eyebrow">Method</span>
-          <strong>{ctx.label || ctx.method || "\u2014"}</strong>
+          <strong>{(ctx.label as string) || (ctx.method as string) || "\u2014"}</strong>
         </div>
         <div>
           <span className="eyebrow">{"\u03C3\u0302"}</span>
-          <strong className="mono">{ctx.sigmaHat?.toFixed(4) ?? "\u2014"}</strong>
+          <strong className="mono">{(ctx.sigmaHat as number)?.toFixed(4) ?? "\u2014"}</strong>
         </div>
         <div>
           <span className="eyebrow">N Used</span>
-          <strong className="mono">{ctx.nUsed ?? "\u2014"}</strong>
+          <strong className="mono">{(ctx.nUsed as number) ?? "\u2014"}</strong>
         </div>
       </div>
     </article>
   );
 }
 
-function ZoneDetail({ finding }) {
-  const ctx = finding.context || {};
-  const z = ctx;
-  const exp = ctx.expected || {};
+interface ZoneData {
+  pct?: string | number;
+  count?: number;
+}
 
-  const segments = [
-    { label: "C", pct: z.zoneC?.pct ?? 0, cls: "zone-c" },
-    { label: "B", pct: z.zoneB?.pct ?? 0, cls: "zone-b" },
-    { label: "A", pct: z.zoneA?.pct ?? 0, cls: "zone-a" },
-    { label: "Beyond", pct: z.beyond?.pct ?? 0, cls: "zone-beyond" },
+function ZoneDetail({ finding }: FindingDetailProps): React.JSX.Element {
+  const ctx = finding.context || {};
+  const z = ctx as Record<string, unknown>;
+  const exp = (ctx.expected || {}) as Record<string, string>;
+
+  const segments: { label: string; pct: string | number; cls: string }[] = [
+    { label: "C", pct: (z.zoneC as ZoneData)?.pct ?? 0, cls: "zone-c" },
+    { label: "B", pct: (z.zoneB as ZoneData)?.pct ?? 0, cls: "zone-b" },
+    { label: "A", pct: (z.zoneA as ZoneData)?.pct ?? 0, cls: "zone-a" },
+    { label: "Beyond", pct: (z.beyond as ZoneData)?.pct ?? 0, cls: "zone-beyond" },
   ];
 
   return (
@@ -370,7 +444,7 @@ function ZoneDetail({ finding }) {
             <div
               key={s.label}
               className={`finding-zone-segment ${s.cls}`}
-              style={{ width: `${Math.max(parseFloat(s.pct) || 0, 1)}%` }}
+              style={{ width: `${Math.max(parseFloat(String(s.pct)) || 0, 1)}%` }}
             >
               <span>{s.label}</span>
             </div>
@@ -383,27 +457,27 @@ function ZoneDetail({ finding }) {
           <tbody>
             <tr>
               <td>C ({"\u00B1"}1{"\u03C3"})</td>
-              <td className="mono">{z.zoneC?.pct ?? "\u2014"}%</td>
+              <td className="mono">{(z.zoneC as ZoneData)?.pct ?? "\u2014"}%</td>
               <td className="mono">{exp.c ?? "68.3"}%</td>
-              <td className="mono">{z.zoneC?.count ?? "\u2014"}</td>
+              <td className="mono">{(z.zoneC as ZoneData)?.count ?? "\u2014"}</td>
             </tr>
             <tr>
               <td>B (1-2{"\u03C3"})</td>
-              <td className="mono">{z.zoneB?.pct ?? "\u2014"}%</td>
+              <td className="mono">{(z.zoneB as ZoneData)?.pct ?? "\u2014"}%</td>
               <td className="mono">{exp.b ?? "27.2"}%</td>
-              <td className="mono">{z.zoneB?.count ?? "\u2014"}</td>
+              <td className="mono">{(z.zoneB as ZoneData)?.count ?? "\u2014"}</td>
             </tr>
             <tr>
               <td>A (2-3{"\u03C3"})</td>
-              <td className="mono">{z.zoneA?.pct ?? "\u2014"}%</td>
+              <td className="mono">{(z.zoneA as ZoneData)?.pct ?? "\u2014"}%</td>
               <td className="mono">{exp.a ?? "4.3"}%</td>
-              <td className="mono">{z.zoneA?.count ?? "\u2014"}</td>
+              <td className="mono">{(z.zoneA as ZoneData)?.count ?? "\u2014"}</td>
             </tr>
             <tr>
               <td>Beyond ({">"}3{"\u03C3"})</td>
-              <td className="mono">{z.beyond?.pct ?? "\u2014"}%</td>
+              <td className="mono">{(z.beyond as ZoneData)?.pct ?? "\u2014"}%</td>
               <td className="mono">{exp.beyond ?? "0.3"}%</td>
-              <td className="mono">{z.beyond?.count ?? "\u2014"}</td>
+              <td className="mono">{(z.beyond as ZoneData)?.count ?? "\u2014"}</td>
             </tr>
           </tbody>
         </table>
@@ -412,7 +486,7 @@ function ZoneDetail({ finding }) {
   );
 }
 
-function RunsDetail({ finding }) {
+function RunsDetail({ finding }: FindingDetailProps): React.JSX.Element {
   const ctx = finding.context || {};
   return (
     <article className="finding-detail-panel panel-card">
@@ -420,65 +494,65 @@ function RunsDetail({ finding }) {
       <div className="finding-context-grid">
         <div>
           <span className="eyebrow">Observed Runs</span>
-          <strong className="mono">{ctx.runs ?? "\u2014"}</strong>
+          <strong className="mono">{(ctx.runs as number) ?? "\u2014"}</strong>
         </div>
         <div>
           <span className="eyebrow">Expected Runs</span>
-          <strong className="mono">{ctx.expected ?? "\u2014"}</strong>
+          <strong className="mono">{(ctx.expected as number) ?? "\u2014"}</strong>
         </div>
         <div>
           <span className="eyebrow">Z-Score</span>
-          <strong className="mono">{ctx.z ?? "\u2014"}</strong>
+          <strong className="mono">{(ctx.z as number) ?? "\u2014"}</strong>
         </div>
         <div>
           <span className="eyebrow">Z Threshold</span>
-          <strong className="mono">{"\u00B1"}{ctx.zThreshold ?? "1.96"}</strong>
+          <strong className="mono">{"\u00B1"}{(ctx.zThreshold as string) ?? "1.96"}</strong>
         </div>
         <div>
           <span className="eyebrow">Above CL</span>
-          <strong className="mono">{ctx.above ?? "\u2014"}</strong>
+          <strong className="mono">{(ctx.above as number) ?? "\u2014"}</strong>
         </div>
         <div>
           <span className="eyebrow">Below CL</span>
-          <strong className="mono">{ctx.below ?? "\u2014"}</strong>
+          <strong className="mono">{(ctx.below as number) ?? "\u2014"}</strong>
         </div>
       </div>
       <div className="finding-detail-section">
         <span className="eyebrow">Interpretation</span>
-        <p className="finding-detail-text">{ctx.interpretation || "\u2014"}</p>
+        <p className="finding-detail-text">{(ctx.interpretation as string) || "\u2014"}</p>
       </div>
     </article>
   );
 }
 
-function PatternDetail({ finding }) {
+function PatternDetail({ finding }: FindingDetailProps): React.JSX.Element {
   const ctx = finding.context || {};
   return (
     <article className="finding-detail-panel panel-card">
       <DetailHeader finding={finding} />
-      <IndexChips indices={ctx.indices} />
+      <IndexChips indices={ctx.indices as number[] | undefined} />
     </article>
   );
 }
 
-function GenericDetail({ finding }) {
+function GenericDetail({ finding }: FindingDetailProps): React.JSX.Element {
   const ctx = finding.context || {};
-  const entries = Object.entries(ctx).filter(
-    ([, val]) => val != null && typeof val !== "object"
+  const entries: [string, unknown][] = Object.entries(ctx).filter(
+    ([, val]: [string, unknown]) => val != null && typeof val !== "object"
   );
   return (
     <article className="finding-detail-panel panel-card">
       <DetailHeader finding={finding} />
       {entries.length > 0 ? (
         <div className="finding-context-grid">
-          {entries.map(([key, val]) => {
-            const label = key
+          {entries.map(([key, val]: [string, unknown]) => {
+            const label: string = key
               .replace(/([A-Z])/g, " $1")
-              .replace(/^./, (s) => s.toUpperCase());
+              .replace(/^./, (s: string) => s.toUpperCase());
             return (
               <div key={key}>
                 <span className="eyebrow">{label}</span>
-                <strong className="mono">{val}</strong>
+                <strong className="mono">{val as string | number}</strong>
               </div>
             );
           })}
@@ -490,7 +564,7 @@ function GenericDetail({ finding }) {
 
 /* ── Detail Panel Dispatcher ───────────────────────── */
 
-const DETAIL_RENDERERS = {
+const DETAIL_RENDERERS: Record<string, React.ComponentType<FindingDetailProps>> = {
   stabilityVerdict: StabilityDetail,
   violationSummary: ViolationDetail,
   phaseComparison: PhaseDetail,
@@ -505,7 +579,11 @@ const DETAIL_RENDERERS = {
   mixtureDetection: PatternDetail,
 };
 
-function DetailPanel({ finding }) {
+interface DetailPanelProps {
+  finding: Finding | null;
+}
+
+function DetailPanel({ finding }: DetailPanelProps): React.JSX.Element {
   if (!finding) {
     return (
       <article className="finding-detail-panel panel-card">
@@ -513,23 +591,30 @@ function DetailPanel({ finding }) {
       </article>
     );
   }
-  const Renderer = DETAIL_RENDERERS[finding.generatorId] || GenericDetail;
+  const Renderer: React.ComponentType<FindingDetailProps> = DETAIL_RENDERERS[finding.generatorId] || GenericDetail;
   return <Renderer finding={finding} />;
 }
 
 /* ── Sub-Components ────────────────────────────────── */
 
-function ChartRailCard({ id, charts, isActive, onSwitch }) {
-  const s = charts[id];
-  const label =
+interface ChartRailCardProps {
+  id: string;
+  charts: Record<string, ChartSlot>;
+  isActive: boolean;
+  onSwitch: (id: string) => void;
+}
+
+function ChartRailCard({ id, charts, isActive, onSwitch }: ChartRailCardProps): React.JSX.Element {
+  const s: ChartSlot | undefined = charts[id];
+  const label: string =
     s?.context?.chartType?.label ||
-    CHART_TYPE_LABELS[s?.params?.chart_type] ||
+    CHART_TYPE_LABELS[s?.params?.chart_type ?? ""] ||
     (s?.params?.chart_type ? id : "Select\u2026");
-  const roleLabel = CHART_TYPE_LABELS[s?.params?.chart_type] || (s?.params?.chart_type ? id : "Select\u2026");
+  const roleLabel: string = CHART_TYPE_LABELS[s?.params?.chart_type ?? ""] || (s?.params?.chart_type ? id : "Select\u2026");
   const violations = s?.violations || [];
-  const oocCount = violations.reduce((sum, v) => sum + v.indices.length, 0);
+  const oocCount: number = violations.reduce((sum: number, v) => sum + v.indices.length, 0);
   const cap = s?.capability;
-  const cpkStr = cap?.cpk != null ? cap.cpk.toFixed(2) : "\u2014";
+  const cpkStr: string = cap?.cpk != null ? cap.cpk.toFixed(2) : "\u2014";
 
   return (
     <button
@@ -547,12 +632,19 @@ function ChartRailCard({ id, charts, isActive, onSwitch }) {
   );
 }
 
-function ChartRail({ charts, chartOrder, activeChartId, onSwitch }) {
+interface ChartRailProps {
+  charts: Record<string, ChartSlot>;
+  chartOrder: string[];
+  activeChartId: string;
+  onSwitch: (id: string) => void;
+}
+
+function ChartRail({ charts, chartOrder, activeChartId, onSwitch }: ChartRailProps): React.JSX.Element {
   return (
     <div className="panel-card findings-chart-rail">
       <h4>Charts</h4>
       <div className="chart-rail-list">
-        {chartOrder.map((id) => (
+        {chartOrder.map((id: string) => (
           <ChartRailCard
             key={id}
             id={id}
@@ -566,11 +658,18 @@ function ChartRail({ charts, chartOrder, activeChartId, onSwitch }) {
   );
 }
 
-function HeaderBar({ health, slot, stats, chartId }) {
-  const chartLabel = slot?.context?.chartType?.label || "\u2014";
-  const params = slot?.params || {};
+interface HeaderBarProps {
+  health: HealthData;
+  slot: ChartSlot | undefined;
+  stats: StatsData | null;
+  chartId: string;
+}
 
-  const cells = [
+function HeaderBar({ health, slot, stats, chartId }: HeaderBarProps): React.JSX.Element {
+  const chartLabel: string = slot?.context?.chartType?.label || "\u2014";
+  const params = slot?.params || {} as Record<string, unknown>;
+
+  const cells: { label: string; value: string | number; cls: string }[] = [
     { label: "Cpk", value: health.cpk, cls: health.cpkSeverity },
     { label: "OOC", value: health.oocCount, cls: health.oocCount > 0 ? "danger" : "good" },
     { label: "N", value: health.n, cls: "" },
@@ -578,19 +677,19 @@ function HeaderBar({ health, slot, stats, chartId }) {
 
   if (stats) {
     cells.push(
-      { label: "Mean", value: stats.mean, cls: "" },
-      { label: "\u03C3 Within", value: stats.sigmaWithin, cls: "" },
-      { label: "\u03C3 Overall", value: stats.std, cls: "" },
-      { label: "Min", value: stats.min, cls: "" },
-      { label: "Max", value: stats.max, cls: "" },
-      { label: "Range", value: stats.range, cls: "" },
-      { label: "Median", value: stats.median, cls: "" },
+      { label: "Mean", value: stats.mean ?? "", cls: "" },
+      { label: "\u03C3 Within", value: stats.sigmaWithin ?? "", cls: "" },
+      { label: "\u03C3 Overall", value: stats.std ?? "", cls: "" },
+      { label: "Min", value: stats.min ?? "", cls: "" },
+      { label: "Max", value: stats.max ?? "", cls: "" },
+      { label: "Range", value: stats.range ?? "", cls: "" },
+      { label: "Median", value: stats.median ?? "", cls: "" },
     );
   }
 
-  const handleSpecChange = useCallback((key, e) => {
-    const raw = e.target.value.trim();
-    const value = raw !== "" ? parseFloat(raw) : null;
+  const handleSpecChange = useCallback((key: string, e: React.ChangeEvent<HTMLInputElement>): void => {
+    const raw: string = e.target.value.trim();
+    const value: number | null = raw !== "" ? parseFloat(raw) : null;
     if (key && chartId && (value === null || !isNaN(value))) {
       spcStore.setState(setChartParams(spcStore.getState(), chartId, { [key]: value }));
       reanalyze();
@@ -617,8 +716,8 @@ function HeaderBar({ health, slot, stats, chartId }) {
           <input
             type="number"
             className="standard-input"
-            onChange={(e) => handleSpecChange("lsl", e)}
-            defaultValue={params.lsl ?? ""}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSpecChange("lsl", e)}
+            defaultValue={(params as Record<string, unknown>).lsl as number ?? ""}
             step="any"
             placeholder={"\u2014"}
           />
@@ -628,8 +727,8 @@ function HeaderBar({ health, slot, stats, chartId }) {
           <input
             type="number"
             className="standard-input"
-            onChange={(e) => handleSpecChange("target", e)}
-            defaultValue={params.target ?? ""}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSpecChange("target", e)}
+            defaultValue={(params as Record<string, unknown>).target as number ?? ""}
             step="any"
             placeholder={"\u2014"}
           />
@@ -639,8 +738,8 @@ function HeaderBar({ health, slot, stats, chartId }) {
           <input
             type="number"
             className="standard-input"
-            onChange={(e) => handleSpecChange("usl", e)}
-            defaultValue={params.usl ?? ""}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSpecChange("usl", e)}
+            defaultValue={(params as Record<string, unknown>).usl as number ?? ""}
             step="any"
             placeholder={"\u2014"}
           />
@@ -653,21 +752,26 @@ function HeaderBar({ health, slot, stats, chartId }) {
   );
 }
 
-function StandardsBar({ findingsStandards, findingsStandardsExpanded }) {
-  const std = findingsStandards || {};
-  const expanded = findingsStandardsExpanded;
+interface StandardsBarProps {
+  findingsStandards: FindingsStandards;
+  findingsStandardsExpanded: boolean;
+}
 
-  const handleToggle = useCallback(() => {
+function StandardsBar({ findingsStandards, findingsStandardsExpanded }: StandardsBarProps): React.JSX.Element {
+  const std = findingsStandards || {} as FindingsStandards;
+  const expanded: boolean = findingsStandardsExpanded;
+
+  const handleToggle = useCallback((): void => {
     spcStore.setState(toggleFindingsStandardsBar(spcStore.getState()));
   }, []);
 
-  const handleStandardChange = useCallback((key, e) => {
-    const value = parseFloat(e.target.value);
+  const handleStandardChange = useCallback((key: string, e: React.ChangeEvent<HTMLInputElement>): void => {
+    const value: number = parseFloat(e.target.value);
     if (!key || isNaN(value) || value < 0) return;
-    let next = setFindingsStandard(spcStore.getState(), key, value);
+    let next = setFindingsStandard(spcStore.getState(), key, value) as SPCState;
     try { localStorage.setItem("spc-findings-standards", JSON.stringify(next.findingsStandards)); } catch { /* */ }
-    const chartId = next.findingsChartId || next.chartOrder[0];
-    next = setStructuralFindings(next, generateFindings(next, chartId), chartId);
+    const chartId: string = next.findingsChartId || next.chartOrder[0];
+    next = setStructuralFindings(next, generateFindings(next, chartId), chartId) as SPCState;
     spcStore.setState(next);
   }, []);
 
@@ -683,14 +787,14 @@ function StandardsBar({ findingsStandards, findingsStandardsExpanded }) {
       </button>
       {expanded ? (
         <div className="standards-inputs">
-          {STANDARDS_FIELDS.map((f) => (
+          {STANDARDS_FIELDS.map((f: StandardField) => (
             <div key={f.key} className="standard-field">
               <span className="eyebrow">{f.label}</span>
               <input
                 type="number"
                 className="standard-input"
-                onChange={(e) => handleStandardChange(f.key, e)}
-                defaultValue={std[f.key] ?? ""}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleStandardChange(f.key, e)}
+                defaultValue={(std as unknown as Record<string, number>)[f.key] ?? ""}
                 step="any"
                 min="0"
               />
@@ -702,7 +806,13 @@ function StandardsBar({ findingsStandards, findingsStandardsExpanded }) {
   );
 }
 
-function FindingCard({ finding, isActive, onSelect }) {
+interface FindingCardProps {
+  finding: Finding;
+  isActive: boolean;
+  onSelect: (id: string) => void;
+}
+
+function FindingCard({ finding, isActive, onSelect }: FindingCardProps): React.JSX.Element {
   return (
     <button
       className={`finding-card ${isActive ? "active" : ""} ${finding.severity}`}
@@ -722,7 +832,7 @@ function FindingCard({ finding, isActive, onSelect }) {
   );
 }
 
-function AISection() {
+function AISection(): React.JSX.Element {
   return (
     <div className="findings-ai-section">
       <div className="findings-ai-header">
@@ -752,17 +862,17 @@ function AISection() {
 
 /* ── Main Component ────────────────────────────────── */
 
-export default function FindingsView() {
-  const charts = useStore(spcStore, (s) => s.charts);
-  const chartOrder = useStore(spcStore, (s) => s.chartOrder);
-  const focusedChartId = useStore(spcStore, (s) => s.focusedChartId);
-  const findingsChartId = useStore(spcStore, (s) => s.findingsChartId);
-  const findingsStandards = useStore(spcStore, (s) => s.findingsStandards);
-  const findingsStandardsExpanded = useStore(spcStore, (s) => s.findingsStandardsExpanded);
-  const selectedFindingId = useStore(spcStore, (s) => s.selectedFindingId);
-  const structuralFindings = useStore(spcStore, (s) => s.structuralFindings);
-  const points = useStore(spcStore, (s) => s.points);
-  const columnConfig = useStore(spcStore, (s) => s.columnConfig);
+export default function FindingsView(): React.JSX.Element {
+  const charts = useStore(spcStore, (s: SPCState) => s.charts);
+  const chartOrder = useStore(spcStore, (s: SPCState) => s.chartOrder);
+  const focusedChartId = useStore(spcStore, (s: SPCState) => s.focusedChartId);
+  const findingsChartId = useStore(spcStore, (s: SPCState) => s.findingsChartId);
+  const findingsStandards = useStore(spcStore, (s: SPCState) => s.findingsStandards);
+  const findingsStandardsExpanded = useStore(spcStore, (s: SPCState) => s.findingsStandardsExpanded);
+  const selectedFindingId = useStore(spcStore, (s: SPCState) => s.selectedFindingId);
+  const structuralFindings = useStore(spcStore, (s: SPCState) => s.structuralFindings);
+  const points = useStore(spcStore, (s: SPCState) => s.points);
+  const columnConfig = useStore(spcStore, (s: SPCState) => s.columnConfig);
 
   // Build the state-like object that deriveFindings expects
   const stateSlice = useMemo(
@@ -792,25 +902,25 @@ export default function FindingsView() {
     ],
   );
 
-  const derived = useMemo(() => deriveFindings(stateSlice), [stateSlice]);
-  const activeChartId = findingsChartId || chartOrder[0];
-  const slot = charts[activeChartId];
+  const derived: DerivedFindings = useMemo(() => deriveFindings(stateSlice as unknown as SPCState) as DerivedFindings, [stateSlice]);
+  const activeChartId: string = findingsChartId || chartOrder[0];
+  const slot: ChartSlot | undefined = charts[activeChartId];
 
-  const stats = useMemo(() => {
-    const f = (structuralFindings || []).find(
-      (item) => item.generatorId === "statisticalSummary",
+  const stats: StatsData | null = useMemo(() => {
+    const f = (structuralFindings as Finding[] || []).find(
+      (item: Finding) => item.generatorId === "statisticalSummary",
     );
-    return f?.context || null;
+    return (f?.context as StatsData) || null;
   }, [structuralFindings]);
 
-  const handleSwitchChart = useCallback((chartId) => {
-    const state = spcStore.getState();
+  const handleSwitchChart = useCallback((chartId: string): void => {
+    const state: SPCState = spcStore.getState() as SPCState;
     const withChart = setFindingsChart(state, chartId);
     const next = setStructuralFindings(withChart, generateFindings(withChart, chartId), chartId);
     spcStore.setState(next);
   }, []);
 
-  const handleSelectFinding = useCallback((findingId) => {
+  const handleSelectFinding = useCallback((findingId: string): void => {
     spcStore.setState(selectStructuralFinding(spcStore.getState(), findingId));
   }, []);
 
@@ -860,13 +970,13 @@ export default function FindingsView() {
 
             <div className="findings-dashboard-grid">
               <div className="findings-card-column">
-                {CATEGORIES.map((cat) => {
-                  const items = derived.grouped[cat] || [];
+                {CATEGORIES.map((cat: string) => {
+                  const items: Finding[] = derived.grouped[cat] || [];
                   if (items.length === 0) return null;
                   return (
                     <div key={cat} className="finding-category-group">
                       <span className="eyebrow">{CATEGORY_LABELS[cat]}</span>
-                      {items.map((f) => (
+                      {items.map((f: Finding) => (
                         <FindingCard
                           key={f.id}
                           finding={f}

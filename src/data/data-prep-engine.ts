@@ -7,20 +7,100 @@
  * All functions take an Arquero table and return a new Arquero table (immutable).
  * The original table is never modified, enabling undo by replaying from original.
  */
+import type { ColumnTable } from 'arquero';
 import { from, op, escape, desc } from 'arquero';
+
+export type FilterOperator = 'eq' | 'neq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains' | 'not_contains' | 'between' | 'is_null' | 'is_not_null';
+export type MissingStrategy = 'remove' | 'fill_mean' | 'fill_median' | 'fill_zero' | 'fill_custom' | 'fill_down' | 'fill_up';
+export type CleanOperation = 'trim' | 'lower' | 'upper' | 'title';
+export type ColumnDtype = 'numeric' | 'text';
+export type InferredType = 'number' | 'string' | 'boolean';
+
+export interface ColumnMeta {
+  name: string;
+  dtype: string;
+}
+
+export interface SortSpec {
+  column: string;
+  direction: 'asc' | 'desc';
+}
+
+export interface TypeConversionPreview {
+  convertible: number;
+  total: number;
+}
+
+export interface NumericProfile {
+  count: number;
+  missing: number;
+  missingPct: number;
+  distinct: number;
+  mean: number;
+  std: number;
+  min: number;
+  max: number;
+  q1: number;
+  q3: number;
+  median: number;
+  p10: number;
+  p90: number;
+  skewness: number;
+  kurtosis: number;
+  cv: number | null;
+  outlierCount: number;
+  histogram: number[];
+}
+
+interface TopValue {
+  value: string;
+  count: number;
+}
+
+export interface TextProfile {
+  count: number;
+  missing: number;
+  missingPct: number;
+  distinct: number;
+  topValues: TopValue[];
+  minLength: number;
+  maxLength: number;
+  emptyStrings: number;
+  balanceRatio: number | null;
+  histogram: number[];
+}
+
+export interface ColumnStats {
+  count: number;
+  mean: number;
+  std: number;
+  min: number;
+  max: number;
+  median: number;
+  missing: number;
+}
+
+export interface ValidationRule {
+  type: 'range' | 'allowed' | 'regex';
+  min?: number;
+  max?: number;
+  values?: string[];
+  pattern?: string;
+}
+
+export interface ColumnWithValidation {
+  name: string;
+  validation?: ValidationRule;
+}
 
 /**
  * Create an Arquero table from parsed CSV rows.
  * Types values appropriately (numbers become numbers, strings stay strings).
  * The raw string rows are kept separately for server storage.
- *
- * @param {Object[]} rows - Raw string rows from PapaParse
- * @param {Array<{name: string, dtype: string}>} columns - Column metadata
- * @returns {import('arquero').ColumnTable}
  */
-export function createTable(rows, columns) {
-  const typed = rows.map(row => {
-    const out = {};
+export function createTable(rows: Record<string, string>[], columns: ColumnMeta[]): ColumnTable {
+  const typed = rows.map((row: Record<string, string>) => {
+    const out: Record<string, number | string | null> = {};
     for (const col of columns) {
       const raw = row[col.name];
       if (raw == null || raw === '') {
@@ -39,82 +119,61 @@ export function createTable(rows, columns) {
 
 /**
  * Infer the JavaScript type actually stored in a column by sampling non-null values.
- * This is needed because createTable() coerces numeric-dtype columns to JS numbers,
- * while DOM input values are always strings. Without this, strict === fails:
- * e.g. the table stores 15 (number) but the filter value is "15" (string).
- *
- * @param {import('arquero').ColumnTable} table
- * @param {string} column
- * @returns {'number'|'string'|'boolean'}
  */
-function inferColumnType(table, column) {
+function inferColumnType(table: ColumnTable, column: string): InferredType {
   const arr = table.array(column);
   for (let i = 0; i < Math.min(arr.length, 20); i++) {
-    if (arr[i] != null) return typeof arr[i];
+    if (arr[i] != null) return typeof arr[i] as InferredType;
   }
   return 'string';
 }
 
 /**
  * Coerce a DOM string value to match the actual stored column type.
- * createTable() only produces 'number' or 'string' columns from CSV data,
- * so only those two cases are needed.
- * @param {string} value
- * @param {'number'|'string'} colType
- * @returns {number|string}
  */
-function coerceToColumnType(value, colType) {
+function coerceToColumnType(value: string, colType: InferredType): number | string {
   if (colType === 'number') return Number(value);
   return value;
 }
 
 /**
  * Filter rows by column value.
- *
- * Uses Arquero's escape() helper so that the column name and comparison
- * value can be injected as closures into the table expression.
- *
- * @param {import('arquero').ColumnTable} table
- * @param {string} column - Column name
- * @param {'eq'|'neq'|'gt'|'lt'|'gte'|'lte'|'contains'|'not_contains'|'between'|'is_null'|'is_not_null'} operator
- * @param {*} value - Filter value (or [min, max] for 'between')
- * @returns {import('arquero').ColumnTable}
  */
-export function filterRows(table, column, operator, value) {
+export function filterRows(table: ColumnTable, column: string, operator: FilterOperator, value: string | [string, string]): ColumnTable {
   switch (operator) {
     case 'eq': {
-      const cmp = coerceToColumnType(value, inferColumnType(table, column));
-      return table.filter(escape(d => d[column] === cmp));
+      const cmp = coerceToColumnType(value as string, inferColumnType(table, column));
+      return table.filter(escape((d: Record<string, unknown>) => d[column] === cmp));
     }
     case 'neq': {
-      const cmp = coerceToColumnType(value, inferColumnType(table, column));
-      return table.filter(escape(d => d[column] !== cmp));
+      const cmp = coerceToColumnType(value as string, inferColumnType(table, column));
+      return table.filter(escape((d: Record<string, unknown>) => d[column] !== cmp));
     }
     case 'gt':
-      return table.filter(escape(d => d[column] > Number(value)));
+      return table.filter(escape((d: Record<string, unknown>) => (d[column] as number) > Number(value)));
     case 'lt':
-      return table.filter(escape(d => d[column] < Number(value)));
+      return table.filter(escape((d: Record<string, unknown>) => (d[column] as number) < Number(value)));
     case 'gte':
-      return table.filter(escape(d => d[column] >= Number(value)));
+      return table.filter(escape((d: Record<string, unknown>) => (d[column] as number) >= Number(value)));
     case 'lte':
-      return table.filter(escape(d => d[column] <= Number(value)));
+      return table.filter(escape((d: Record<string, unknown>) => (d[column] as number) <= Number(value)));
     case 'contains':
-      return table.filter(escape(d =>
-        d[column] != null && String(d[column]).includes(value)
+      return table.filter(escape((d: Record<string, unknown>) =>
+        d[column] != null && String(d[column]).includes(value as string)
       ));
     case 'not_contains':
-      return table.filter(escape(d =>
-        d[column] == null || !String(d[column]).includes(value)
+      return table.filter(escape((d: Record<string, unknown>) =>
+        d[column] == null || !String(d[column]).includes(value as string)
       ));
     case 'between': {
-      const lo = Number(value[0]);
-      const hi = Number(value[1]);
-      return table.filter(escape(d => d[column] >= lo && d[column] <= hi));
+      const lo = Number((value as [string, string])[0]);
+      const hi = Number((value as [string, string])[1]);
+      return table.filter(escape((d: Record<string, unknown>) => (d[column] as number) >= lo && (d[column] as number) <= hi));
     }
     case 'is_null':
-      return table.filter(escape(d => d[column] == null || d[column] === ''));
+      return table.filter(escape((d: Record<string, unknown>) => d[column] == null || d[column] === ''));
     case 'is_not_null':
-      return table.filter(escape(d => d[column] != null && d[column] !== ''));
+      return table.filter(escape((d: Record<string, unknown>) => d[column] != null && d[column] !== ''));
     default:
       throw new Error(`Unknown filter operator: ${operator}`);
   }
@@ -122,14 +181,11 @@ export function filterRows(table, column, operator, value) {
 
 /**
  * Sort table by one or more columns.
- * @param {import('arquero').ColumnTable} table
- * @param {Array<{column: string, direction: 'asc' | 'desc'}>} sortSpec
- * @returns {import('arquero').ColumnTable}
  */
-export function sortTable(table, sortSpec) {
+export function sortTable(table: ColumnTable, sortSpec: SortSpec[]): ColumnTable {
   if (!sortSpec || sortSpec.length === 0) return table;
 
-  const keys = sortSpec.map(({ column, direction }) =>
+  const keys = sortSpec.map(({ column, direction }: SortSpec) =>
     direction === 'desc' ? desc(column) : column
   );
 
@@ -138,17 +194,11 @@ export function sortTable(table, sortSpec) {
 
 /**
  * Find and replace values in a column.
- * @param {import('arquero').ColumnTable} table
- * @param {string} column - Column name
- * @param {string} find - String to find
- * @param {string} replacement - Replacement string
- * @param {boolean} useRegex - Whether to treat 'find' as a regex
- * @returns {import('arquero').ColumnTable}
  */
-export function findReplace(table, column, find, replacement, useRegex = false) {
-  const pattern = useRegex ? new RegExp(find, 'g') : find;
+export function findReplace(table: ColumnTable, column: string, find: string, replacement: string, useRegex: boolean = false): ColumnTable {
+  const pattern: string | RegExp = useRegex ? new RegExp(find, 'g') : find;
   return table.derive({
-    [column]: escape(d => {
+    [column]: escape((d: Record<string, unknown>) => {
       const val = d[column];
       return val == null ? val : String(val).replace(pattern, replacement);
     }),
@@ -157,57 +207,49 @@ export function findReplace(table, column, find, replacement, useRegex = false) 
 
 /**
  * Remove duplicate rows based on key columns.
- * @param {import('arquero').ColumnTable} table
- * @param {string[]} keyColumns - Columns to check for duplicates
- * @returns {import('arquero').ColumnTable}
  */
-export function removeDuplicates(table, keyColumns) {
+export function removeDuplicates(table: ColumnTable, keyColumns: string[]): ColumnTable {
   return table.dedupe(...keyColumns);
 }
 
 /**
  * Handle missing values in a column.
- * @param {import('arquero').ColumnTable} table
- * @param {string} column - Column name
- * @param {'remove'|'fill_mean'|'fill_median'|'fill_zero'|'fill_custom'|'fill_down'|'fill_up'} strategy
- * @param {*} customValue - Value for 'fill_custom' strategy
- * @returns {import('arquero').ColumnTable}
  */
-export function handleMissing(table, column, strategy, customValue = null) {
+export function handleMissing(table: ColumnTable, column: string, strategy: MissingStrategy, customValue: unknown = null): ColumnTable {
   switch (strategy) {
     case 'remove':
-      return table.filter(escape(d => d[column] != null && d[column] !== ''));
+      return table.filter(escape((d: Record<string, unknown>) => d[column] != null && d[column] !== ''));
 
     case 'fill_mean': {
       // Compute mean first, then fill with escape() closure
-      const stats = table.rollup({ _mean: op.mean(column) }).object();
+      const stats = table.rollup({ _mean: op.mean(column) }).object() as { _mean: number };
       const meanVal = stats._mean;
       return table.derive({
-        [column]: escape(d => d[column] == null ? meanVal : d[column]),
+        [column]: escape((d: Record<string, unknown>) => d[column] == null ? meanVal : d[column]),
       });
     }
 
     case 'fill_median': {
-      const stats = table.rollup({ _median: op.median(column) }).object();
+      const stats = table.rollup({ _median: op.median(column) }).object() as { _median: number };
       const medianVal = stats._median;
       return table.derive({
-        [column]: escape(d => d[column] == null ? medianVal : d[column]),
+        [column]: escape((d: Record<string, unknown>) => d[column] == null ? medianVal : d[column]),
       });
     }
 
     case 'fill_zero':
       return table.derive({
-        [column]: escape(d => d[column] == null ? 0 : d[column]),
+        [column]: escape((d: Record<string, unknown>) => d[column] == null ? 0 : d[column]),
       });
 
     case 'fill_custom':
       return table.derive({
-        [column]: escape(d => d[column] == null ? customValue : d[column]),
+        [column]: escape((d: Record<string, unknown>) => d[column] == null ? customValue : d[column]),
       });
 
     case 'fill_down': {
-      const data = table.objects();
-      let lastVal = null;
+      const data = table.objects() as Record<string, unknown>[];
+      let lastVal: unknown = null;
       for (const row of data) {
         if (row[column] != null && row[column] !== '') {
           lastVal = row[column];
@@ -219,8 +261,8 @@ export function handleMissing(table, column, strategy, customValue = null) {
     }
 
     case 'fill_up': {
-      const data = table.objects();
-      let lastVal = null;
+      const data = table.objects() as Record<string, unknown>[];
+      let lastVal: unknown = null;
       for (let i = data.length - 1; i >= 0; i--) {
         if (data[i][column] != null && data[i][column] !== '') {
           lastVal = data[i][column];
@@ -238,30 +280,26 @@ export function handleMissing(table, column, strategy, customValue = null) {
 
 /**
  * Trim whitespace and clean text in a column.
- * @param {import('arquero').ColumnTable} table
- * @param {string} column - Column name
- * @param {'trim'|'lower'|'upper'|'title'} operation
- * @returns {import('arquero').ColumnTable}
  */
-export function cleanText(table, column, operation = 'trim') {
+export function cleanText(table: ColumnTable, column: string, operation: CleanOperation = 'trim'): ColumnTable {
   switch (operation) {
     case 'trim':
       return table.derive({
-        [column]: escape(d => {
+        [column]: escape((d: Record<string, unknown>) => {
           const val = d[column];
           return val == null ? val : String(val).trim();
         }),
       });
     case 'lower':
       return table.derive({
-        [column]: escape(d => {
+        [column]: escape((d: Record<string, unknown>) => {
           const val = d[column];
           return val == null ? val : String(val).toLowerCase();
         }),
       });
     case 'upper':
       return table.derive({
-        [column]: escape(d => {
+        [column]: escape((d: Record<string, unknown>) => {
           const val = d[column];
           return val == null ? val : String(val).toUpperCase();
         }),
@@ -269,10 +307,10 @@ export function cleanText(table, column, operation = 'trim') {
     case 'title':
       // Arquero lacks a title-case op; use escape() for native JS
       return table.derive({
-        [column]: escape(d => {
+        [column]: escape((d: Record<string, unknown>) => {
           const val = d[column];
           if (val == null) return val;
-          return String(val).toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+          return String(val).toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
         }),
       });
     default:
@@ -282,44 +320,31 @@ export function cleanText(table, column, operation = 'trim') {
 
 /**
  * Reorder columns in the table.
- * @param {import('arquero').ColumnTable} table
- * @param {string[]} columnOrder - New column order (columns not listed are appended)
- * @returns {import('arquero').ColumnTable}
  */
-export function reorderColumns(table, columnOrder) {
+export function reorderColumns(table: ColumnTable, columnOrder: string[]): ColumnTable {
   const existing = table.columnNames();
-  const remaining = existing.filter(c => !columnOrder.includes(c));
+  const remaining = existing.filter((c: string) => !columnOrder.includes(c));
   return table.select([...columnOrder, ...remaining]);
 }
 
 /**
  * Hide columns from view (select subset).
- * @param {import('arquero').ColumnTable} table
- * @param {string[]} visibleColumns - Columns to keep visible
- * @returns {import('arquero').ColumnTable}
  */
-export function selectColumns(table, visibleColumns) {
+export function selectColumns(table: ColumnTable, visibleColumns: string[]): ColumnTable {
   return table.select(visibleColumns);
 }
 
 /**
  * Get table as array of objects (for rendering).
- * @param {import('arquero').ColumnTable} table
- * @param {number} offset - Start row
- * @param {number} limit - Number of rows to return
- * @returns {Object[]}
  */
-export function getPage(table, offset = 0, limit = 50) {
-  return table.slice(offset, offset + limit).objects();
+export function getPage(table: ColumnTable, offset: number = 0, limit: number = 50): Record<string, unknown>[] {
+  return table.slice(offset, offset + limit).objects() as Record<string, unknown>[];
 }
 
 /**
  * Get basic statistics for a numeric column.
- * @param {import('arquero').ColumnTable} table
- * @param {string} column
- * @returns {{count: number, mean: number, std: number, min: number, max: number, median: number, missing: number}}
  */
-export function columnStats(table, column) {
+export function columnStats(table: ColumnTable, column: string): ColumnStats {
   return table.rollup({
     count:   op.count(),
     mean:    op.mean(column),
@@ -327,8 +352,8 @@ export function columnStats(table, column) {
     min:     op.min(column),
     max:     op.max(column),
     median:  op.median(column),
-    missing: d => op.sum(d[column] == null ? 1 : 0),
-  }).object();
+    missing: (d: Record<string, unknown>) => op.sum(d[column] == null ? 1 : 0),
+  }).object() as ColumnStats;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -339,26 +364,18 @@ import { compileExpression } from './expression-eval.js';
 
 /**
  * Rename a column.
- * @param {import('arquero').ColumnTable} table
- * @param {string} oldName
- * @param {string} newName
- * @returns {import('arquero').ColumnTable}
  */
-export function renameColumn(table, oldName, newName) {
+export function renameColumn(table: ColumnTable, oldName: string, newName: string): ColumnTable {
   return table.rename({ [oldName]: newName });
 }
 
 /**
  * Change column data type (numeric↔text).
- * @param {import('arquero').ColumnTable} table
- * @param {string} column
- * @param {'numeric'|'text'} targetType
- * @returns {import('arquero').ColumnTable}
  */
-export function changeColumnType(table, column, targetType) {
+export function changeColumnType(table: ColumnTable, column: string, targetType: ColumnDtype): ColumnTable {
   if (targetType === 'numeric') {
     return table.derive({
-      [column]: escape(d => {
+      [column]: escape((d: Record<string, unknown>) => {
         const v = d[column];
         if (v == null) return null;
         const n = Number(v);
@@ -368,18 +385,14 @@ export function changeColumnType(table, column, targetType) {
   }
   // text
   return table.derive({
-    [column]: escape(d => d[column] == null ? null : String(d[column])),
+    [column]: escape((d: Record<string, unknown>) => d[column] == null ? null : String(d[column])),
   });
 }
 
 /**
  * Preview how many values in a column can convert to a target type.
- * @param {import('arquero').ColumnTable} table
- * @param {string} column
- * @param {'numeric'|'text'} targetType
- * @returns {{ convertible: number, total: number }}
  */
-export function previewTypeConversion(table, column, targetType) {
+export function previewTypeConversion(table: ColumnTable, column: string, targetType: ColumnDtype): TypeConversionPreview {
   const arr = table.array(column);
   let convertible = 0;
   let total = 0;
@@ -399,19 +412,13 @@ export function previewTypeConversion(table, column, targetType) {
  * Add a calculated column using a simple arithmetic expression.
  * Expression syntax: [ColName] for column refs, +,-,*,/,() for math,
  * round/abs/log/sqrt/pow/min/max for functions.
- *
- * @param {import('arquero').ColumnTable} table
- * @param {string} newColName
- * @param {string} expression
- * @param {string[]} columnNames - valid column names for validation
- * @returns {import('arquero').ColumnTable}
  */
-export function addCalculatedColumn(table, newColName, expression, columnNames) {
+export function addCalculatedColumn(table: ColumnTable, newColName: string, expression: string, columnNames: string[]): ColumnTable {
   const { fn, error } = compileExpression(expression, columnNames);
   if (error) throw new Error(error);
   return table.derive({
-    [newColName]: escape(d => {
-      try { return fn(d); }
+    [newColName]: escape((d: Record<string, unknown>) => {
+      try { return fn!(d as Record<string, number | string | null>); }
       catch { return null; }
     }),
   });
@@ -419,16 +426,11 @@ export function addCalculatedColumn(table, newColName, expression, columnNames) 
 
 /**
  * Recode values in a column using a mapping.
- * @param {import('arquero').ColumnTable} table
- * @param {string} column - source column
- * @param {Object<string, string>} mapping - { oldValue: newValue }
- * @param {string|null} newColName - if provided, write to new column
- * @returns {import('arquero').ColumnTable}
  */
-export function recodeValues(table, column, mapping, newColName = null) {
+export function recodeValues(table: ColumnTable, column: string, mapping: Record<string, string>, newColName: string | null = null): ColumnTable {
   const target = newColName || column;
   return table.derive({
-    [target]: escape(d => {
+    [target]: escape((d: Record<string, unknown>) => {
       const v = d[column];
       const key = v == null ? null : String(v);
       return key != null && key in mapping ? mapping[key] : v;
@@ -438,27 +440,21 @@ export function recodeValues(table, column, mapping, newColName = null) {
 
 /**
  * Bin a numeric column into categorical bins.
- * @param {import('arquero').ColumnTable} table
- * @param {string} column
- * @param {number} binCount
- * @param {string} newColName
- * @param {number[]|null} customBreaks - sorted breakpoints; if null, equal-width
- * @returns {import('arquero').ColumnTable}
  */
-export function binColumn(table, column, binCount, newColName, customBreaks = null) {
+export function binColumn(table: ColumnTable, column: string, binCount: number, newColName: string, customBreaks: number[] | null = null): ColumnTable {
   let breaks = customBreaks;
   if (!breaks) {
-    const stats = table.rollup({ _min: op.min(column), _max: op.max(column) }).object();
+    const stats = table.rollup({ _min: op.min(column), _max: op.max(column) }).object() as { _min: number; _max: number };
     const range = stats._max - stats._min;
     const width = range / binCount;
-    breaks = Array.from({ length: binCount - 1 }, (_, i) =>
+    breaks = Array.from({ length: binCount - 1 }, (_: unknown, i: number) =>
       Math.round((stats._min + width * (i + 1)) * 1e6) / 1e6
     );
   }
   const b = breaks; // closure-safe copy
   return table.derive({
-    [newColName]: escape(d => {
-      const v = d[column];
+    [newColName]: escape((d: Record<string, unknown>) => {
+      const v = d[column] as number | null;
       if (v == null) return null;
       for (let i = 0; i < b.length; i++) {
         if (v <= b[i]) return `bin_${i + 1}`;
@@ -470,19 +466,14 @@ export function binColumn(table, column, binCount, newColName, customBreaks = nu
 
 /**
  * Split a column by delimiter into multiple new columns.
- * @param {import('arquero').ColumnTable} table
- * @param {string} column
- * @param {string} delimiter
- * @param {number} maxParts
- * @returns {import('arquero').ColumnTable}
  */
-export function splitColumn(table, column, delimiter, maxParts = 2) {
-  const derived = {};
+export function splitColumn(table: ColumnTable, column: string, delimiter: string, maxParts: number = 2): ColumnTable {
+  const derived: Record<string, ReturnType<typeof escape>> = {};
   for (let i = 0; i < maxParts; i++) {
     const name = `${column}_${i + 1}`;
     const idx = i;
     const delim = delimiter;
-    derived[name] = escape(d => {
+    derived[name] = escape((d: Record<string, unknown>) => {
       const v = d[column];
       if (v == null) return null;
       const parts = String(v).split(delim);
@@ -494,36 +485,27 @@ export function splitColumn(table, column, delimiter, maxParts = 2) {
 
 /**
  * Concatenate multiple columns into a new column.
- * @param {import('arquero').ColumnTable} table
- * @param {string[]} columns - columns to concatenate
- * @param {string} separator
- * @param {string} newColName
- * @returns {import('arquero').ColumnTable}
  */
-export function concatColumns(table, columns, separator, newColName) {
+export function concatColumns(table: ColumnTable, columns: string[], separator: string, newColName: string): ColumnTable {
   const cols = columns; // closure-safe copy
   const sep = separator;
   return table.derive({
-    [newColName]: escape(d => {
-      return cols.map(c => d[c] ?? '').join(sep);
+    [newColName]: escape((d: Record<string, unknown>) => {
+      return cols.map((c: string) => d[c] ?? '').join(sep);
     }),
   });
 }
 
 // ═══════════════════════════════════════════════════════════════════
 // Phase 3 — Data Validation & Quality
-// ═══════════════════════════════��═══════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 
 /**
  * Validate a single column against a rule.
- * @param {import('arquero').ColumnTable} table
- * @param {string} colName
- * @param {{type: 'range'|'allowed'|'regex', min?: number, max?: number, values?: string[], pattern?: string}} rule
- * @returns {Set<number>} Set of invalid row indices
  */
-export function validateColumn(table, colName, rule) {
+export function validateColumn(table: ColumnTable, colName: string, rule: ValidationRule): Set<number> {
   const arr = table.array(colName);
-  const invalid = new Set();
+  const invalid = new Set<number>();
   for (let i = 0; i < arr.length; i++) {
     const v = arr[i];
     if (v == null) continue;
@@ -533,10 +515,10 @@ export function validateColumn(table, colName, rule) {
       if (rule.min != null && num < rule.min) invalid.add(i);
       if (rule.max != null && num > rule.max) invalid.add(i);
     } else if (rule.type === 'allowed') {
-      if (!rule.values.includes(String(v))) invalid.add(i);
+      if (!rule.values!.includes(String(v))) invalid.add(i);
     } else if (rule.type === 'regex') {
       try {
-        if (!new RegExp(rule.pattern).test(String(v))) invalid.add(i);
+        if (!new RegExp(rule.pattern!).test(String(v))) invalid.add(i);
       } catch { invalid.add(i); }
     }
   }
@@ -545,12 +527,9 @@ export function validateColumn(table, colName, rule) {
 
 /**
  * Validate all columns that have validation rules.
- * @param {import('arquero').ColumnTable} table
- * @param {Array<{name: string, validation?: object}>} columns
- * @returns {Map<string, Set<number>>} column name → invalid row indices
  */
-export function validateAllColumns(table, columns) {
-  const result = new Map();
+export function validateAllColumns(table: ColumnTable, columns: ColumnWithValidation[]): Map<string, Set<number>> {
+  const result = new Map<string, Set<number>>();
   for (const col of columns) {
     if (col.validation) {
       result.set(col.name, validateColumn(table, col.name, col.validation));
@@ -561,16 +540,12 @@ export function validateAllColumns(table, columns) {
 
 /**
  * Profile a column — compute stats, histogram, top values.
- * @param {import('arquero').ColumnTable} table
- * @param {string} colName
- * @param {string} dtype - 'numeric' or 'text'
- * @returns {Object} profile result
  */
-export function profileColumn(table, colName, dtype) {
+export function profileColumn(table: ColumnTable, colName: string, dtype: string): NumericProfile | TextProfile {
   const arr = table.array(colName);
   const n = arr.length;
   let missing = 0;
-  const values = [];
+  const values: unknown[] = [];
   for (let i = 0; i < n; i++) {
     if (arr[i] == null || arr[i] === '') missing++;
     else values.push(arr[i]);
@@ -579,12 +554,12 @@ export function profileColumn(table, colName, dtype) {
   const base = { count: n, missing, missingPct: n > 0 ? (missing / n * 100) : 0, distinct };
 
   if (dtype === 'numeric') {
-    const nums = values.map(Number).filter(v => !isNaN(v)).sort((a, b) => a - b);
+    const nums = values.map(Number).filter((v: number) => !isNaN(v)).sort((a: number, b: number) => a - b);
     if (nums.length === 0) return { ...base, mean: 0, std: 0, min: 0, max: 0, q1: 0, q3: 0, median: 0, p10: 0, p90: 0, skewness: 0, kurtosis: 0, cv: 0, outlierCount: 0, histogram: [] };
     const m = nums.length;
-    const sum = nums.reduce((s, v) => s + v, 0);
+    const sum = nums.reduce((s: number, v: number) => s + v, 0);
     const mean = sum / m;
-    const variance = nums.reduce((s, v) => s + (v - mean) ** 2, 0) / m;
+    const variance = nums.reduce((s: number, v: number) => s + (v - mean) ** 2, 0) / m;
     const std = Math.sqrt(variance);
     const min = nums[0];
     const max = nums[m - 1];
@@ -618,13 +593,13 @@ export function profileColumn(table, colName, dtype) {
     const bins = 12;
     const range = max - min || 1;
     const width = range / bins;
-    const counts = new Array(bins).fill(0);
+    const counts = new Array<number>(bins).fill(0);
     for (const v of nums) {
       const idx = Math.min(Math.floor((v - min) / width), bins - 1);
       counts[idx]++;
     }
     const maxCount = Math.max(...counts, 1);
-    const histogram = counts.map(c => c / maxCount);
+    const histogram = counts.map((c: number) => c / maxCount);
 
     return { ...base, mean, std, min, max, q1, q3, median, p10, p90, skewness, kurtosis, cv, outlierCount, histogram };
   }
@@ -632,13 +607,13 @@ export function profileColumn(table, colName, dtype) {
   // Text dtype
   let emptyStrings = 0;
   for (const v of values) { if (String(v).trim() === '') emptyStrings++; }
-  const freq = {};
+  const freq: Record<string, number> = {};
   for (const v of values) { const s = String(v); freq[s] = (freq[s] || 0) + 1; }
-  const allTopValues = Object.entries(freq)
-    .sort((a, b) => b[1] - a[1])
-    .map(([value, count]) => ({ value, count }));
+  const allTopValues: TopValue[] = Object.entries(freq)
+    .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
+    .map(([value, count]: [string, number]) => ({ value, count }));
   const topValues = allTopValues.slice(0, 10);
-  const lengths = values.map(v => String(v).length);
+  const lengths = values.map((v: unknown) => String(v).length);
   const minLength = lengths.length > 0 ? Math.min(...lengths) : 0;
   const maxLength = lengths.length > 0 ? Math.max(...lengths) : 0;
 
@@ -649,7 +624,7 @@ export function profileColumn(table, colName, dtype) {
   const balanceRatio = minFreq > 0 ? maxFreq / minFreq : null; // 1.0 = even, high = skewed
 
   // Top-3 proportion bars for text sparkline
-  const histogram = topValues.slice(0, 3).map(t => t.count / total);
+  const histogram = topValues.slice(0, 3).map((t: TopValue) => t.count / total);
 
   return { ...base, topValues, minLength, maxLength, emptyStrings, balanceRatio, histogram };
 }

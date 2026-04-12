@@ -1,5 +1,5 @@
 /**
- * chart-callbacks.js — Factory that builds per-chart D3 callback options.
+ * chart-callbacks.ts — Factory that builds per-chart D3 callback options.
  *
  * Each chart instance needs its own callbacks closed over `chartId`.
  * This wires Zustand store actions to the D3 chart engine's callback interface.
@@ -25,17 +25,19 @@ import {
 } from "../core/state/chart.js";
 import { openContextMenu } from "../core/state/ui.js";
 import { runForecast, predictForecast } from "../data/api.js";
+import type { SPCState, ChartSlot, ChartPoint } from "../types/state.ts";
+import type { ForecastOut } from "../types/api.ts";
 
 const DEFAULT_FORECAST_HORIZON = 6;
 
 // --- Forecast prompt timers (per-chart, module-level) ---
-const forecastPromptTimers = new Map();
-const forecastPromptEligibility = new Map();
+const forecastPromptTimers = new Map<string, number>();
+const forecastPromptEligibility = new Map<string, boolean>();
 
 // --- Forecast drag debounce (per-chart) ---
-const forecastDragTimers = new Map();
+const forecastDragTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function clearForecastPromptTimer(id) {
+function clearForecastPromptTimer(id: string): void {
   const timer = forecastPromptTimers.get(id);
   if (timer) {
     clearTimeout(timer);
@@ -43,7 +45,7 @@ function clearForecastPromptTimer(id) {
   }
 }
 
-function scheduleForecastPrompt(id, { force = false } = {}) {
+function scheduleForecastPrompt(id: string, { force = false }: { force?: boolean } = {}): void {
   const state = spcStore.getState();
   const slot = state.charts[id];
   if (!slot || slot.forecast?.mode !== "hidden" || !forecastPromptEligibility.get(id)) {
@@ -60,7 +62,7 @@ function scheduleForecastPrompt(id, { force = false } = {}) {
   }, 900));
 }
 
-function handleForecastPromptEligibility(id, eligible) {
+function handleForecastPromptEligibility(id: string, eligible: boolean): void {
   forecastPromptEligibility.set(id, eligible);
   const state = spcStore.getState();
   const slot = state.charts[id];
@@ -77,7 +79,7 @@ function handleForecastPromptEligibility(id, eligible) {
   }
 }
 
-function handleForecastActivity(id) {
+function handleForecastActivity(id: string): void {
   const state = spcStore.getState();
   const slot = state.charts[id];
   if (!slot) return;
@@ -93,7 +95,7 @@ function handleForecastActivity(id) {
 }
 
 /** Clean up forecast state when a chart unmounts. */
-export function cleanupForecastState(chartId) {
+export function cleanupForecastState(chartId: string): void {
   clearForecastPromptTimer(chartId);
   forecastPromptEligibility.delete(chartId);
   const dragTimer = forecastDragTimers.get(chartId);
@@ -104,7 +106,7 @@ export function cleanupForecastState(chartId) {
  * Fire the forecast API call for a chart.
  * Sets loading state, calls backend, stores result.
  */
-async function fetchForecast(chartId, { horizonOverride } = {}) {
+async function fetchForecast(chartId: string, { horizonOverride }: { horizonOverride?: number } = {}): Promise<void> {
   const s = spcStore.getState();
   const slot = s.charts[chartId];
   if (!slot || !s.activeDatasetId) return;
@@ -115,7 +117,7 @@ async function fetchForecast(chartId, { horizonOverride } = {}) {
   // Send chart-specific values so each chart gets its own model
   const chartValues = slot.chartValues?.length > 0
     ? slot.chartValues
-    : s.points.map(p => p.primaryValue);
+    : s.points.map((p: ChartPoint) => p.primaryValue);
 
   // Send last-phase limits for OOC estimation
   const phases = slot.phases || [];
@@ -127,7 +129,7 @@ async function fetchForecast(chartId, { horizonOverride } = {}) {
       : null;
 
   try {
-    const result = await runForecast(s.activeDatasetId, {
+    const result: ForecastOut = await runForecast(s.activeDatasetId, {
       horizon,
       time_budget: timeBudget,
       values: chartValues,
@@ -144,7 +146,7 @@ async function fetchForecast(chartId, { horizonOverride } = {}) {
  * Lightweight re-predict using cached model (for horizon changes).
  * Debounced — only fires after drag settles (300ms).
  */
-function debouncedRefetchForecast(chartId, horizon) {
+function debouncedRefetchForecast(chartId: string, horizon: number): void {
   const existing = forecastDragTimers.get(chartId);
   if (existing) clearTimeout(existing);
   forecastDragTimers.set(chartId, setTimeout(() => {
@@ -153,16 +155,16 @@ function debouncedRefetchForecast(chartId, horizon) {
   }, 300));
 }
 
-async function refetchForecastPredict(chartId, horizon) {
+async function refetchForecastPredict(chartId: string, horizon: number): Promise<void> {
   const s = spcStore.getState();
   if (!s.activeDatasetId) return;
-  const cacheKey = s.charts[chartId]?.forecast?.cacheKey;
+  const cacheKey = s.charts[chartId]?.forecast?.cacheKey ?? null;
 
   // Show predicting indicator
   spcStore.setState(setForecastPredicting(spcStore.getState(), true, chartId));
 
   try {
-    const result = await predictForecast(s.activeDatasetId, { horizon, cache_key: cacheKey });
+    const result: ForecastOut = await predictForecast(s.activeDatasetId, { horizon, cache_key: cacheKey });
     const current = spcStore.getState().charts[chartId];
     if (current?.forecast?.mode === "active" || current?.forecast?.mode === "loading") {
       let next = setForecastResult(spcStore.getState(), result, chartId);
@@ -176,8 +178,8 @@ async function refetchForecastPredict(chartId, horizon) {
       const slot = fresh.charts[chartId];
       const chartValues = slot?.chartValues?.length > 0
         ? slot.chartValues
-        : fresh.points.map(p => p.primaryValue);
-      const result = await runForecast(fresh.activeDatasetId, {
+        : fresh.points.map((p: ChartPoint) => p.primaryValue);
+      const result: ForecastOut = await runForecast(fresh.activeDatasetId!, {
         horizon,
         time_budget: slot?.forecast?.timeBudget ?? 3,
         values: chartValues,
@@ -195,35 +197,67 @@ async function refetchForecastPredict(chartId, horizon) {
   }
 }
 
+interface AxisDragInfo {
+  axis: "x" | "y";
+  min: number;
+  max: number;
+  yMin?: number;
+  yMax?: number;
+}
+
+interface ForecastDragInfo {
+  horizon: number;
+  min: number;
+  max: number;
+}
+
+interface ContextMenuInfo {
+  role?: string;
+  [key: string]: unknown;
+}
+
+interface ChartCallbacks {
+  onSelectPoint: (index: number | null) => void;
+  onSelectPoints: (indices: number[] | null) => void;
+  onSelectPhase: (phaseIndex: number | null) => void;
+  onContextMenu: (x: number, y: number, info: ContextMenuInfo) => void;
+  onAxisDrag: (info: AxisDragInfo) => void;
+  onForecastDrag: (info: ForecastDragInfo) => void;
+  onForecastActivity: () => void;
+  onForecastPromptEligibilityChange: (payload: { eligible: boolean }) => void;
+  onActivateForecast: () => void;
+  onCancelForecast: () => void;
+  onAxisReset: (axis: "x" | "y") => void;
+}
+
 /**
  * Build the callback options object for a specific chart instance.
- * @param {string} chartId
  */
-export function buildChartCallbacks(chartId) {
+export function buildChartCallbacks(chartId: string): ChartCallbacks {
   return {
-    onSelectPoint: (index) => {
+    onSelectPoint: (index: number | null) => {
       const s = spcStore.getState();
       spcStore.setState(selectPoint(focusChart(s, chartId), index, chartId));
     },
-    onSelectPoints: (indices) => {
+    onSelectPoints: (indices: number[] | null) => {
       const s = spcStore.getState();
       spcStore.setState(selectPoints(focusChart(s, chartId), indices, chartId));
     },
-    onSelectPhase: (phaseIndex) => {
+    onSelectPhase: (phaseIndex: number | null) => {
       const s = spcStore.getState();
       spcStore.setState(selectPhase(focusChart(s, chartId), phaseIndex, chartId));
     },
-    onContextMenu: (x, y, info) => {
+    onContextMenu: (x: number, y: number, info: ContextMenuInfo) => {
       const s = spcStore.getState();
       spcStore.setState(openContextMenu(focusChart(s, chartId), x, y, { ...info, role: chartId }));
     },
-    onAxisDrag: (info) => {
+    onAxisDrag: (info: AxisDragInfo) => {
       const s = spcStore.getState();
       const focused = focusChart(s, chartId);
       if (info.axis === "x") {
         const slot = focused.charts[chartId];
         const mode = slot?.forecast?.mode;
-        let next = setXDomainOverride(focused, info.min, info.max, chartId);
+        let next: SPCState = setXDomainOverride(focused, info.min, info.max, chartId);
 
         // When forecast is active/loading and the visible right edge extends
         // past the last data point, request enough periods to fill the gap.
@@ -249,13 +283,13 @@ export function buildChartCallbacks(chartId) {
         return;
       }
       if (info.axis === "y") {
-        spcStore.setState(setYDomainOverride(focused, info.yMin, info.yMax, chartId));
+        spcStore.setState(setYDomainOverride(focused, info.yMin!, info.yMax!, chartId));
       }
     },
-    onForecastDrag: (info) => {
+    onForecastDrag: (info: ForecastDragInfo) => {
       const s = spcStore.getState();
       const focused = focusChart(s, chartId);
-      let next = setForecastHorizon(focused, info.horizon, chartId);
+      let next: SPCState = setForecastHorizon(focused, info.horizon, chartId);
       next = setXDomainOverride(next, info.min, info.max, chartId);
       spcStore.setState(next);
       // Debounced re-predict — fires 300ms after drag settles
@@ -264,12 +298,12 @@ export function buildChartCallbacks(chartId) {
     onForecastActivity: () => {
       handleForecastActivity(chartId);
     },
-    onForecastPromptEligibilityChange: (payload) => {
+    onForecastPromptEligibilityChange: (payload: { eligible: boolean }) => {
       handleForecastPromptEligibility(chartId, payload.eligible);
     },
     onActivateForecast: () => {
       const s = spcStore.getState();
-      let next = activateForecast(focusChart(s, chartId), chartId);
+      let next: SPCState = activateForecast(focusChart(s, chartId), chartId);
       const sl = next.charts[chartId];
       const pts = getChartPoints(sl, next.points);
       const lastPtIdx = Math.max(0, pts.length - 1);
@@ -295,7 +329,7 @@ export function buildChartCallbacks(chartId) {
       const s = spcStore.getState();
       spcStore.setState(cancelForecast(focusChart(s, chartId), chartId));
     },
-    onAxisReset: (axis) => {
+    onAxisReset: (axis: "x" | "y") => {
       spcStore.setState(resetAxis(spcStore.getState(), axis, chartId));
     },
   };

@@ -1,4 +1,8 @@
-export const CHART_TYPES = [
+import type { ChartParams } from "../../types/state.js";
+
+type ChartTypeGroup = [string, [string, string][]];
+
+export const CHART_TYPES: ChartTypeGroup[] = [
   ["Variables", [["imr","IMR"],["xbar_r","X-Bar R"],["xbar_s","X-Bar S"],["r","R"],["s","S"],["mr","MR"]]],
   ["Attributes", [["p","P"],["np","NP"],["c","C"],["u","U"],["laney_p","Laney P\u2019"],["laney_u","Laney U\u2019"]]],
   ["Advanced", [["cusum","CUSUM"],["ewma","EWMA"],["levey_jennings","Levey-Jennings"],["cusum_vmask","CUSUM V-Mask"],["three_way","Three-Way"],["presummarize","Presummarize"],["run","Run Chart"]]],
@@ -6,21 +10,21 @@ export const CHART_TYPES = [
   ["Rare Event", [["g","G"],["t","T"]]],
   ["Multivariate", [["hotelling_t2","Hotelling T\u00B2"],["mewma","MEWMA"]]],
 ];
-export const SIGMA_METHODS = [["moving_range","Moving Range"],["median_moving_range","Median MR"],["range","Range"],["stddev","Std Dev"],["levey_jennings","Levey-Jennings"]];
-export const NELSON_RULES = [[1,"1: Beyond 3\u03c3"],[2,"2: 9 same side"],[3,"3: 6 trending"],[4,"4: 14 alternating"],[5,"5: 2/3 beyond 2\u03c3"],[6,"6: 4/5 beyond 1\u03c3"],[7,"7: 15 within 1\u03c3"],[8,"8: 8 beyond 1\u03c3"]];
+export const SIGMA_METHODS: [string, string][] = [["moving_range","Moving Range"],["median_moving_range","Median MR"],["range","Range"],["stddev","Std Dev"],["levey_jennings","Levey-Jennings"]];
+export const NELSON_RULES: [number, string][] = [[1,"1: Beyond 3\u03c3"],[2,"2: 9 same side"],[3,"3: 6 trending"],[4,"4: 14 alternating"],[5,"5: 2/3 beyond 2\u03c3"],[6,"6: 4/5 beyond 1\u03c3"],[7,"7: 15 within 1\u03c3"],[8,"8: 8 beyond 1\u03c3"]];
 
-export const SIGMA_METHOD_CHARTS = new Set(["imr"]);
-export const NO_SIGMA_CHARTS = new Set(["p","np","c","u","laney_p","laney_u","cusum","ewma","cusum_vmask","hotelling_t2","mewma","run"]);
+export const SIGMA_METHOD_CHARTS: Set<string> = new Set(["imr"]);
+export const NO_SIGMA_CHARTS: Set<string> = new Set(["p","np","c","u","laney_p","laney_u","cusum","ewma","cusum_vmask","hotelling_t2","mewma","run"]);
 
-export const RECIPE_KEYS = new Set(["chart_type", "value_column", "subgroup_column", "phase_column"]);
+export const RECIPE_KEYS: Set<string> = new Set(["chart_type", "value_column", "subgroup_column", "phase_column"]);
 
-export function parseNullableNumber(value) {
+export function parseNullableNumber(value: string): number | null {
   const trimmed = value.trim();
   return trimmed !== "" ? parseFloat(trimmed) : null;
 }
 
-export function specSummary(params) {
-  const parts = [];
+export function specSummary(params: ChartParams): string {
+  const parts: string[] = [];
   if (params.lsl != null) parts.push(`LSL ${params.lsl}`);
   if (params.target != null) parts.push(`T ${params.target}`);
   if (params.usl != null) parts.push(`USL ${params.usl}`);

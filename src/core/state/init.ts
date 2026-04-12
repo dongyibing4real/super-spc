@@ -87,6 +87,7 @@ export function createSlot(overrides: Partial<ChartSlot> = {}): ChartSlot {
       timeBudget: 3,
       result: null,
       driftSummary: null,
+      cacheKey: null,
       visibleHorizon: DEFAULT_FORECAST_HORIZON,
     },
     ...overrides,
@@ -196,6 +197,7 @@ export function createInitialState(): SPCState {
       pendingNewChart: null,
       themePreference: 'system',
       themeResolved: 'dark',
+      shortcutOverlay: false,
     },
     auditLog: [],
     dataPrep: {

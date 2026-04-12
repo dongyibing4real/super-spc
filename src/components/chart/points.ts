@@ -1,66 +1,88 @@
+import type { Selection } from 'd3-selection';
+import type { ChartScales } from './scales.js';
 import { fmt } from './utils.js';
 import { select as _d3Select } from 'd3-selection';
 
+interface PointData {
+  id?: string;
+  label: string;
+  excluded: boolean;
+  annotation?: string | null;
+  [key: string]: unknown;
+}
+
+interface PhaseForHitTest {
+  start: number;
+  end: number;
+  limits: { ucl: number; lcl: number; center: number };
+}
+
+interface PointsData {
+  points: PointData[];
+  violations: Map<number, string[]>;
+  toggles: { excludedMarkers: boolean; [key: string]: unknown };
+  selectedIndex: number | null;
+  selectedIndices: number[] | null;
+  limits: { ucl: number; lcl: number; center: number };
+  phases?: PhaseForHitTest[];
+  metric: { label?: string; unit?: string };
+}
+
+interface PointsConfig {
+  width: number;
+  padding: { top: number; right: number; bottom: number; left: number };
+  onSelectPoint?: ((index: number | null) => void) | null;
+}
+
 /**
  * Render data point circles with rule violation markers and exclusion marks.
- *
- * Point sizing: radii scale with data density (points per pixel) so packed
- * charts stay readable. JMP/Minitab convention — small points, color is the
- * primary signal, not size.
- *
- * Exclusion marks: X-shaped cross rendered on excluded points when the
- * excludedMarkers toggle is active. Excluded points are still plotted but
- * do not participate in control limit calculations.
- *
- * Multi-selection: supports both single (selectedIndex) and marquee
- * (selectedIndices) selection. Unselected points dim to 0.35 opacity.
- *
- * Hit targets: each point has an invisible circle (rHit) larger than the
- * visible dot, ensuring touch/pointer interaction works even on dense charts.
- *
- * @param {string} [seriesKey='primaryValue'] - Which value key to plot
  */
-export function renderPoints(layer, scales, data, config, seriesKey = 'primaryValue') {
+export function renderPoints(
+  layer: Selection<SVGGElement, unknown, null, undefined>,
+  scales: ChartScales,
+  data: PointsData,
+  config: PointsConfig,
+  seriesKey: string = 'primaryValue'
+): void {
   const { x, y } = scales;
   const { points, violations, toggles, selectedIndex, selectedIndices } = data;
 
-  // Scale point radii to density: shrink when packed, but stay visible.
-  // Industry standard (JMP/Minitab): small points, color is the signal, not size.
+  // Scale point radii to density
   const plotWidth = config.width - config.padding.left - config.padding.right;
   const spacing = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
   const scale = Math.max(0.4, Math.min(1, spacing / 12));
   const rNormal = Math.max(2.5, 3.5 * scale);
-  const rOOC = Math.max(2.5, 3.5 * scale);        // same size as normal — color is the differentiator
-  const rSelected = Math.max(3.0, 4.0 * scale);   // slightly larger when selected
+  const rOOC = Math.max(2.5, 3.5 * scale);
+  const rSelected = Math.max(3.0, 4.0 * scale);
   const rHit = Math.max(8, 10 * scale);
   const xSize = Math.max(2, 2.5 * scale);
 
-  const groups = layer.selectAll('g.point-group')
-    .data(points, (d, i) => d.id || i);
+  const groups = layer.selectAll<SVGGElement, PointData>('g.point-group')
+    .data(points, (d: PointData, i: number) => d.id || String(i));
 
   const enter = groups.enter().append('g').attr('class', 'point-group');
   const merged = enter.merge(groups);
 
   merged
-    .attr('data-point-index', (d, i) => i)
-    .classed('is-excluded', d => d.excluded);
+    .attr('data-point-index', (_d: PointData, i: number) => i)
+    .classed('is-excluded', (d: PointData) => d.excluded);
 
   merged.selectAll('*').remove();
 
-  merged.each(function (d, i) {
+  merged.each(function (this: SVGGElement, d: PointData, i: number) {
     const g = _d3Select(this);
-    const val = d[seriesKey];
+    const val = d[seriesKey] as number;
     const cx = x(i);
     const cy = y(val);
     const activePhase = data.phases && data.phases.length > 0
-      ? data.phases.find(p => i >= p.start && i <= p.end)
+      ? data.phases.find((p: PhaseForHitTest) => i >= p.start && i <= p.end)
       : null;
     const effectiveLimits = activePhase ? activePhase.limits : data.limits;
     const ooc = val >= effectiveLimits.ucl || val <= effectiveLimits.lcl;
     const rules = violations.get(i);
     const hasViolation = rules && rules.length > 0;
     // Rule ring only for non-limit rules (2+). Rule "1" (beyond limits) is already shown by red fill.
-    const hasRuleViolation = rules && rules.some(r => r !== '1');
+    const hasRuleViolation = rules && rules.some((r: string) => r !== '1');
 
     if (d.excluded && toggles.excludedMarkers) {
       g.append('line').attr('class', 'excluded-mark')
@@ -69,7 +91,7 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
         .attr('x1', cx + xSize).attr('y1', cy - xSize).attr('x2', cx - xSize).attr('y2', cy + xSize);
     }
 
-    // Larger invisible hit target keeps interaction easy without bloating the visual mark.
+    // Larger invisible hit target
     g.append('circle')
       .attr('class', 'point-hit')
       .attr('cx', cx).attr('cy', cy).attr('r', rHit)
@@ -77,8 +99,8 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
       .style('cursor', 'pointer')
       .attr('tabindex', 0)
       .attr('role', 'button')
-      .attr('aria-label', `${d.label}, ${fmt(val)} ${data.metric.unit}${hasViolation ? `, rules: ${rules.join(',')}` : ''}`)
-      .on('click', (event) => {
+      .attr('aria-label', `${d.label}, ${fmt(val)} ${data.metric.unit || ''}${hasViolation ? `, rules: ${rules!.join(',')}` : ''}`)
+      .on('click', (event: MouseEvent) => {
         event.stopPropagation();
         if (config.onSelectPoint) config.onSelectPoint(i);
       });
@@ -86,12 +108,12 @@ export function renderPoints(layer, scales, data, config, seriesKey = 'primaryVa
     const pointClass = 'chart-point';
     // Support both single and multi-point selection
     const hasMultiSelection = selectedIndices && selectedIndices.length > 0;
-    const isMultiSelected = hasMultiSelection && selectedIndices.includes(i);
+    const isMultiSelected = hasMultiSelection && selectedIndices!.includes(i);
     const isSelected = hasMultiSelection ? isMultiSelected : (i === selectedIndex);
     const r = isSelected ? rSelected : ooc ? rOOC : rNormal;
     const hasSelection = hasMultiSelection || (selectedIndex != null && selectedIndex >= 0 && selectedIndex < points.length);
 
-    // Rule violation ring — subtle ring behind the point (rules 2+ only)
+    // Rule violation ring
     if (hasRuleViolation) {
       g.append('circle')
         .attr('class', 'violation-ring')

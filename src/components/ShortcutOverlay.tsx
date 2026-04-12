@@ -1,12 +1,14 @@
+import React from "react";
 import { useStore } from "zustand";
 import { spcStore } from "../store/spc-store.js";
+import type { SPCState } from "../types/state.js";
 
-export default function ShortcutOverlay() {
-  const show = useStore(spcStore, (s) => s.ui?.shortcutOverlay);
+export default function ShortcutOverlay(): React.JSX.Element | null {
+  const show = useStore(spcStore, (s: SPCState) => s.ui.shortcutOverlay);
 
   if (!show) return null;
 
-  const close = () => spcStore.setState((s) => ({ ...s, ui: { ...s.ui, shortcutOverlay: false } }));
+  const close = (): void => spcStore.setState((s: SPCState) => ({ ...s, ui: { ...s.ui, shortcutOverlay: false } }));
 
   return (
     <div className="shortcut-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">

@@ -7,8 +7,53 @@
 
 import { SIGMA_METHOD_LABELS } from "../constants.js";
 import { computeStats, capClass } from "../helpers.js";
+import type { SPCState, ChartSlot, ChartPoint, FindingsStandards, Violation, SlotPhase } from "../types/state.js";
 
-const DEFAULT_STANDARDS = {
+interface FindingMetric {
+  label: string;
+  value: string;
+  raw: number;
+}
+
+interface Finding {
+  id: string;
+  generatorId: string;
+  category: string;
+  severity: string;
+  title: string;
+  detail: string;
+  metric: FindingMetric;
+  context: Record<string, unknown>;
+}
+
+interface FindingsHealth {
+  severity: string;
+  label: string;
+  oocCount: number;
+  cpk: string;
+  cpkSeverity: string;
+  n: number;
+}
+
+interface DerivedFindings {
+  findings: Finding[];
+  selected: Finding | null;
+  grouped: Record<string, Finding[]>;
+  health: FindingsHealth;
+  dangerCount: number;
+  warningCount: number;
+}
+
+type GeneratorFn = (slot: ChartSlot, points: ChartPoint[], state: SPCState, standards: FindingsStandards) => Finding[];
+
+interface GeneratorEntry {
+  id: string;
+  category: string;
+  label: string;
+  generate: GeneratorFn;
+}
+
+const DEFAULT_STANDARDS: FindingsStandards = {
   cpkThreshold: 1.33,
   cpkMarginal: 1.0,
   maxOocPercent: 2.0,
@@ -20,13 +65,13 @@ const DEFAULT_STANDARDS = {
 
 // ─── Stability generators ───────────────────────────
 
-function stabilityVerdict(slot, points, _state, standards) {
+function stabilityVerdict(slot: ChartSlot, points: ChartPoint[], _state: SPCState, standards: FindingsStandards): Finding[] {
   const violations = slot.violations || [];
   const totalOOC = violations.reduce((sum, v) => sum + v.indices.length, 0);
   const uniqueRules = new Set(violations.map(v => v.testId));
   const oocPct = points.length > 0 ? (totalOOC / points.length * 100) : 0;
 
-  let severity, title;
+  let severity: string, title: string;
   if (totalOOC === 0) {
     severity = "good"; title = "Process Stable";
   } else if (uniqueRules.size <= 2 && totalOOC <= standards.maxOocCount && oocPct <= standards.maxOocPercent) {
@@ -58,16 +103,16 @@ function stabilityVerdict(slot, points, _state, standards) {
   }];
 }
 
-function violationSummary(slot) {
+function violationSummary(slot: ChartSlot): Finding[] {
   const violations = slot.violations || [];
   if (violations.length === 0) return [];
 
-  const byRule = new Map();
+  const byRule = new Map<string, { testId: string; description: string; count: number; indices: number[] }>();
   for (const v of violations) {
     if (!byRule.has(v.testId)) {
       byRule.set(v.testId, { testId: v.testId, description: v.description, count: 0, indices: [] });
     }
-    const entry = byRule.get(v.testId);
+    const entry = byRule.get(v.testId)!;
     entry.count += v.indices.length;
     entry.indices.push(...v.indices);
   }
@@ -84,22 +129,24 @@ function violationSummary(slot) {
   }));
 }
 
-function phaseComparison(slot) {
+function phaseComparison(slot: ChartSlot): Finding[] {
   const phases = slot.phases || [];
   if (phases.length < 2) return [];
 
-  const findings = [];
+  const findings: Finding[] = [];
   for (let i = 1; i < phases.length; i++) {
-    const prev = phases[i - 1];
-    const curr = phases[i];
-    const prevCL = Array.isArray(prev.limits.cl) ? prev.limits.cl[0] : prev.limits.cl;
-    const currCL = Array.isArray(curr.limits.cl) ? curr.limits.cl[0] : curr.limits.cl;
+    const prev = phases[i - 1] as SlotPhase & { limits: Record<string, unknown>; sigma?: { sigma_hat: number } };
+    const curr = phases[i] as SlotPhase & { limits: Record<string, unknown>; sigma?: { sigma_hat: number } };
+    const prevLimits = prev.limits as { cl?: number | number[]; center?: number };
+    const currLimits = curr.limits as { cl?: number | number[]; center?: number };
+    const prevCL = Array.isArray(prevLimits.cl) ? prevLimits.cl[0] : (prevLimits.cl ?? prevLimits.center);
+    const currCL = Array.isArray(currLimits.cl) ? currLimits.cl[0] : (currLimits.cl ?? currLimits.center);
 
     if (prevCL == null || currCL == null) continue;
 
     const meanShift = currCL - prevCL;
-    const prevSigma = prev.sigma?.sigma_hat || 0;
-    const currSigma = curr.sigma?.sigma_hat || 0;
+    const prevSigma = (prev as unknown as { sigma?: { sigma_hat: number } }).sigma?.sigma_hat || 0;
+    const currSigma = (curr as unknown as { sigma?: { sigma_hat: number } }).sigma?.sigma_hat || 0;
     const sigmaChange = prevSigma > 0 ? ((currSigma - prevSigma) / prevSigma * 100) : 0;
     const shiftMagnitude = prevSigma > 0 ? Math.abs(meanShift) / prevSigma : 0;
 
@@ -129,7 +176,7 @@ function phaseComparison(slot) {
 
 // ─── Capability generators ──────────────────────────
 
-function capabilityVerdict(slot, _points, _state, standards) {
+function capabilityVerdict(slot: ChartSlot, _points: ChartPoint[], _state: SPCState, standards: FindingsStandards): Finding[] {
   const cap = slot.capability;
   if (!cap || cap.cpk == null) return [];
 
@@ -137,11 +184,11 @@ function capabilityVerdict(slot, _points, _state, standards) {
   const cls = capClass(cpk, standards.cpkThreshold, standards.cpkMarginal);
   const severity = cls === "good" ? "good" : cls === "marginal" ? "warning" : "danger";
 
-  const parts = [];
+  const parts: string[] = [];
   if (cap.cp != null) parts.push(`Cp ${cap.cp.toFixed(2)}`);
   parts.push(`Cpk ${cpk.toFixed(2)}`);
-  if (cap.pp != null) parts.push(`Pp ${cap.pp.toFixed(2)}`);
-  if (cap.ppk != null) parts.push(`Ppk ${cap.ppk.toFixed(2)}`);
+  if ((cap as unknown as Record<string, unknown>).pp != null) parts.push(`Pp ${((cap as unknown as Record<string, unknown>).pp as number).toFixed(2)}`);
+  if ((cap as unknown as Record<string, unknown>).ppk != null) parts.push(`Ppk ${((cap as unknown as Record<string, unknown>).ppk as number).toFixed(2)}`);
 
   return [{
     id: "capability-verdict",
@@ -159,13 +206,13 @@ function capabilityVerdict(slot, _points, _state, standards) {
   }];
 }
 
-function centeringAssessment(slot, _points, _state, standards) {
+function centeringAssessment(slot: ChartSlot, _points: ChartPoint[], _state: SPCState, standards: FindingsStandards): Finding[] {
   const cap = slot.capability;
   if (!cap || cap.cpk == null || cap.cp == null || cap.cp === 0) return [];
 
   const ratio = cap.cpk / cap.cp;
   const halfRatio = standards.centeringRatio * 0.78;
-  let severity, title;
+  let severity: string, title: string;
   if (ratio >= standards.centeringRatio) {
     severity = "good"; title = "Well Centered";
   } else if (ratio >= halfRatio) {
@@ -194,8 +241,8 @@ function centeringAssessment(slot, _points, _state, standards) {
 
 // ─── Statistical generators ─────────────────────────
 
-function statisticalSummary(slot, points) {
-  const mapped = points.map(p => ({ ...p, value: p.primaryValue ?? p.value }));
+function statisticalSummary(slot: ChartSlot, points: ChartPoint[]): Finding[] {
+  const mapped = points.map(p => ({ ...p, value: p.primaryValue ?? (p as unknown as Record<string, unknown>).value as number }));
   const stats = computeStats(mapped);
   if (!stats) return [];
 
@@ -222,7 +269,7 @@ function statisticalSummary(slot, points) {
   }];
 }
 
-function sigmaMethodNote(slot) {
+function sigmaMethodNote(slot: ChartSlot): Finding[] {
   const sigma = slot.sigma;
   if (!sigma) return [];
 
@@ -239,7 +286,7 @@ function sigmaMethodNote(slot) {
   }];
 }
 
-function zoneDistribution(slot, points, _state, standards) {
+function zoneDistribution(slot: ChartSlot, points: ChartPoint[], _state: SPCState, standards: FindingsStandards): Finding[] {
   const zones = slot.zones;
   if (!zones || !points.length) return [];
 
@@ -248,7 +295,7 @@ function zoneDistribution(slot, points, _state, standards) {
   if (sigma <= 0) return [];
 
   let zoneA = 0, zoneB = 0, zoneC = 0, beyond = 0;
-  const values = points.map(p => p.primaryValue ?? p.value).filter(v => v != null);
+  const values = points.map(p => p.primaryValue ?? (p as unknown as Record<string, unknown>).value as number).filter((v): v is number => v != null);
   for (const v of values) {
     const dist = Math.abs(v - cl) / sigma;
     if (dist > 3) beyond++;
@@ -287,12 +334,12 @@ function zoneDistribution(slot, points, _state, standards) {
 
 // ─── Pattern generators ─────────────────────────────
 
-function runsDetection(slot, points, _state, standards) {
+function runsDetection(slot: ChartSlot, points: ChartPoint[], _state: SPCState, standards: FindingsStandards): Finding[] {
   const zones = slot.zones;
   if (!zones || points.length < 10) return [];
 
   const cl = zones.cl;
-  const values = points.map(p => p.primaryValue ?? p.value).filter(v => v != null);
+  const values = points.map(p => p.primaryValue ?? (p as unknown as Record<string, unknown>).value as number).filter((v): v is number => v != null);
   if (values.length < 10) return [];
 
   let runs = 1;
@@ -329,7 +376,7 @@ function runsDetection(slot, points, _state, standards) {
   }];
 }
 
-function trendDetection(slot) {
+function trendDetection(slot: ChartSlot): Finding[] {
   const violations = slot.violations || [];
   const rule3 = violations.find(v => v.testId === "3");
   if (!rule3) return [];
@@ -346,7 +393,7 @@ function trendDetection(slot) {
   }];
 }
 
-function stratificationDetection(slot) {
+function stratificationDetection(slot: ChartSlot): Finding[] {
   const violations = slot.violations || [];
   const rule7 = violations.find(v => v.testId === "7");
   if (!rule7) return [];
@@ -363,7 +410,7 @@ function stratificationDetection(slot) {
   }];
 }
 
-function mixtureDetection(slot) {
+function mixtureDetection(slot: ChartSlot): Finding[] {
   const violations = slot.violations || [];
   const rule8 = violations.find(v => v.testId === "8");
   if (!rule8) return [];
@@ -382,33 +429,33 @@ function mixtureDetection(slot) {
 
 // ─── Registry & orchestrator ────────────────────────
 
-const GENERATOR_REGISTRY = [
+const GENERATOR_REGISTRY: GeneratorEntry[] = [
   { id: "stabilityVerdict",        category: "stability",   label: "Stability Verdict",      generate: stabilityVerdict },
-  { id: "violationSummary",        category: "stability",   label: "Violation Summary",      generate: violationSummary },
-  { id: "phaseComparison",         category: "stability",   label: "Phase Comparison",       generate: phaseComparison },
+  { id: "violationSummary",        category: "stability",   label: "Violation Summary",      generate: violationSummary as GeneratorFn },
+  { id: "phaseComparison",         category: "stability",   label: "Phase Comparison",       generate: phaseComparison as GeneratorFn },
   { id: "capabilityVerdict",       category: "capability",  label: "Capability Verdict",     generate: capabilityVerdict },
   { id: "centeringAssessment",     category: "capability",  label: "Centering Assessment",   generate: centeringAssessment },
-  { id: "statisticalSummary",      category: "statistical", label: "Summary Statistics",      generate: statisticalSummary },
-  { id: "sigmaMethodNote",         category: "statistical", label: "Sigma Method",           generate: sigmaMethodNote },
+  { id: "statisticalSummary",      category: "statistical", label: "Summary Statistics",      generate: statisticalSummary as GeneratorFn },
+  { id: "sigmaMethodNote",         category: "statistical", label: "Sigma Method",           generate: sigmaMethodNote as GeneratorFn },
   { id: "zoneDistribution",        category: "statistical", label: "Zone Distribution",      generate: zoneDistribution },
   { id: "runsDetection",           category: "pattern",     label: "Runs Detection",         generate: runsDetection },
-  { id: "trendDetection",          category: "pattern",     label: "Trend Detection",        generate: trendDetection },
-  { id: "stratificationDetection", category: "pattern",     label: "Stratification",         generate: stratificationDetection },
-  { id: "mixtureDetection",        category: "pattern",     label: "Mixture Detection",      generate: mixtureDetection },
+  { id: "trendDetection",          category: "pattern",     label: "Trend Detection",        generate: trendDetection as GeneratorFn },
+  { id: "stratificationDetection", category: "pattern",     label: "Stratification",         generate: stratificationDetection as GeneratorFn },
+  { id: "mixtureDetection",        category: "pattern",     label: "Mixture Detection",      generate: mixtureDetection as GeneratorFn },
 ];
 
 /**
  * Run all generators against current state and return findings array.
  * Errors in individual generators are isolated — one failure doesn't block others.
  */
-export function generateFindings(state, chartId) {
+export function generateFindings(state: SPCState, chartId?: string): Finding[] {
   const id = chartId || state.chartOrder[0];
   const slot = state.charts[id];
   if (!slot) return [];
 
   const points = state.points || [];
-  const standards = { ...DEFAULT_STANDARDS, ...state.findingsStandards };
-  const findings = [];
+  const standards: FindingsStandards = { ...DEFAULT_STANDARDS, ...state.findingsStandards };
+  const findings: Finding[] = [];
 
   for (const gen of GENERATOR_REGISTRY) {
     try {
@@ -426,18 +473,18 @@ export function generateFindings(state, chartId) {
  * Derive view-ready data from findings array.
  * Groups by category, computes health summary.
  */
-export function deriveFindings(state) {
-  const findings = state.structuralFindings || [];
+export function deriveFindings(state: SPCState): DerivedFindings {
+  const findings = (state.structuralFindings || []) as Finding[];
   const selected = findings.find(f => f.id === state.selectedFindingId) || findings[0] || null;
 
   const categories = ["stability", "capability", "statistical", "pattern"];
-  const grouped = {};
+  const grouped: Record<string, Finding[]> = {};
   for (const cat of categories) {
     grouped[cat] = findings.filter(f => f.category === cat);
   }
 
   // Health summary: worst severity across all findings
-  const severityRank = { danger: 3, warning: 2, info: 1, good: 0 };
+  const severityRank: Record<string, number> = { danger: 3, warning: 2, info: 1, good: 0 };
   let worstSeverity = "good";
   let worstRank = 0;
   for (const f of findings) {
@@ -446,7 +493,7 @@ export function deriveFindings(state) {
   }
 
   // Key metrics for health bar
-  const stabilityVerdict = findings.find(f => f.generatorId === "stabilityVerdict");
+  const stabilityVerdictFinding = findings.find(f => f.generatorId === "stabilityVerdict");
   const capVerdict = findings.find(f => f.generatorId === "capabilityVerdict");
   const statsSummary = findings.find(f => f.generatorId === "statisticalSummary");
 
@@ -457,10 +504,10 @@ export function deriveFindings(state) {
     health: {
       severity: worstSeverity,
       label: worstSeverity === "good" ? "Healthy" : worstSeverity === "info" ? "Normal" : worstSeverity === "warning" ? "Attention" : "Critical",
-      oocCount: stabilityVerdict?.metric?.raw ?? 0,
+      oocCount: (stabilityVerdictFinding?.metric?.raw ?? 0) as number,
       cpk: capVerdict?.metric?.value ?? "—",
       cpkSeverity: capVerdict?.severity ?? "info",
-      n: statsSummary?.context?.n ?? 0,
+      n: ((statsSummary?.context?.n as number) ?? 0),
     },
     dangerCount: findings.filter(f => f.severity === "danger").length,
     warningCount: findings.filter(f => f.severity === "warning").length,
