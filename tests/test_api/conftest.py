@@ -2,14 +2,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from api.models import Base, Dataset, DataRow, DatasetColumn
-
+from api.models import Base, DataRow, Dataset, DatasetColumn
 
 SEED_DATASET_ID = "test-dataset-001"
 
@@ -80,8 +78,9 @@ async def seeded_db(db: AsyncSession):
 def client(seeded_db: AsyncSession):
     """FastAPI TestClient with the seeded session injected."""
     from fastapi.testclient import TestClient
-    from api.main import app
+
     from api.database import get_db
+    from api.main import app
 
     async def override_get_db():
         yield seeded_db

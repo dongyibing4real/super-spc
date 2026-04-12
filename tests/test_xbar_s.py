@@ -7,7 +7,6 @@ import pytest
 from algo.constants.tables import c4, c5
 from algo.xbar_s import XBarSConfig, XBarSResult, compute_xbar_s
 
-
 # ---------------------------------------------------------------------------
 # Known-answer test (hand-computed)
 # ---------------------------------------------------------------------------

@@ -4,10 +4,9 @@ Tests for the standalone MR (Moving Range) chart.
 import numpy as np
 import pytest
 
-from algo.mr_chart import MRChartConfig, MRChartResult, compute_mr_chart
 from algo.common.enums import SigmaMethod
 from algo.constants.tables import d2, d3
-
+from algo.mr_chart import MRChartConfig, MRChartResult, compute_mr_chart
 
 # ---------------------------------------------------------------------------
 # Known-answer test: span=2 (default)

@@ -1,21 +1,19 @@
 """Tests for forecast model cache eviction (TTL, memory, count limits)."""
 import time
-from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 from api.services.forecast import (
-    _CacheEntry,
     _MAX_CACHE,
     _MAX_MEMORY_BYTES,
     _TTL_SECONDS,
     _cache_get,
     _cache_lock,
     _cache_put,
+    _CacheEntry,
     _evict_expired,
     _model_cache,
-    _total_memory,
 )
 
 

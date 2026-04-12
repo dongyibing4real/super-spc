@@ -69,7 +69,6 @@ class TestLaneyPOverdispersion:
         """Overdispersed data should produce wider limits than a standard p-chart."""
         rng = np.random.default_rng(seed=100)
         # Simulate overdispersion: mix two populations with different p
-        p_bar_nominal = 0.1
         n = np.full(30, 200)
         # Half subgroups draw from p=0.05, half from p=0.15 -> overdispersion
         half = len(n) // 2

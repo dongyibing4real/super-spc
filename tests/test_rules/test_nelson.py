@@ -1,6 +1,5 @@
 """Tests for Nelson rules 1-8."""
 import numpy as np
-import pytest
 
 import algo.rules.nelson as nelson
 from algo.common.types import ZoneBreakdown
@@ -87,13 +86,13 @@ class TestSameSide:
         # 9 above CL=0
         values = np.array([1.0] * 9)
         mask = same_side(values, cl=0.0, n=9)
-        assert mask[-1] == True
+        assert mask[-1]
         assert not mask[:-1].any()
 
     def test_nine_below_triggers_last(self):
         values = np.array([-1.0] * 9)
         mask = same_side(values, cl=0.0, n=9)
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_eight_above_does_not_trigger(self):
         values = np.array([1.0] * 8)
@@ -110,9 +109,9 @@ class TestSameSide:
         # 11 above: positions 8,9,10 all flagged
         values = np.array([1.0] * 11)
         mask = same_side(values, cl=0.0, n=9)
-        assert mask[8] == True
-        assert mask[9] == True
-        assert mask[10] == True
+        assert mask[8]
+        assert mask[9]
+        assert mask[10]
 
     def test_empty_input(self):
         mask = same_side(np.array([]), cl=0.0)
@@ -138,13 +137,13 @@ class TestTrending:
     def test_six_increasing_triggers(self):
         values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
         mask = trending(values, n=6)
-        assert mask[-1] == True
+        assert mask[-1]
         assert not mask[:-1].any()
 
     def test_six_decreasing_triggers(self):
         values = np.array([6.0, 5.0, 4.0, 3.0, 2.0, 1.0])
         mask = trending(values, n=6)
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_five_increasing_does_not_trigger(self):
         values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
@@ -164,7 +163,7 @@ class TestTrending:
         values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
         mask = trending(values, n=6)
         # After reset at index 5, 5 increasing steps reach index 10 -> trigger
-        assert mask[10] == True
+        assert mask[10]
 
     def test_empty_input(self):
         mask = trending(np.array([]), n=6)
@@ -177,15 +176,15 @@ class TestTrending:
     def test_trend_continues_past_n(self):
         values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
         mask = trending(values, n=6)
-        assert mask[5] == True
-        assert mask[6] == True
+        assert mask[5]
+        assert mask[6]
 
     def test_n_equals_2(self):
         # Any strictly increasing or decreasing pair triggers
         values = np.array([1.0, 2.0, 1.0])
         mask = trending(values, n=2)
-        assert mask[1] == True  # 1->2 increasing
-        assert mask[2] == True  # 2->1 decreasing
+        assert mask[1]  # 1->2 increasing
+        assert mask[2]  # 2->1 decreasing
 
 
 # ===========================================================================
@@ -199,7 +198,7 @@ class TestAlternating:
         for i in range(14):
             values[i] = 1.0 if i % 2 == 0 else 0.0
         mask = alternating(values, n=14)
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_thirteen_alternating_does_not_trigger(self):
         values = np.zeros(13)
@@ -215,7 +214,7 @@ class TestAlternating:
         mask = alternating(values, n=14)
         # After the equal pair at indices 6,7, restart count
         # check last point
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_empty_input(self):
         mask = alternating(np.array([]), n=14)
@@ -229,8 +228,8 @@ class TestAlternating:
         # up-down-up = 3 alternating points
         values = np.array([0.0, 1.0, 0.0, 1.0])
         mask = alternating(values, n=3)
-        assert mask[2] == True
-        assert mask[3] == True
+        assert mask[2]
+        assert mask[3]
 
     def test_monotone_not_alternating(self):
         values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
@@ -249,13 +248,13 @@ class TestZoneA:
         # indices 0,1,2: [2.5, 0.5, 2.5] -> 2 of 3 in zone A upper
         values = np.array([2.5, 0.5, 2.5])
         mask = zone_a(values, zones, n=2, window=3)
-        assert mask[2] == True
+        assert mask[2]
 
     def test_two_of_three_zone_a_lower_triggers(self):
         zones = make_zones(cl=0.0, sigma=1.0)
         values = np.array([-2.5, -0.5, -2.5])
         mask = zone_a(values, zones, n=2, window=3)
-        assert mask[2] == True
+        assert mask[2]
 
     def test_one_of_three_zone_a_does_not_trigger(self):
         zones = make_zones(cl=0.0, sigma=1.0)
@@ -279,7 +278,7 @@ class TestZoneA:
         mask = zone_a(values, zones, n=2, window=3)
         # At index 2: current=upper(+1), window=[+1, -1, +1], count of +1 = 2 >= 2 -> triggers
         # This is correct: two upper zone A in window of 3 is a valid trigger
-        assert mask[2] == True
+        assert mask[2]
 
     def test_opposite_sides_truly_different(self):
         zones = make_zones(cl=0.0, sigma=1.0)
@@ -294,7 +293,7 @@ class TestZoneA:
         # Exactly at zone_a_upper (=2.0) should be in zone A
         values = np.array([2.0, 0.5, 2.0])
         mask = zone_a(values, zones, n=2, window=3)
-        assert mask[2] == True
+        assert mask[2]
 
     def test_empty_input(self):
         zones = make_zones()
@@ -312,13 +311,13 @@ class TestZoneB:
         # Zone B+ upper: >= 1.0
         values = np.array([1.5, 1.5, 0.0, 1.5, 1.5])
         mask = zone_b(values, zones, n=4, window=5)
-        assert mask[4] == True
+        assert mask[4]
 
     def test_four_of_five_zone_b_lower_triggers(self):
         zones = make_zones(cl=0.0, sigma=1.0)
         values = np.array([-1.5, -1.5, 0.0, -1.5, -1.5])
         mask = zone_b(values, zones, n=4, window=5)
-        assert mask[4] == True
+        assert mask[4]
 
     def test_three_of_five_does_not_trigger(self):
         zones = make_zones(cl=0.0, sigma=1.0)
@@ -337,7 +336,7 @@ class TestZoneB:
         zones = make_zones(cl=0.0, sigma=1.0)
         values = np.array([1.0, 1.0, 0.5, 1.0, 1.0])
         mask = zone_b(values, zones, n=4, window=5)
-        assert mask[4] == True
+        assert mask[4]
 
     def test_empty_input(self):
         zones = make_zones()
@@ -355,7 +354,7 @@ class TestInZoneC:
         # Zone C: -1.0 < v < 1.0
         values = np.array([0.5] * 15)
         mask = in_zone_c(values, zones, n=15)
-        assert mask[-1] == True
+        assert mask[-1]
         assert not mask[:-1].any()
 
     def test_fourteen_in_zone_c_does_not_trigger(self):
@@ -372,14 +371,14 @@ class TestInZoneC:
         mask = in_zone_c(values, zones, n=15)
         # After the boundary at index 8, zone_c run starts at index 9
         # index 9 + 15 - 1 = index 23 is the first triggered point
-        assert mask[23] == True
+        assert mask[23]
         assert not mask[:9].any()
 
     def test_negative_zone_c(self):
         zones = make_zones(cl=0.0, sigma=1.0)
         values = np.array([-0.5] * 15)
         mask = in_zone_c(values, zones, n=15)
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_empty_input(self):
         zones = make_zones()
@@ -390,9 +389,9 @@ class TestInZoneC:
         zones = make_zones(cl=0.0, sigma=1.0)
         values = np.array([0.5] * 17)
         mask = in_zone_c(values, zones, n=15)
-        assert mask[14] == True
-        assert mask[15] == True
-        assert mask[16] == True
+        assert mask[14]
+        assert mask[15]
+        assert mask[16]
 
 
 # ===========================================================================
@@ -405,7 +404,7 @@ class TestOutsideZoneC:
         # Outside zone C: >= 1.0 or <= -1.0
         values = np.array([1.5] * 8)
         mask = outside_zone_c(values, zones, n=8)
-        assert mask[-1] == True
+        assert mask[-1]
         assert not mask[:-1].any()
 
     def test_seven_outside_does_not_trigger(self):
@@ -419,7 +418,7 @@ class TestOutsideZoneC:
         # Alternating upper and lower, both outside zone C
         values = np.array([1.5, -1.5] * 4)
         mask = outside_zone_c(values, zones, n=8)
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_point_in_zone_c_breaks_run(self):
         zones = make_zones(cl=0.0, sigma=1.0)
@@ -427,14 +426,14 @@ class TestOutsideZoneC:
         values = np.array([1.5] * 5 + [0.5] + [1.5] * 8)
         mask = outside_zone_c(values, zones, n=8)
         assert not mask[:7].any()
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_boundary_exactly_at_zone_b(self):
         zones = make_zones(cl=0.0, sigma=1.0)
         # Exactly at zone_b_upper (=1.0) is outside zone C
         values = np.array([1.0] * 8)
         mask = outside_zone_c(values, zones, n=8)
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_empty_input(self):
         zones = make_zones()

@@ -9,7 +9,6 @@ from scipy.stats import f as f_dist
 
 from algo.hotelling_t2 import HotellingT2Config, HotellingT2Result, compute_hotelling_t2
 
-
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------

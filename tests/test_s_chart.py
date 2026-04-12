@@ -4,9 +4,8 @@ Tests for the standalone S chart.
 import numpy as np
 import pytest
 
-from algo.s_chart import SChartConfig, SChartResult, compute_s_chart
 from algo.constants.tables import c4, c5
-
+from algo.s_chart import SChartConfig, SChartResult, compute_s_chart
 
 # ---------------------------------------------------------------------------
 # Known-answer test: 5 subgroups of size 4

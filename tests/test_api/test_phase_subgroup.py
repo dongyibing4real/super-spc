@@ -3,15 +3,13 @@ from __future__ import annotations
 
 import json
 
-import numpy as np
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from api.models import Base, Dataset, DataRow, DatasetColumn
+from api.models import Base, DataRow, Dataset, DatasetColumn
 from api.schemas import AnalysisRequest
-from api.services.analysis import run_analysis, _split_by_phase
-
+from api.services.analysis import _split_by_phase, run_analysis
 
 PHASE_DATASET_ID = "phase-test-001"
 EWMA_SUBGROUP_DATASET_ID = "ewma-subgroup-001"

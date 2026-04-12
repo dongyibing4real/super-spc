@@ -4,9 +4,8 @@ Tests for the standalone R chart.
 import numpy as np
 import pytest
 
-from algo.r_chart import RChartConfig, RChartResult, compute_r_chart
 from algo.constants.tables import d2, d3
-
+from algo.r_chart import RChartConfig, RChartResult, compute_r_chart
 
 # ---------------------------------------------------------------------------
 # Known-answer test: 5 subgroups of size 4, all ranges = 3

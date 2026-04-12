@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from algo.rules import RuleConfig, RuleViolation, evaluate_rules
 from algo.common.types import ControlLimits, ZoneBreakdown
+from algo.rules import RuleConfig, evaluate_rules
 
 
 def make_limits(n: int = 10, ucl: float = 3.0, lcl: float = -3.0) -> ControlLimits:

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-import pytest_asyncio
 
 from api.schemas import AnalysisRequest
 from api.services.analysis import run_analysis
@@ -23,7 +22,7 @@ async def test_moving_range_analysis(seeded_db):
 
     # Control limits should bracket the data
     assert all(u > result.zones.cl for u in result.limits.ucl)
-    assert all(l < result.zones.cl for l in result.limits.lcl)
+    assert all(val < result.zones.cl for val in result.limits.lcl)
     assert len(result.limits.ucl) == 20
     assert len(result.limits.cl) == 20
     assert len(result.limits.lcl) == 20

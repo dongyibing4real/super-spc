@@ -1,6 +1,5 @@
 """Tests for Westgard rules."""
 import numpy as np
-import pytest
 
 import algo.rules.westgard as westgard
 from algo.common.types import ZoneBreakdown
@@ -187,7 +186,7 @@ class TestR_4s:
         zones = make_zones(cl=0.0, sigma=1.0)
         values = np.array([2.0, -2.0001])
         mask = rule_r_4s(values, zones)
-        assert mask[1] == True
+        assert mask[1]
 
     def test_no_violation(self):
         zones = make_zones(cl=0.0, sigma=1.0)
@@ -216,14 +215,14 @@ class Test4_1s:
         # zone_b_upper=1.0, values > 1.0 are in zone B+
         values = np.array([0.0, 1.5, 1.5, 1.5, 1.5])
         mask = rule_4_1s(values, zones)
-        assert mask[4] == True
+        assert mask[4]
         assert not mask[:4].any()
 
     def test_four_below_minus_1sigma_triggers(self):
         zones = make_zones(cl=0.0, sigma=1.0)
         values = np.array([0.0, -1.5, -1.5, -1.5, -1.5])
         mask = rule_4_1s(values, zones)
-        assert mask[4] == True
+        assert mask[4]
 
     def test_three_above_no_trigger(self):
         zones = make_zones(cl=0.0, sigma=1.0)
@@ -236,7 +235,7 @@ class Test4_1s:
         values = np.array([1.5, 1.5, -1.5, 1.5, 1.5, 1.5, 1.5])
         mask = rule_4_1s(values, zones)
         # After -1.5 resets above_run, need 4 more above -> indices 3,4,5,6
-        assert mask[6] == True
+        assert mask[6]
 
     def test_exactly_at_1sigma_no_trigger(self):
         zones = make_zones(cl=0.0, sigma=1.0)
@@ -259,13 +258,13 @@ class Test10x:
     def test_ten_above_cl_triggers(self):
         values = np.array([1.0] * 10)
         mask = rule_10_x(values, cl=0.0)
-        assert mask[-1] == True
+        assert mask[-1]
         assert not mask[:-1].any()
 
     def test_ten_below_cl_triggers(self):
         values = np.array([-1.0] * 10)
         mask = rule_10_x(values, cl=0.0)
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_nine_above_no_trigger(self):
         values = np.array([1.0] * 9)
@@ -280,9 +279,9 @@ class Test10x:
     def test_run_continues_past_10(self):
         values = np.array([1.0] * 12)
         mask = rule_10_x(values, cl=0.0)
-        assert mask[9] == True
-        assert mask[10] == True
-        assert mask[11] == True
+        assert mask[9]
+        assert mask[10]
+        assert mask[11]
 
     def test_empty(self):
         mask = rule_10_x(np.array([]), cl=0.0)

@@ -1,8 +1,6 @@
 """Integration tests for API endpoints via TestClient."""
 from __future__ import annotations
 
-import pytest
-
 from tests.test_api.conftest import SEED_DATASET_ID
 
 

@@ -8,10 +8,9 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from api.models import Base, Dataset, DataRow, DatasetColumn
+from api.models import Base, DataRow, Dataset, DatasetColumn
 from api.schemas import AnalysisRequest
 from api.services.analysis import run_analysis
-
 
 DATASET_ID = "chart-dispatch-001"
 SUBGROUPED_DATASET_ID = "chart-dispatch-002"
@@ -616,8 +615,9 @@ async def test_multivariate_requires_raw_data(seeded_db):
 def client(seeded_db: AsyncSession):
     """FastAPI TestClient with seeded session."""
     from fastapi.testclient import TestClient
-    from api.main import app
+
     from api.database import get_db
+    from api.main import app
 
     async def override_get_db():
         yield seeded_db

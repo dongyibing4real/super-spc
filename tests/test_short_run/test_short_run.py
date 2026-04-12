@@ -8,8 +8,7 @@ import numpy as np
 import pytest
 
 from algo.common.enums import ScalingMethod
-from algo.short_run import ShortRunConfig, ShortRunResult, compute_short_run
-
+from algo.short_run import ShortRunConfig, compute_short_run
 
 # ---------------------------------------------------------------------------
 # Centered scaling

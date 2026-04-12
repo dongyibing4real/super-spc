@@ -8,8 +8,7 @@ import numpy as np
 import pytest
 from scipy.stats import chi2, norm
 
-from algo.g_chart import GChartConfig, GChartResult, compute_g_chart
-
+from algo.g_chart import GChartConfig, compute_g_chart
 
 # ---------------------------------------------------------------------------
 # Helper

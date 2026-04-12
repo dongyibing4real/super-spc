@@ -8,8 +8,7 @@ import numpy as np
 import pytest
 from scipy.stats import norm, weibull_min
 
-from algo.t_chart import TChartConfig, TChartResult, compute_t_chart
-
+from algo.t_chart import TChartConfig, compute_t_chart
 
 # ---------------------------------------------------------------------------
 # Helper
